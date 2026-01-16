@@ -11,7 +11,7 @@
   margin-bottom: 0.75rem;
 }
 
-.md code {
+.md :not(pre) > code {
   padding: 0.1rem 0.25rem;
   border-radius: 0.25rem;
   background: rgba(0, 0, 0, 0.06);
@@ -37,7 +37,7 @@
   margin-bottom: 0.75rem;
 }
 
-:root[data-bs-theme="dark"] .md code {
+:root[data-bs-theme="dark"] .md :not(pre) > code {
   background: rgba(255, 255, 255, 0.08);
 }
 

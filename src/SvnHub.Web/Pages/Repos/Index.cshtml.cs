@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
+using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -13,12 +14,14 @@ public sealed class IndexModel : PageModel
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
+    private readonly SettingsService _settings;
 
-    public IndexModel(RepositoryService repos, AccessService access, ISvnLookClient svnlook)
+    public IndexModel(RepositoryService repos, AccessService access, ISvnLookClient svnlook, SettingsService settings)
     {
         _repos = repos;
         _access = access;
         _svnlook = svnlook;
+        _settings = settings;
     }
 
     [TempData]
@@ -40,6 +43,10 @@ public sealed class IndexModel : PageModel
     public IReadOnlyDictionary<string, DateTimeOffset?> UpdatedAtByRepoName { get; private set; } =
         new Dictionary<string, DateTimeOffset?>(StringComparer.OrdinalIgnoreCase);
 
+    public string SvnBaseUrl { get; private set; } = "";
+
+    public string? GetCheckoutUrl(string repoName) => SvnCheckoutUrl.Build(SvnBaseUrl, repoName, "/");
+
     public async Task OnGetAsync(int p = 1, int pageSize = 10, string? q = null)
     {
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
@@ -49,6 +56,7 @@ public sealed class IndexModel : PageModel
             return;
         }
 
+        SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
         PageSize = NormalizePageSize(pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);

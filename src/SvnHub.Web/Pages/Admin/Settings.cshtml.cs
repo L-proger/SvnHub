@@ -26,6 +26,7 @@ public sealed class SettingsModel : PageModel
     public void OnGet()
     {
         Input.RepositoriesRootPath = _settings.GetEffectiveRepositoriesRootPath();
+        Input.SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
@@ -44,6 +45,7 @@ public sealed class SettingsModel : PageModel
             actorId,
             Input.RepositoriesRootPath,
             Input.CreateIfMissing,
+            Input.SvnBaseUrl,
             cancellationToken);
 
         if (!result.Success)
@@ -62,8 +64,10 @@ public sealed class SettingsModel : PageModel
         [Display(Name = "Repositories root path")]
         public string RepositoriesRootPath { get; set; } = "";
 
+        [Display(Name = "SVN base URL")]
+        public string SvnBaseUrl { get; set; } = "";
+
         [Display(Name = "Create directory if missing")]
         public bool CreateIfMissing { get; set; } = true;
     }
 }
-

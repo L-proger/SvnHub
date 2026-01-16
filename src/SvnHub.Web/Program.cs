@@ -35,6 +35,7 @@ builder.Services.AddSingleton<IHtpasswdService, HtpasswdService>();
 builder.Services.AddSingleton<IAuthFilesWriter, AuthFilesWriter>();
 builder.Services.AddSingleton<ISvnRepositoryProvisioner, SvnadminRepositoryProvisioner>();
 builder.Services.AddSingleton<ISvnLookClient, SvnLookClient>();
+builder.Services.AddSingleton<ISvnRepositoryWriter, SvnCliRepositoryWriter>();
 builder.Services.AddSingleton<SetupService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<RepositoryService>();

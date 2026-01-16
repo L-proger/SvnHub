@@ -20,13 +20,28 @@ public sealed class FileModel : PageModel
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
+    private readonly ISvnRepositoryWriter _svnWriter;
+    private readonly SettingsService _settings;
 
-    public FileModel(RepositoryService repos, AccessService access, ISvnLookClient svnlook)
+    public FileModel(
+        RepositoryService repos,
+        AccessService access,
+        ISvnLookClient svnlook,
+        ISvnRepositoryWriter svnWriter,
+        SettingsService settings)
     {
         _repos = repos;
         _access = access;
         _svnlook = svnlook;
+        _svnWriter = svnWriter;
+        _settings = settings;
     }
+
+    [TempData]
+    public string? FlashMessage { get; set; }
+
+    [TempData]
+    public string? FlashError { get; set; }
 
     public string RepoName { get; private set; } = "";
     public string Path { get; private set; } = "/";
@@ -40,6 +55,9 @@ public sealed class FileModel : PageModel
     public string MarkdownHtml { get; private set; } = "";
     public bool IsImage { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
+    public bool CanWrite { get; private set; }
+    public string? CheckoutUrl { get; private set; }
+    public bool CanEdit { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, CancellationToken cancellationToken)
     {
@@ -51,6 +69,7 @@ public sealed class FileModel : PageModel
 
         Path = Normalize(path);
         ParentPath = GetParent(Path);
+        CheckoutUrl = SvnCheckoutUrl.Build(_settings.GetEffectiveSvnBaseUrl(), repoName, Path);
         var language = GuessLanguage(Path);
         IsImage = IsImagePath(Path);
         ImageContentType = GetContentTypeOrDefault(Path);
@@ -71,6 +90,9 @@ public sealed class FileModel : PageModel
         {
             return Forbid();
         }
+
+        CanWrite = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
+        CanEdit = CanWrite;
 
         try
         {
@@ -96,10 +118,12 @@ public sealed class FileModel : PageModel
                 Contents = content;
             }
 
+            // Even if content is truncated, allow opening the editor (rename-only is still useful).
+
             IsMarkdown = string.Equals(language, "markdown", StringComparison.Ordinal);
             if (IsMarkdown)
             {
-                MarkdownHtml = MarkdownRenderer.Render(Contents);
+                MarkdownHtml = MarkdownRenderer.Render(Contents, repoName, Path);
                 HighlightedHtml = "";
             }
             else
@@ -114,6 +138,51 @@ public sealed class FileModel : PageModel
         }
 
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostDeleteAsync(string repoName, string? path, CancellationToken cancellationToken)
+    {
+        RepoName = repoName;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return NotFound();
+        }
+
+        Path = Normalize(path);
+        ParentPath = GetParent(Path);
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Write)
+        {
+            return Forbid();
+        }
+
+        var actor = User?.Identity?.Name ?? userId.Value.ToString("D");
+        var message = $"Delete {Path} via SvnHub (by {actor})";
+
+        try
+        {
+            await _svnWriter.DeleteAsync(repo.LocalPath, Path, message, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            FlashError = ex.Message;
+            return RedirectToPage("/Repos/File", new { repoName, path = Path });
+        }
+
+        TempData["Message"] = $"Deleted {System.IO.Path.GetFileName(Path)}";
+        return RedirectToPage("/Repos/Tree", new { repoName, path = ParentPath == "/" ? null : ParentPath });
     }
 
     public async Task<IActionResult> OnGetDownloadAsync(string repoName, string? path, CancellationToken cancellationToken)
@@ -218,6 +287,7 @@ public sealed class FileModel : PageModel
 
         var fileName = System.IO.Path.GetFileName(Path);
         var contentType = GetContentTypeOrDefault(fileName);
+        contentType = NormalizeRawTextContentType(fileName, contentType);
 
         Response.Headers.ETag = $"W/\"{repoName}:{rev}:{Path}\"";
         return File(content, contentType);
@@ -266,6 +336,50 @@ public sealed class FileModel : PageModel
         }
 
         return "application/octet-stream";
+    }
+
+    private static string NormalizeRawTextContentType(string fileName, string contentType)
+    {
+        // RAW view should display text correctly (UTF-8) without altering the bytes.
+        // Browsers may otherwise assume a legacy encoding for text/* without charset.
+        if (IsMarkdownFileName(fileName))
+        {
+            return "text/plain; charset=utf-8";
+        }
+
+        if (contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+        {
+            return contentType.Contains("charset=", StringComparison.OrdinalIgnoreCase)
+                ? contentType
+                : contentType + "; charset=utf-8";
+        }
+
+        if (IsProbablyTextExtension(fileName))
+        {
+            return "text/plain; charset=utf-8";
+        }
+
+        return contentType;
+    }
+
+    private static bool IsMarkdownFileName(string fileName) =>
+        string.Equals(System.IO.Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProbablyTextExtension(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(ext))
+        {
+            return false;
+        }
+
+        ext = ext.ToLowerInvariant();
+        return ext is
+            ".txt" or ".log" or ".ini" or ".cfg" or ".conf" or
+            ".json" or ".xml" or ".yml" or ".yaml" or
+            ".cs" or ".csx" or ".c" or ".h" or ".cpp" or ".cc" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
+            ".v" or ".vh" or ".sv" or ".svh" or
+            ".ps1" or ".psm1" or ".sh" or ".bat" or ".cmd";
     }
 
     private static string Normalize(string? path)

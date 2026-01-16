@@ -71,20 +71,45 @@
             : $"Updated {SvnHub.Web.Pages.Repos.IndexModel.FormatUpdatedAgo(updatedAt.Value, DateTimeOffset.UtcNow)}";
 
         <div class="list-group-item">
-            <div class="d-flex align-items-start gap-3">
-                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
-                </svg>
-                <div class="flex-grow-1">
-                    <a asp-page="/Repos/Tree"
-                       asp-route-repoName="@r.Name"
-                       class="repo-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
-                        @r.Name
-                    </a>
-                    <div class="repo-updated text-muted small" title="@(updatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz"))">
-                        @updatedLabel
+            <div class="d-flex align-items-start justify-content-between gap-3">
+                <div class="d-flex align-items-start gap-3">
+                    <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                    </svg>
+                    <div class="flex-grow-1">
+                        <a asp-page="/Repos/Tree"
+                           asp-route-repoName="@r.Name"
+                           class="repo-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                            @r.Name
+                        </a>
+                        <div class="repo-updated text-muted small" title="@(updatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz"))">
+                            @updatedLabel
+                        </div>
                     </div>
                 </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                {
+                    <div class="sp-row-actions dropdown">
+                        <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-label="Actions">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+                            </svg>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <button type="button"
+                                        class="dropdown-item"
+                                        data-copy-text="@Model.GetCheckoutUrl(r.Name)">
+                                    Copy SVN URL
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                }
             </div>
         </div>
     }

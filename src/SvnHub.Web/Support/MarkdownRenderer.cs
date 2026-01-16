@@ -4,7 +4,12 @@ namespace SvnHub.Web.Support;
 
 public static class MarkdownRenderer
 {
-    public static string Render(string markdown)
+    public static string Render(string markdown) => Render(markdown, context: null);
+
+    public static string Render(string markdown, string repoName, string currentPath) =>
+        Render(markdown, new MarkdownContext(repoName, currentPath));
+
+    private static string Render(string markdown, MarkdownContext? context)
     {
         if (string.IsNullOrEmpty(markdown))
         {
@@ -28,7 +33,7 @@ public static class MarkdownRenderer
         {
             if (paragraph.Count == 0) return;
             sb.Append("<p>");
-            sb.Append(RenderInline(string.Join(" ", paragraph)));
+            sb.Append(RenderInline(string.Join(" ", paragraph), context));
             sb.AppendLine("</p>");
             paragraph.Clear();
         }
@@ -37,7 +42,7 @@ public static class MarkdownRenderer
         {
             if (blockquote.Count == 0) return;
             sb.Append("<blockquote>");
-            sb.Append(RenderBlock(string.Join("\n", blockquote)));
+            sb.Append(RenderBlock(string.Join("\n", blockquote), context));
             sb.AppendLine("</blockquote>");
             blockquote.Clear();
         }
@@ -119,7 +124,7 @@ public static class MarkdownRenderer
                     sb.Append("<h");
                     sb.Append(level);
                     sb.Append(">");
-                    sb.Append(RenderInline(content));
+                    sb.Append(RenderInline(content, context));
                     sb.Append("</h");
                     sb.Append(level);
                     sb.AppendLine(">");
@@ -143,7 +148,7 @@ public static class MarkdownRenderer
                 FlushParagraph();
                 OpenList(ListMode.Unordered);
                 sb.Append("<li>");
-                sb.Append(RenderInline(trimmed[2..]));
+                sb.Append(RenderInline(trimmed[2..], context));
                 sb.AppendLine("</li>");
                 continue;
             }
@@ -155,7 +160,7 @@ public static class MarkdownRenderer
                 FlushParagraph();
                 OpenList(ListMode.Ordered);
                 sb.Append("<li>");
-                sb.Append(RenderInline(orderedText));
+                sb.Append(RenderInline(orderedText, context));
                 sb.AppendLine("</li>");
                 continue;
             }
@@ -244,7 +249,7 @@ public static class MarkdownRenderer
         return true;
     }
 
-    private static string RenderBlock(string text)
+    private static string RenderBlock(string text, MarkdownContext? context)
     {
         // MVP: render block by escaping and applying inline formatting per line.
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
@@ -252,12 +257,12 @@ public static class MarkdownRenderer
         for (var i = 0; i < lines.Length; i++)
         {
             if (i != 0) sb.Append("<br/>");
-            sb.Append(RenderInline(lines[i]));
+            sb.Append(RenderInline(lines[i], context));
         }
         return sb.ToString();
     }
 
-    private static string RenderInline(string text)
+    private static string RenderInline(string text, MarkdownContext? context)
     {
         // MVP inline formatting:
         // - `code`
@@ -298,9 +303,9 @@ public static class MarkdownRenderer
                         if (IsAllowedUrl(url))
                         {
                             sb.Append("<a href=\"");
-                            AppendHtmlEncoded(sb, url);
+                            AppendHtmlEncoded(sb, ResolveUrl(url, context));
                             sb.Append("\">");
-                            sb.Append(RenderInline(linkText.ToString()));
+                            sb.Append(RenderInline(linkText.ToString(), context));
                             sb.Append("</a>");
                             i = closeParen + 1;
                             continue;
@@ -316,7 +321,7 @@ public static class MarkdownRenderer
                 if (end > i + 2)
                 {
                     sb.Append("<strong>");
-                    sb.Append(RenderInline(text[(i + 2)..end]));
+                    sb.Append(RenderInline(text[(i + 2)..end], context));
                     sb.Append("</strong>");
                     i = end + 2;
                     continue;
@@ -330,7 +335,7 @@ public static class MarkdownRenderer
                 if (end > i + 1)
                 {
                     sb.Append("<em>");
-                    sb.Append(RenderInline(text[(i + 1)..end]));
+                    sb.Append(RenderInline(text[(i + 1)..end], context));
                     sb.Append("</em>");
                     i = end + 1;
                     continue;
@@ -347,6 +352,11 @@ public static class MarkdownRenderer
     private static bool IsAllowedUrl(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        if (url.StartsWith("//", StringComparison.Ordinal))
         {
             return false;
         }
@@ -368,6 +378,152 @@ public static class MarkdownRenderer
 
         // relative URLs are allowed (e.g. "docs/page.md")
         return !url.Contains(':');
+    }
+
+    private static string ResolveUrl(string url, MarkdownContext? context)
+    {
+        if (context is null)
+        {
+            return url;
+        }
+
+        var raw = url.Trim();
+        if (raw.Length == 0 || raw.StartsWith('#'))
+        {
+            return raw;
+        }
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out _))
+        {
+            return raw;
+        }
+
+        var fragmentIndex = raw.IndexOf('#', StringComparison.Ordinal);
+        var fragment = fragmentIndex >= 0 ? raw[fragmentIndex..] : "";
+        var rawPath = fragmentIndex >= 0 ? raw[..fragmentIndex] : raw;
+
+        // Normalize separators for Windows-authored docs.
+        rawPath = rawPath.Replace('\\', '/');
+
+        var isTree = rawPath.EndsWith("/", StringComparison.Ordinal);
+
+        string svnPath;
+        if (rawPath.StartsWith("/", StringComparison.Ordinal))
+        {
+            svnPath = NormalizeRepoPath(rawPath);
+        }
+        else
+        {
+            var baseDir = GetDirectoryPath(context.CurrentPath);
+            svnPath = ResolveRelativePath(baseDir, rawPath);
+        }
+
+        var baseUrl = isTree
+            ? BuildTreeUrl(context.RepoName, svnPath)
+            : BuildFileUrl(context.RepoName, svnPath);
+
+        return baseUrl + fragment;
+    }
+
+    private static string BuildTreeUrl(string repoName, string svnPath)
+    {
+        var repoSegment = Uri.EscapeDataString(repoName);
+        if (string.IsNullOrWhiteSpace(svnPath) || svnPath == "/")
+        {
+            return $"/repos/{repoSegment}/tree";
+        }
+
+        return $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}";
+    }
+
+    private static string BuildFileUrl(string repoName, string svnPath)
+    {
+        var repoSegment = Uri.EscapeDataString(repoName);
+        return $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}";
+    }
+
+    private static string GetDirectoryPath(string currentPath)
+    {
+        if (string.IsNullOrWhiteSpace(currentPath) || currentPath == "/")
+        {
+            return "/";
+        }
+
+        var p = NormalizeRepoPath(currentPath);
+        var idx = p.LastIndexOf('/');
+        if (idx <= 0)
+        {
+            return "/";
+        }
+
+        return p[..idx];
+    }
+
+    private static string ResolveRelativePath(string baseDir, string relative)
+    {
+        var rel = relative.Trim();
+        while (rel.StartsWith("./", StringComparison.Ordinal))
+        {
+            rel = rel[2..];
+        }
+
+        var baseSegments = NormalizeRepoPath(baseDir).Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var relSegments = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        var stack = new List<string>(baseSegments.Length + relSegments.Length);
+        stack.AddRange(baseSegments);
+
+        foreach (var seg in relSegments)
+        {
+            if (seg == ".")
+            {
+                continue;
+            }
+
+            if (seg == "..")
+            {
+                if (stack.Count != 0)
+                {
+                    stack.RemoveAt(stack.Count - 1);
+                }
+                continue;
+            }
+
+            stack.Add(seg);
+        }
+
+        return "/" + string.Join('/', stack);
+    }
+
+    private static string NormalizeRepoPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/";
+        }
+
+        var p = path.Trim().Replace('\\', '/');
+        if (!p.StartsWith('/'))
+        {
+            p = "/" + p;
+        }
+
+        while (p.Contains("//", StringComparison.Ordinal))
+        {
+            p = p.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        if (p.Length > 1 && p.EndsWith('/'))
+        {
+            p = p.TrimEnd('/');
+        }
+
+        if (p.Contains("/../", StringComparison.Ordinal) || p.EndsWith("/..", StringComparison.Ordinal) || p == "/..")
+        {
+            return "/";
+        }
+
+        return p;
     }
 
     private static void AppendHtmlEncoded(StringBuilder sb, ReadOnlySpan<char> text)
@@ -404,4 +560,6 @@ public static class MarkdownRenderer
         Unordered = 1,
         Ordered = 2,
     }
+
+    private sealed record MarkdownContext(string RepoName, string CurrentPath);
 }

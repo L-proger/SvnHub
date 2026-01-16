@@ -58,6 +58,16 @@
     }
 }
 
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success mt-3">@Model.Message</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.FlashError))
+{
+    <div class="alert alert-danger mt-3">@Model.FlashError</div>
+}
+
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
     <div class="alert alert-danger mt-3">@Model.Error</div>
@@ -87,7 +97,7 @@ else
         @foreach (var e in Model.Entries)
         {
             <div class="list-group-item">
-                <div class="d-flex align-items-start gap-3">
+                <div class="d-flex align-items-start justify-content-between gap-3">
                     @if (e.IsDirectory)
                     {
                         <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
@@ -115,6 +125,62 @@ else
                                class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                 @e.Name
                             </a>
+                        </div>
+                    }
+
+                    @if (Model.DeletablePaths.Contains(e.Path) || !string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                    {
+                        <div class="sp-row-actions dropdown">
+                            <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
+                                    type="button"
+                                    data-bs-toggle="dropdown"
+                                    aria-label="Actions">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                    <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+                                </svg>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                @if (Model.DeletablePaths.Contains(e.Path))
+                                {
+                                    <li>
+                                        <a class="dropdown-item"
+                                           asp-page="/Repos/Edit"
+                                           asp-route-repoName="@Model.RepoName"
+                                           asp-route-path="@e.Path">
+                                            Edit
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                                {
+                                    <li>
+                                        <button type="button"
+                                                class="dropdown-item"
+                                                data-copy-text="@Model.GetCheckoutUrl(e.Path)">
+                                            Copy SVN URL
+                                        </button>
+                                    </li>
+                                }
+                                @if (Model.DeletablePaths.Contains(e.Path))
+                                {
+                                    @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                                    {
+                                        <li><hr class="dropdown-divider" /></li>
+                                    }
+                                    <li>
+                                        <form method="post" asp-page-handler="DeleteEntry" class="m-0">
+                                            <input type="hidden" name="path" value="@Model.Path" />
+                                            <input type="hidden" name="targetPath" value="@e.Path" />
+                                            <button type="submit"
+                                                    class="dropdown-item text-danger"
+                                                    onclick="return confirm('Delete this @(e.IsDirectory ? "folder" : "file") from SVN? This will create a new revision.');">
+                                                Delete
+                                            </button>
+                                        </form>
+                                    </li>
+                                }
+                            </ul>
                         </div>
                     }
                 </div>

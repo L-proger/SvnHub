@@ -16,6 +16,8 @@ public sealed class SvnHubOptions
 
     public string SvnCommand { get; set; } = "svn";
 
+    public string SvnmuccCommand { get; set; } = "svnmucc";
+
     public string SvnlookCommand { get; set; } = "svnlook";
 
     public string ApacheReloadProgram { get; set; } = "systemctl";

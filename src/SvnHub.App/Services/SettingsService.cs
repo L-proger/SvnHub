@@ -32,10 +32,27 @@ public sealed class SettingsService
         return _options.RepositoriesRootPath;
     }
 
+    public string GetEffectiveSvnBaseUrl()
+    {
+        var state = _store.Read();
+        return GetEffectiveSvnBaseUrl(state);
+    }
+
+    public string GetEffectiveSvnBaseUrl(PortalState state)
+    {
+        if (!string.IsNullOrWhiteSpace(state.Settings.SvnBaseUrl))
+        {
+            return state.Settings.SvnBaseUrl;
+        }
+
+        return "";
+    }
+
     public async Task<OperationResult> SetRepositoriesRootPathAsync(
         Guid actorUserId,
         string repositoriesRootPath,
         bool createIfMissing,
+        string? svnBaseUrl,
         CancellationToken cancellationToken = default
     )
     {
@@ -67,7 +84,17 @@ public sealed class SettingsService
         }
 
         var state = _store.Read();
-        var newSettings = state.Settings with { RepositoriesRootPath = normalized };
+        var normalizedSvnBaseUrl = NormalizeSvnBaseUrl(svnBaseUrl);
+        if (normalizedSvnBaseUrl is null)
+        {
+            return OperationResult.Fail("SVN base URL must be an absolute http(s) URL, or empty.");
+        }
+
+        var newSettings = state.Settings with
+        {
+            RepositoriesRootPath = normalized,
+            SvnBaseUrl = normalizedSvnBaseUrl,
+        };
 
         var newState = state with
         {
@@ -91,5 +118,26 @@ public sealed class SettingsService
         await Task.CompletedTask;
         return OperationResult.Ok();
     }
-}
 
+    private static string? NormalizeSvnBaseUrl(string? svnBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(svnBaseUrl))
+        {
+            return "";
+        }
+
+        var trimmed = svnBaseUrl.Trim().TrimEnd('/');
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return trimmed;
+    }
+}

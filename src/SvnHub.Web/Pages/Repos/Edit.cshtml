@@ -1,0 +1,132 @@
+@page "/repos/{repoName}/edit"
+@model SvnHub.Web.Pages.Repos.EditModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} - Edit {Model.Path}";
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1 class="mb-0">@Model.RepoName</h1>
+    @if (User?.IsInRole("Admin") ?? false)
+    {
+        <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
+    }
+</div>
+<div class="text-muted">r@(Model.Revision)</div>
+
+<nav class="mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @{
+            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var isRoot = parts.Length == 0;
+            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
+                @if (isRoot)
+                {
+                    @Model.RepoName
+                }
+                else
+                {
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                }
+            </li>
+
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
+                    @if (isLast)
+                    {
+                        @parts[i]
+                    }
+                    else
+                    {
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                    }
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@if (!string.IsNullOrWhiteSpace(Model.FlashError))
+{
+    <div class="alert alert-danger mt-3">@Model.FlashError</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+else
+{
+    <form method="post" asp-page-handler="Commit" class="mt-3" autocomplete="off">
+        <input type="hidden" asp-for="Input.OriginalPath" />
+        <input type="hidden" asp-for="Input.IsDirectory" />
+
+        <div class="card file-viewer">
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="text-muted small">Edit @System.IO.Path.GetFileName(Model.Path)</div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label asp-for="Input.FileName" class="form-label"></label>
+                    <input asp-for="Input.FileName" class="form-control" />
+                    <span asp-validation-for="Input.FileName" class="text-danger"></span>
+                </div>
+
+                @if (Model.CanEditContents)
+                {
+                    <div class="mb-3">
+                        <label asp-for="Input.Contents" class="form-label"></label>
+                        <textarea asp-for="Input.Contents" class="form-control font-monospace" rows="24"></textarea>
+                        <span asp-validation-for="Input.Contents" class="text-danger"></span>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info mb-3">
+                        @(Model.IsDirectory
+                            ? "This is a folder. Content editing is not supported, but renaming works."
+                            : "This file is binary or not recognized as text. Content editing is not supported, but renaming works.")
+                    </div>
+                }
+
+                <hr />
+
+                <div class="mb-3">
+                    <label asp-for="Input.CommitMessage" class="form-label"></label>
+                    <input asp-for="Input.CommitMessage" class="form-control" placeholder="Describe your changes" />
+                    <span asp-validation-for="Input.CommitMessage" class="text-danger"></span>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Commit changes</button>
+                    @if (Model.IsDirectory)
+                    {
+                        <a class="btn btn-outline-secondary"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@Model.Path">
+                            Cancel
+                        </a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-outline-secondary"
+                           asp-page="/Repos/File"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@Model.Path">
+                            Cancel
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </form>
+}
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

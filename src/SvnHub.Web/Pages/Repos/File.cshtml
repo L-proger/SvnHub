@@ -49,18 +49,10 @@
     </ol>
 </nav>
 
-<div class="mt-2 d-flex gap-2 align-items-center">
-    <a class="btn btn-sm btn-outline-secondary"
-       asp-page="/Repos/File"
-       asp-page-handler="Download"
-       asp-route-repoName="@Model.RepoName"
-       asp-route-path="@Model.Path">Download</a>
-    @if (!Model.IsImage)
-    {
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="copyBtn">Copy content</button>
-        <span class="text-muted small" id="copyMsg"></span>
-    }
-</div>
+@if (!string.IsNullOrWhiteSpace(Model.FlashError))
+{
+    <div class="alert alert-danger mt-3">@Model.FlashError</div>
+}
 
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
@@ -68,22 +60,82 @@
 }
 else
 {
-    @if (Model.IsImage)
-    {
-        <div class="mt-3">
-            <img class="img-fluid border rounded"
-                 alt="@Model.Path"
-                 src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path }, null)" />
+    <div class="card file-viewer mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="text-muted small">
+                @System.IO.Path.GetFileName(Model.Path)
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @if (Model.CanEdit)
+                {
+                    <a class="btn btn-sm btn-outline-secondary"
+                       asp-page="/Repos/Edit"
+                       asp-route-repoName="@Model.RepoName"
+                       asp-route-path="@Model.Path">Edit</a>
+                }
+                <a class="btn btn-sm btn-outline-secondary"
+                   target="_blank"
+                   rel="noopener"
+                   asp-page="/Repos/File"
+                   asp-page-handler="Raw"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@Model.Path">Raw</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/File"
+                   asp-page-handler="Download"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@Model.Path">Download</a>
+                @if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-copy-text="@Model.CheckoutUrl"
+                            data-copy-msg="#copyMsg">
+                        Copy SVN URL
+                    </button>
+                }
+                @if (Model.CanWrite)
+                {
+                    <form method="post" asp-page-handler="Delete" class="d-inline">
+                        <input type="hidden" name="path" value="@Model.Path" />
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger"
+                                onclick="return confirm('Delete this file from SVN? This will create a new revision.');">
+                            Delete
+                        </button>
+                    </form>
+                }
+                @if (!Model.IsImage)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-copy-from="#copySrc"
+                            data-copy-msg="#copyMsg">
+                        Copy content
+                    </button>
+                }
+                <span class="text-muted small" id="copyMsg"></span>
+            </div>
         </div>
-    }
-    else if (Model.IsMarkdown)
-    {
-        <div class="md mt-3">@Html.Raw(Model.MarkdownHtml)</div>
-    }
-    else
-    {
-        <pre class="mt-3"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></pre>
-    }
+        <div class="card-body">
+            @if (Model.IsImage)
+            {
+                <div class="text-center">
+                    <img class="img-fluid border rounded d-inline-block"
+                         alt="@Model.Path"
+                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path }, null)" />
+                </div>
+            }
+            else if (Model.IsMarkdown)
+            {
+                <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
+            }
+            else
+            {
+                <pre class="mb-0"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></pre>
+            }
+        </div>
+    </div>
 
     @if (Model.IsTruncated)
     {
@@ -107,41 +159,5 @@ else
 
 @section Scripts
 {
-    @if (!Model.IsImage)
-    {
-        <script>
-        (function () {
-            const btn = document.getElementById('copyBtn');
-            const msg = document.getElementById('copyMsg');
-            const src = document.getElementById('copySrc');
-
-            function setMsg(text) {
-                if (msg) msg.textContent = text || '';
-            }
-
-            async function copyText(text) {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(text);
-                    return;
-                }
-                // Fallback
-                src.focus();
-                src.select();
-                document.execCommand('copy');
-            }
-
-            if (!btn || !src) return;
-
-            btn.addEventListener('click', async () => {
-                try {
-                    await copyText(src.value || '');
-                    setMsg('Copied');
-                    setTimeout(() => setMsg(''), 1500);
-                } catch (e) {
-                    setMsg('Copy failed');
-                }
-            });
-        })();
-        </script>
-    }
+    @* copy handlers live in wwwroot/js/site.js *@
 }
