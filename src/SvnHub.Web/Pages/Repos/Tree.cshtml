@@ -1,0 +1,131 @@
+@page "/repos/{repoName}/tree"
+@model SvnHub.Web.Pages.Repos.TreeModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1 class="mb-0">@Model.RepoName</h1>
+    @if (User?.IsInRole("Admin") ?? false)
+    {
+        <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
+    }
+</div>
+<div class="text-muted">r@(Model.Revision)</div>
+
+<nav class="mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @{
+            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var isRoot = parts.Length == 0;
+            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
+                @if (isRoot)
+                {
+                    @Model.RepoName
+                }
+                else
+                {
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                }
+            </li>
+
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
+                    @if (isLast)
+                    {
+                        @parts[i]
+                    }
+                    else
+                    {
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                    }
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@section Head
+{
+    @if (Model.HasReadme)
+    {
+        <link rel="stylesheet" href="~/css/markdown.css" asp-append-version="true" />
+        <link rel="stylesheet" href="~/css/syntax.css" asp-append-version="true" />
+    }
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+else
+{
+    <div class="list-group list-group-flush sp-list mt-3">
+        @if (Model.Path != "/")
+        {
+            <div class="list-group-item">
+                <div class="d-flex align-items-start gap-3">
+                    <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                    </svg>
+                    <div class="flex-grow-1">
+                        <a asp-page="/Repos/Tree"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@(Model.ParentPath == "/" ? null : Model.ParentPath)"
+                           class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                            ..
+                        </a>
+                        <div class="text-muted small">Parent directory</div>
+                    </div>
+                </div>
+            </div>
+        }
+        @foreach (var e in Model.Entries)
+        {
+            <div class="list-group-item">
+                <div class="d-flex align-items-start gap-3">
+                    @if (e.IsDirectory)
+                    {
+                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                        </svg>
+                        <div class="flex-grow-1">
+                            <a asp-page="/Repos/Tree"
+                               asp-route-repoName="@Model.RepoName"
+                               asp-route-path="@e.Path"
+                               class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                                @e.Name
+                            </a>
+                        </div>
+                    }
+                    else
+                    {
+                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5z"/>
+                            <path d="M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+                        </svg>
+                        <div class="flex-grow-1">
+                            <a asp-page="/Repos/File"
+                               asp-route-repoName="@Model.RepoName"
+                               asp-route-path="@e.Path"
+                               class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                                @e.Name
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (Model.HasReadme)
+    {
+        <hr />
+        <h2>README</h2>
+        <div class="md">@Html.Raw(Model.ReadmeHtml)</div>
+    }
+}

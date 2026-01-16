@@ -1,0 +1,13 @@
+# Example sudoers snippet (put into /etc/sudoers.d/SvnHub via visudo)
+#
+# Goal: allow the web app (running as user SvnHub) to:
+# - create SVN repositories
+# - reload apache2
+#
+# Adapt paths/commands to your environment and harden further as needed.
+
+Defaults:SvnHub !requiretty
+
+SvnHub ALL=(root) NOPASSWD: /usr/bin/svnadmin create /srv/svn/repos/*
+SvnHub ALL=(root) NOPASSWD: /bin/systemctl reload apache2
+

@@ -1,0 +1,147 @@
+@page "/repos/{repoName}/file"
+@model SvnHub.Web.Pages.Repos.FileModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1 class="mb-0">@Model.RepoName</h1>
+    @if (User?.IsInRole("Admin") ?? false)
+    {
+        <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
+    }
+</div>
+<div class="text-muted">r@(Model.Revision)</div>
+
+<nav class="mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @{
+            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var isRoot = parts.Length == 0;
+            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
+                @if (isRoot)
+                {
+                    @Model.RepoName
+                }
+                else
+                {
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                }
+            </li>
+
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
+                    @if (isLast)
+                    {
+                        @parts[i]
+                    }
+                    else
+                    {
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                    }
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+<div class="mt-2 d-flex gap-2 align-items-center">
+    <a class="btn btn-sm btn-outline-secondary"
+       asp-page="/Repos/File"
+       asp-page-handler="Download"
+       asp-route-repoName="@Model.RepoName"
+       asp-route-path="@Model.Path">Download</a>
+    @if (!Model.IsImage)
+    {
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="copyBtn">Copy content</button>
+        <span class="text-muted small" id="copyMsg"></span>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+else
+{
+    @if (Model.IsImage)
+    {
+        <div class="mt-3">
+            <img class="img-fluid border rounded"
+                 alt="@Model.Path"
+                 src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path }, null)" />
+        </div>
+    }
+    else if (Model.IsMarkdown)
+    {
+        <div class="md mt-3">@Html.Raw(Model.MarkdownHtml)</div>
+    }
+    else
+    {
+        <pre class="mt-3"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></pre>
+    }
+
+    @if (Model.IsTruncated)
+    {
+        <div class="text-muted mt-2">Output truncated.</div>
+    }
+}
+
+@if (!Model.IsImage)
+{
+    <textarea id="copySrc" style="position:fixed; left:-10000px; top:-10000px;">@Model.Contents</textarea>
+}
+
+@section Head
+{
+    <link rel="stylesheet" href="~/css/syntax.css" asp-append-version="true" />
+    @if (Model.IsMarkdown)
+    {
+        <link rel="stylesheet" href="~/css/markdown.css" asp-append-version="true" />
+    }
+}
+
+@section Scripts
+{
+    @if (!Model.IsImage)
+    {
+        <script>
+        (function () {
+            const btn = document.getElementById('copyBtn');
+            const msg = document.getElementById('copyMsg');
+            const src = document.getElementById('copySrc');
+
+            function setMsg(text) {
+                if (msg) msg.textContent = text || '';
+            }
+
+            async function copyText(text) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    return;
+                }
+                // Fallback
+                src.focus();
+                src.select();
+                document.execCommand('copy');
+            }
+
+            if (!btn || !src) return;
+
+            btn.addEventListener('click', async () => {
+                try {
+                    await copyText(src.value || '');
+                    setMsg('Copied');
+                    setTimeout(() => setMsg(''), 1500);
+                } catch (e) {
+                    setMsg('Copy failed');
+                }
+            });
+        })();
+        </script>
+    }
+}

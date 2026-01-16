@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.vs/
+!.vscode/launch.json
+!.vscode/tasks.json
+.vscode/*
+*.user
+*.suo
+*.cache
+*.log
+data/

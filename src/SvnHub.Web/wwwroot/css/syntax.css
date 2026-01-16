@@ -1,0 +1,25 @@
+.sh {
+  display: block;
+  overflow-x: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.08));
+  border-radius: 0.5rem;
+  background: var(--sp-code-bg, #f6f8fa);
+  color: var(--bs-body-color, #24292f);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  white-space: pre;
+}
+
+.sh-kw { color: #8250df; font-weight: 600; }
+.sh-str { color: #0a3069; }
+.sh-com { color: #6e7781; font-style: italic; }
+.sh-num { color: #0550ae; }
+.sh-dir { color: #1f6feb; font-weight: 600; }
+
+:root[data-bs-theme="dark"] .sh-kw { color: #d2a8ff; }
+:root[data-bs-theme="dark"] .sh-str { color: #a5d6ff; }
+:root[data-bs-theme="dark"] .sh-com { color: #8b949e; }
+:root[data-bs-theme="dark"] .sh-num { color: #79c0ff; }
+:root[data-bs-theme="dark"] .sh-dir { color: #79c0ff; }

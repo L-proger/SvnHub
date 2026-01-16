@@ -1,0 +1,61 @@
+@page "/repos/{repoName}/settings"
+@model SvnHub.Web.Pages.Repos.SettingsModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} settings";
+}
+
+<h1>@Model.RepoName</h1>
+<div class="text-muted">Repository settings</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Success))
+{
+    <div class="alert alert-success mt-3">@Model.Success</div>
+}
+
+<div class="mt-3">
+    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">Back to Browse</a>
+</div>
+
+<hr class="mt-4" />
+
+<h2>Rename</h2>
+<form method="post" asp-page-handler="Rename" class="mt-2" autocomplete="off">
+    <div class="mb-2">
+        <label asp-for="RenameInput.NewName" class="form-label"></label>
+        <div class="input-group">
+            <input asp-for="RenameInput.NewName" class="form-control" />
+            <button class="btn btn-primary" type="submit">Rename</button>
+        </div>
+        <span asp-validation-for="RenameInput.NewName" class="text-danger"></span>
+        <div class="form-text">Allowed: letters (upper/lower), digits, dot, dash, underscore.</div>
+    </div>
+</form>
+
+<hr class="mt-4" />
+
+<h2>Delete</h2>
+<div class="alert alert-warning">
+    Delete moves the repository directory into a <code>.deleted</code> folder and hides it from the UI.
+    This is not a permanent wipe.
+</div>
+
+<form method="post" asp-page-handler="Delete" class="mt-2" autocomplete="off">
+    <div class="mb-3">
+        <label asp-for="DeleteInput.ConfirmName" class="form-label"></label>
+        <input asp-for="DeleteInput.ConfirmName" class="form-control" />
+        <span asp-validation-for="DeleteInput.ConfirmName" class="text-danger"></span>
+        <div class="form-text">Type <code>@Model.RepoName</code> to confirm.</div>
+    </div>
+
+    <button class="btn btn-danger" type="submit">Delete repository</button>
+</form>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

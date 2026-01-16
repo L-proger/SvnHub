@@ -1,0 +1,77 @@
+@page
+@model SvnHub.Web.Pages.Admin.GroupsModel
+@{
+    ViewData["Title"] = "Groups";
+}
+
+<h1>Groups</h1>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger">@Model.Error</div>
+}
+
+<table class="table table-sm">
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Members</th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var g in Model.Groups)
+    {
+        <tr>
+            <td>@g.Name</td>
+            <td>@string.Join(", ", g.Members)</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<h2 class="mt-4">Create group</h2>
+<form method="post" asp-page-handler="CreateGroup" class="mt-2" autocomplete="off">
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label asp-for="CreateGroupInput.Name" class="form-label"></label>
+            <input asp-for="CreateGroupInput.Name" class="form-control" />
+            <span asp-validation-for="CreateGroupInput.Name" class="text-danger"></span>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Create</button>
+        </div>
+    </div>
+</form>
+
+<h2 class="mt-4">Add member</h2>
+<form method="post" asp-page-handler="AddMember" class="mt-2">
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="AddMemberInput.GroupId" class="form-label">Group</label>
+            <select asp-for="AddMemberInput.GroupId" class="form-select">
+                @foreach (var g in Model.GroupOptions)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label asp-for="AddMemberInput.UserId" class="form-label">User</label>
+            <select asp-for="AddMemberInput.UserId" class="form-select">
+                @foreach (var u in Model.UserOptions)
+                {
+                    <option value="@u.Id">@u.UserName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Add</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}
+

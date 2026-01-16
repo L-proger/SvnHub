@@ -1,0 +1,95 @@
+@page "/admin/users/{userId:guid}"
+@model SvnHub.Web.Pages.Admin.UserModel
+@{
+    ViewData["Title"] = "User";
+}
+
+@if (Model.TargetUser is null)
+{
+    <div class="alert alert-danger">User not found.</div>
+    return;
+}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <h1 class="mb-0">@Model.TargetUser.UserName</h1>
+        <div class="text-muted small">
+            Role: @Model.TargetUser.Role · Created @Model.TargetUser.CreatedAt.ToString("u")
+            @if (!Model.TargetUser.IsActive)
+            {
+                <span class="ms-2 badge text-bg-secondary">Inactive</span>
+            }
+        </div>
+    </div>
+    <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Back to Users</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Success))
+{
+    <div class="alert alert-success mt-3">@Model.Success</div>
+}
+
+<hr class="mt-4" />
+
+<h2>Role</h2>
+<form method="post" asp-page-handler="ChangeRole" class="mt-2">
+    <input type="hidden" name="userId" value="@Model.TargetUser.Id" />
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="RoleInput.Role" class="form-label">Role</label>
+            <select asp-for="RoleInput.Role" class="form-select">
+                <option value="User">User</option>
+                <option value="Admin">Admin</option>
+            </select>
+            <span asp-validation-for="RoleInput.Role" class="text-danger"></span>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Update</button>
+        </div>
+    </div>
+</form>
+
+<h2 class="mt-4">Password</h2>
+<form method="post" asp-page-handler="ChangePassword" class="mt-2" autocomplete="off">
+    <input type="hidden" name="userId" value="@Model.TargetUser.Id" />
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="PasswordInput.NewPassword" class="form-label"></label>
+            <input asp-for="PasswordInput.NewPassword" type="password" class="form-control" />
+            <span asp-validation-for="PasswordInput.NewPassword" class="text-danger"></span>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Update</button>
+        </div>
+    </div>
+</form>
+
+<h2 class="mt-4">Delete</h2>
+<div class="alert alert-warning">
+    Deleting a user disables login and removes them from SVN auth files. This is a soft-delete.
+</div>
+<form method="post" asp-page-handler="Delete" class="mt-2" autocomplete="off">
+    <input type="hidden" name="userId" value="@Model.TargetUser.Id" />
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="DeleteInput.ConfirmUserName" class="form-label"></label>
+            <input asp-for="DeleteInput.ConfirmUserName" class="form-control" />
+            <span asp-validation-for="DeleteInput.ConfirmUserName" class="text-danger"></span>
+            <div class="form-text">Type <code>@Model.TargetUser.UserName</code> to confirm.</div>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-danger w-100" type="submit">Delete</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}
+

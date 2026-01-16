@@ -1,0 +1,47 @@
+.md {
+  line-height: 1.55;
+}
+
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.md p {
+  margin-bottom: 0.75rem;
+}
+
+.md code {
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.25rem;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.md pre {
+  margin: 0.75rem 0;
+}
+
+.md pre code:not(.sh) {
+  padding: 0;
+  background: transparent;
+}
+
+.md blockquote {
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.md ul, .md ol {
+  margin-bottom: 0.75rem;
+}
+
+:root[data-bs-theme="dark"] .md code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-bs-theme="dark"] .md blockquote {
+  border-left-color: rgba(240, 246, 252, 0.15);
+  color: rgba(201, 209, 217, 0.85);
+}

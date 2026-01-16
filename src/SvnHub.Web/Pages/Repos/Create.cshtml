@@ -1,0 +1,36 @@
+@page "/repos/create"
+@model SvnHub.Web.Pages.Repos.CreateModel
+@{
+    ViewData["Title"] = "Create repository";
+}
+
+<h1>Create repository</h1>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger">@Model.Error</div>
+}
+
+<form method="post" class="mt-3" autocomplete="off">
+    <div class="mb-3">
+        <label asp-for="Input.Name" class="form-label"></label>
+        <input asp-for="Input.Name" class="form-control" />
+        <span asp-validation-for="Input.Name" class="text-danger"></span>
+        <div class="form-text">Allowed: letters (upper/lower), digits, dot, dash, underscore.</div>
+    </div>
+    <div class="form-check mb-3">
+        <input asp-for="Input.InitializeStandardLayout" class="form-check-input" />
+        <label asp-for="Input.InitializeStandardLayout" class="form-check-label"></label>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Create</button>
+        <a class="btn btn-outline-secondary" asp-page="/Repos/Index">Cancel</a>
+    </div>
+</form>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}
+

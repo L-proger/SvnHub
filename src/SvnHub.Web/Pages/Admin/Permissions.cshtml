@@ -1,0 +1,107 @@
+@page
+@model SvnHub.Web.Pages.Admin.PermissionsModel
+@{
+    ViewData["Title"] = "Permissions";
+}
+
+<h1>Permissions</h1>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger">@Model.Error</div>
+}
+
+<table class="table table-sm">
+    <thead>
+    <tr>
+        <th>Repo</th>
+        <th>Path</th>
+        <th>Subject</th>
+        <th>Access</th>
+        <th>Created</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var r in Model.Rules)
+    {
+        <tr>
+            <td>@r.RepositoryName</td>
+            <td><code>@r.Path</code></td>
+            <td>@r.SubjectDisplay</td>
+            <td>@r.Access</td>
+            <td>@r.CreatedAt.ToString("u")</td>
+            <td class="text-end">
+                <form method="post" asp-page-handler="Delete" class="d-inline">
+                    <input type="hidden" name="ruleId" value="@r.Id" />
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<h2 class="mt-4">Add rule</h2>
+
+<form method="post" asp-page-handler="Add" class="mt-2" autocomplete="off">
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label asp-for="Input.RepositoryId" class="form-label"></label>
+            <select asp-for="Input.RepositoryId" class="form-select">
+                @foreach (var repo in Model.RepositoryOptions)
+                {
+                    <option value="@repo.Id">@repo.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3 mb-3">
+            <label asp-for="Input.Path" class="form-label"></label>
+            <input asp-for="Input.Path" class="form-control" placeholder="/" />
+            <span asp-validation-for="Input.Path" class="text-danger"></span>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label asp-for="Input.SubjectType" class="form-label"></label>
+            <select asp-for="Input.SubjectType" class="form-select">
+                <option value="User">User</option>
+                <option value="Group">Group</option>
+            </select>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label class="form-label">User</label>
+            <select asp-for="Input.UserId" class="form-select">
+                @foreach (var u in Model.UserOptions)
+                {
+                    <option value="@u.Id">@u.UserName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label class="form-label">Group</label>
+            <select asp-for="Input.GroupId" class="form-select">
+                @foreach (var g in Model.GroupOptions)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-2 mb-3">
+            <label asp-for="Input.Access" class="form-label"></label>
+            <select asp-for="Input.Access" class="form-select">
+                <option value="None">None (deny)</option>
+                <option value="Read">Read</option>
+                <option value="Write">Write</option>
+            </select>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Add</button>
+        </div>
+    </div>
+</form>
+
+@section Scripts
+{
+    <partial name="_ValidationScriptsPartial" />
+}

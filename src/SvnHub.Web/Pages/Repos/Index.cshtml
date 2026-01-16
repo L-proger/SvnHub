@@ -1,0 +1,116 @@
+@page
+@model SvnHub.Web.Pages.Repos.IndexModel
+@{
+    ViewData["Title"] = "Repositories";
+}
+
+<div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Repositories</h1>
+    <form method="get" class="d-flex align-items-center gap-2 flex-wrap">
+        <input type="search"
+               name="q"
+               value="@Model.SearchQuery"
+               class="form-control form-control-sm"
+               style="width: min(520px, 70vw)"
+               placeholder="Search repositories"
+               oninput="this.form.p.value = 1;" />
+        <button class="btn btn-sm btn-outline-secondary" type="submit" title="Search" aria-label="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
+            </svg>
+        </button>
+        @if (!string.IsNullOrWhiteSpace(Model.SearchQuery))
+        {
+            <a class="btn btn-sm btn-outline-secondary"
+               asp-page="/Repos/Index"
+               asp-route-pageSize="@Model.PageSize">Clear</a>
+        }
+
+        <label class="text-muted small ms-2" for="pageSize">Per page</label>
+        <select id="pageSize" name="pageSize" class="form-select form-select-sm" style="width: auto"
+                onchange="this.form.p.value = 1; this.form.submit();">
+            @if (Model.PageSize == 10) { <option value="10" selected>10</option> } else { <option value="10">10</option> }
+            @if (Model.PageSize == 25) { <option value="25" selected>25</option> } else { <option value="25">25</option> }
+            @if (Model.PageSize == 50) { <option value="50" selected>50</option> } else { <option value="50">50</option> }
+            @if (Model.PageSize == 100) { <option value="100" selected>100</option> } else { <option value="100">100</option> }
+        </select>
+        <input type="hidden" name="p" value="@Model.PageNumber" />
+    </form>
+    @if (User?.IsInRole("Admin") ?? false)
+    {
+        <div class="d-flex gap-2">
+            <form method="post" asp-page-handler="Discover" class="d-inline">
+                <input type="hidden" name="p" value="@Model.PageNumber" />
+                <input type="hidden" name="pageSize" value="@Model.PageSize" />
+                <input type="hidden" name="q" value="@Model.SearchQuery" />
+                <button class="btn btn-outline-secondary" type="submit">Discover</button>
+            </form>
+            <a class="btn btn-primary" asp-page="/Repos/Create">Create</a>
+        </div>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-info mt-3">@Model.Message</div>
+}
+
+@if (Model.TotalCount > 0)
+{
+    <div class="text-muted small mt-3">
+        Showing @Model.FromIndex-@Model.ToIndex of @Model.TotalCount
+    </div>
+}
+
+<div class="list-group list-group-flush sp-list mt-3">
+    @foreach (var r in Model.Repositories)
+    {
+        var updatedAt = Model.UpdatedAtByRepoName.TryGetValue(r.Name, out var dt) ? dt : null;
+        var updatedLabel = updatedAt is null
+            ? "Updated \u2014"
+            : $"Updated {SvnHub.Web.Pages.Repos.IndexModel.FormatUpdatedAgo(updatedAt.Value, DateTimeOffset.UtcNow)}";
+
+        <div class="list-group-item">
+            <div class="d-flex align-items-start gap-3">
+                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                </svg>
+                <div class="flex-grow-1">
+                    <a asp-page="/Repos/Tree"
+                       asp-route-repoName="@r.Name"
+                       class="repo-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                        @r.Name
+                    </a>
+                    <div class="repo-updated text-muted small" title="@(updatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz"))">
+                        @updatedLabel
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (Model.TotalPages > 1)
+{
+    <nav aria-label="Repos pagination">
+        <ul class="pagination justify-content-center mt-4">
+            <li class="page-item @(Model.PageNumber <= 1 ? "disabled" : "")">
+                <a class="page-link"
+                   asp-page="/Repos/Index"
+                   asp-route-p="@(Model.PageNumber - 1)"
+                   asp-route-pageSize="@Model.PageSize"
+                   asp-route-q="@Model.SearchQuery">Previous</a>
+            </li>
+            <li class="page-item disabled">
+                <span class="page-link">Page @Model.PageNumber of @Model.TotalPages</span>
+            </li>
+            <li class="page-item @(Model.PageNumber >= Model.TotalPages ? "disabled" : "")">
+                <a class="page-link"
+                   asp-page="/Repos/Index"
+                   asp-route-p="@(Model.PageNumber + 1)"
+                   asp-route-pageSize="@Model.PageSize"
+                   asp-route-q="@Model.SearchQuery">Next</a>
+            </li>
+        </ul>
+    </nav>
+}
