@@ -47,6 +47,7 @@ public sealed class TreeModel : PageModel
     public string ParentPath { get; private set; } = "/";
     public long Revision { get; private set; }
     public IReadOnlyList<SvnTreeEntry> Entries { get; private set; } = [];
+    public IReadOnlyList<TreeRow> Rows { get; private set; } = [];
     public ISet<string> DeletablePaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
     public ISet<string> ZipPaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
     public bool CanWriteHere { get; private set; }
@@ -97,6 +98,7 @@ public sealed class TreeModel : PageModel
             Entries = await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
             DirectoryCount = Entries.Count(e => e.IsDirectory);
             FileCount = Entries.Count(e => !e.IsDirectory);
+            Rows = await LoadRowsAsync(repo.LocalPath, Entries, Revision, cancellationToken);
 
             DeletablePaths = Entries
                 .Where(e => _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Write)
@@ -131,6 +133,109 @@ public sealed class TreeModel : PageModel
         }
 
         return Page();
+    }
+
+    private async Task<IReadOnlyList<TreeRow>> LoadRowsAsync(
+        string repoLocalPath,
+        IReadOnlyList<SvnTreeEntry> entries,
+        long headRevision,
+        CancellationToken cancellationToken)
+    {
+        if (entries.Count == 0)
+        {
+            return Array.Empty<TreeRow>();
+        }
+
+        const int concurrency = 4;
+        using var gate = new SemaphoreSlim(concurrency, concurrency);
+
+        async Task<(SvnTreeEntry Entry, long? LastRev)> LoadLastRevAsync(SvnTreeEntry entry)
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                var r = await _svnlook.GetLastChangedRevisionAsync(repoLocalPath, entry.Path, headRevision, cancellationToken);
+                return (entry, r);
+            }
+            catch
+            {
+                return (entry, null);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        var lastRevResults = await Task.WhenAll(entries.Select(LoadLastRevAsync));
+        var lastRevByPath = lastRevResults
+            .Where(x => x.LastRev is not null)
+            .ToDictionary(x => x.Entry.Path, x => x.LastRev!.Value, StringComparer.Ordinal);
+
+        var uniqueRevs = lastRevByPath.Values.Distinct().ToArray();
+        var now = DateTimeOffset.UtcNow;
+
+        async Task<(long Rev, DateTimeOffset? Date, string? Log, string? Author)> LoadRevInfoAsync(long rev)
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                var dt = await _svnlook.GetRevisionDateAsync(repoLocalPath, rev, cancellationToken);
+                var log = await _svnlook.GetRevisionLogAsync(repoLocalPath, rev, cancellationToken);
+                var author = await _svnlook.GetRevisionAuthorAsync(repoLocalPath, rev, cancellationToken);
+                return (rev, dt, log, author);
+            }
+            catch
+            {
+                return (rev, null, null, null);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        var revInfos = await Task.WhenAll(uniqueRevs.Select(LoadRevInfoAsync));
+        var revInfoByRev = revInfos.ToDictionary(
+            x => x.Rev,
+            x => (x.Date, x.Log, x.Author),
+            comparer: EqualityComparer<long>.Default);
+
+        return entries.Select(e =>
+        {
+            if (!lastRevByPath.TryGetValue(e.Path, out var lastRev))
+            {
+                return new TreeRow(e, null, null, null, null);
+            }
+
+            revInfoByRev.TryGetValue(lastRev, out var info);
+
+            var age = info.Date is null ? null : IndexModel.FormatUpdatedAgo(info.Date.Value, now);
+            var msg = FormatCommitMessage(info.Log);
+            var author = string.IsNullOrWhiteSpace(info.Author) ? null : info.Author.Trim();
+
+            return new TreeRow(e, msg, author, age, lastRev);
+        }).ToArray();
+    }
+
+    private static string? FormatCommitMessage(string? log)
+    {
+        if (string.IsNullOrWhiteSpace(log))
+        {
+            return null;
+        }
+
+        var firstLine = log
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(firstLine))
+        {
+            return null;
+        }
+
+        const int max = 80;
+        return firstLine.Length <= max ? firstLine : firstLine[..max] + "…";
     }
 
     public async Task<IActionResult> OnPostDeleteEntryAsync(
@@ -714,4 +819,11 @@ public sealed class TreeModel : PageModel
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
             _inner.WriteAsync(buffer, cancellationToken);
     }
+
+    public sealed record TreeRow(
+        SvnTreeEntry Entry,
+        string? LastCommitMessage,
+        string? LastChangedAuthor,
+        string? LastChangedAge,
+        long? LastChangedRevision);
 }

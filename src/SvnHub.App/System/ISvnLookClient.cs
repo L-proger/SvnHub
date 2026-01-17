@@ -6,6 +6,31 @@ public interface ISvnLookClient
 
     Task<DateTimeOffset> GetHeadChangedAtAsync(string repoLocalPath, CancellationToken cancellationToken = default);
 
+    Task<long> GetLastChangedRevisionAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<DateTimeOffset> GetRevisionDateAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<string> GetRevisionLogAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<string> GetRevisionAuthorAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
     Task<long> GetFileSizeAsync(
         string repoLocalPath,
         string filePath,

@@ -57,6 +57,168 @@ public sealed class SvnLookClient : ISvnLookClient
         throw new InvalidOperationException($"Unexpected svnlook date output: {text}");
     }
 
+    public async Task<long> GetLastChangedRevisionAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var repoRelPath = ToRepoRelativePath(path);
+        if (string.IsNullOrWhiteSpace(repoRelPath))
+        {
+            throw new ArgumentException("Path is required.", nameof(path));
+        }
+
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["history", "-r", revision.ToString(), "-l", "1", repoLocalPath, repoRelPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook history failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var text = DecodeSvnText(result.StandardOutput);
+        var lines = text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length != 0)
+            .ToArray();
+
+        if (lines.Length == 0)
+        {
+            throw new InvalidOperationException("Unexpected svnlook history output: <empty>");
+        }
+
+        // Typical output:
+        // REVISION   PATH
+        // --------   ----
+        //        5   /trunk/file.txt
+        var dataLine = lines.FirstOrDefault(l =>
+        {
+            if (l.StartsWith("REVISION", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (l.StartsWith("----", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var first = l.Split(' ', '\t', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(first))
+            {
+                return false;
+            }
+
+            first = first.Trim();
+            if (first.StartsWith('r'))
+            {
+                first = first.TrimStart('r');
+            }
+
+            return long.TryParse(first, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+        });
+
+        if (string.IsNullOrWhiteSpace(dataLine))
+        {
+            throw new InvalidOperationException($"Unexpected svnlook history output: {lines[0]}");
+        }
+
+        var token = dataLine.Split(' ', '\t', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException($"Unexpected svnlook history output: {dataLine}");
+        }
+
+        if (token.StartsWith('r'))
+        {
+            token = token.TrimStart('r');
+        }
+
+        if (!long.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lastRev))
+        {
+            throw new InvalidOperationException($"Unexpected svnlook history output: {dataLine}");
+        }
+
+        return lastRev;
+    }
+
+    public async Task<DateTimeOffset> GetRevisionDateAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunAsync(
+            _options.SvnlookCommand,
+            ["date", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook date failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var text = result.StandardOutput.Trim();
+        if (text.Length == 0)
+        {
+            throw new InvalidOperationException("Unexpected svnlook date output: <empty>");
+        }
+
+        if (TryParseSvnDate(text, out var dto))
+        {
+            return dto;
+        }
+
+        throw new InvalidOperationException($"Unexpected svnlook date output: {text}");
+    }
+
+    public async Task<string> GetRevisionLogAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["log", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook log failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return DecodeSvnText(result.StandardOutput).TrimEnd();
+    }
+
+    public async Task<string> GetRevisionAuthorAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["author", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook author failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return DecodeSvnText(result.StandardOutput).Trim();
+    }
+
     public async Task<long> GetFileSizeAsync(
         string repoLocalPath,
         string filePath,
