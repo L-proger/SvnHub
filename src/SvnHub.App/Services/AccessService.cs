@@ -22,7 +22,7 @@ public sealed class AccessService
             return AccessLevel.None;
         }
 
-        if (user.Role == PortalRole.Admin)
+        if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
         {
             return AccessLevel.Write;
         }

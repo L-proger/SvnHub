@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminRepo")]
 public sealed class GroupsModel : PageModel
 {
     private readonly GroupService _groups;
@@ -111,4 +111,3 @@ public sealed class GroupsModel : PageModel
         public Guid UserId { get; set; }
     }
 }
-

@@ -51,83 +51,6 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         }
     }
 
-    public async Task MoveAsync(
-        string repoLocalPath,
-        string oldPath,
-        string newPath,
-        string message,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(repoLocalPath))
-        {
-            throw new ArgumentException("Repository local path is required.", nameof(repoLocalPath));
-        }
-
-        if (string.IsNullOrWhiteSpace(oldPath))
-        {
-            throw new ArgumentException("Old path is required.", nameof(oldPath));
-        }
-
-        if (string.IsNullOrWhiteSpace(newPath))
-        {
-            throw new ArgumentException("New path is required.", nameof(newPath));
-        }
-
-        var repoRoot = new Uri(Path.GetFullPath(repoLocalPath) + Path.DirectorySeparatorChar);
-
-        var oldRel = NormalizeRepoRelativePath(oldPath);
-        var newRel = NormalizeRepoRelativePath(newPath);
-        if (string.IsNullOrWhiteSpace(oldRel) || string.IsNullOrWhiteSpace(newRel))
-        {
-            throw new ArgumentException("Invalid path.");
-        }
-
-        if (string.Equals(oldRel, newRel, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var oldUrl = new Uri(repoRoot, oldRel).AbsoluteUri;
-        var newUrl = new Uri(repoRoot, newRel).AbsoluteUri;
-
-        var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
-        try
-        {
-            await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
-
-            var args = new List<string>
-            {
-                "--non-interactive",
-                "-F",
-                tmpMsgFile,
-                "mv",
-                oldUrl,
-                newUrl,
-            };
-
-            var mucc = await _runner.RunAsync(_options.SvnmuccCommand, args, cancellationToken);
-            if (!mucc.IsSuccess)
-            {
-                throw new InvalidOperationException(
-                    $"svnmucc mv failed (exit {mucc.ExitCode}): {mucc.StandardError}".Trim());
-            }
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(tmpMsgFile))
-                {
-                    File.Delete(tmpMsgFile);
-                }
-            }
-            catch
-            {
-                // best-effort cleanup
-            }
-        }
-    }
-
     private static string NormalizeRepoRelativePath(string path)
     {
         var p = path.Trim().Replace('\\', '/').TrimStart('/');
@@ -146,11 +69,243 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         return p;
     }
 
-    public async Task PutFileAsync(
+    public async Task CreateDirectoryAsync(
+        string repoLocalPath,
+        string path,
+        IReadOnlyList<SvnPropertyEdit> propertyEdits,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repoLocalPath))
+        {
+            throw new ArgumentException("Repository local path is required.", nameof(repoLocalPath));
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("Path is required.", nameof(path));
+        }
+
+        ArgumentNullException.ThrowIfNull(propertyEdits);
+
+        var repoRoot = new Uri(Path.GetFullPath(repoLocalPath) + Path.DirectorySeparatorChar);
+        var rel = NormalizeRepoRelativePath(path);
+        if (string.IsNullOrWhiteSpace(rel))
+        {
+            throw new ArgumentException("Invalid path.", nameof(path));
+        }
+
+        var url = new Uri(repoRoot, rel).AbsoluteUri;
+
+        var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
+        var propFiles = new List<string>();
+
+        try
+        {
+            await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+
+            var args = new List<string>
+            {
+                "--non-interactive",
+                "-F",
+                tmpMsgFile,
+                "mkdir",
+                url,
+            };
+
+            foreach (var edit in propertyEdits)
+            {
+                if (string.IsNullOrWhiteSpace(edit.Name))
+                {
+                    continue;
+                }
+
+                if (edit.IsDelete)
+                {
+                    throw new InvalidOperationException($"Cannot delete a property while creating a directory: {edit.Name}");
+                }
+
+                var file = Path.Combine(Path.GetTempPath(), $"svnhub-prop-{Guid.NewGuid():N}.txt");
+                propFiles.Add(file);
+                await File.WriteAllTextAsync(file, edit.Value ?? "", cancellationToken);
+                args.AddRange(["propsetf", edit.Name, file, url]);
+            }
+
+            var mucc = await _runner.RunAsync(_options.SvnmuccCommand, args, cancellationToken);
+            if (!mucc.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"svnmucc mkdir failed (exit {mucc.ExitCode}): {mucc.StandardError}".Trim());
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tmpMsgFile))
+                {
+                    File.Delete(tmpMsgFile);
+                }
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
+
+            foreach (var file in propFiles)
+            {
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        File.Delete(file);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    public async Task UploadAsync(
+        string repoLocalPath,
+        IReadOnlyList<string> createDirectories,
+        IReadOnlyList<SvnPutFile> putFiles,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repoLocalPath))
+        {
+            throw new ArgumentException("Repository local path is required.", nameof(repoLocalPath));
+        }
+
+        ArgumentNullException.ThrowIfNull(createDirectories);
+        ArgumentNullException.ThrowIfNull(putFiles);
+
+        var repoRoot = new Uri(Path.GetFullPath(repoLocalPath) + Path.DirectorySeparatorChar);
+
+        var mkdirUrls = new List<string>();
+        foreach (var p in createDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(p))
+            {
+                continue;
+            }
+
+            var rel = NormalizeRepoRelativePath(p);
+            if (string.IsNullOrWhiteSpace(rel))
+            {
+                throw new ArgumentException($"Invalid path: {p}", nameof(createDirectories));
+            }
+
+            mkdirUrls.Add(new Uri(repoRoot, rel).AbsoluteUri);
+        }
+
+        var putItems = new List<(string TempFile, string Url, byte[] Contents)>();
+        foreach (var f in putFiles)
+        {
+            if (f is null)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(f.Path))
+            {
+                throw new ArgumentException("File path is required.", nameof(putFiles));
+            }
+
+            var rel = NormalizeRepoRelativePath(f.Path);
+            if (string.IsNullOrWhiteSpace(rel))
+            {
+                throw new ArgumentException($"Invalid path: {f.Path}", nameof(putFiles));
+            }
+
+            var url = new Uri(repoRoot, rel).AbsoluteUri;
+            var tmp = Path.Combine(Path.GetTempPath(), $"svnhub-put-{Guid.NewGuid():N}.tmp");
+            putItems.Add((tmp, url, f.Contents));
+        }
+
+        if (mkdirUrls.Count == 0 && putItems.Count == 0)
+        {
+            return;
+        }
+
+        var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
+        try
+        {
+            await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+
+            foreach (var (tmp, _, contents) in putItems)
+            {
+                await File.WriteAllBytesAsync(tmp, contents, cancellationToken);
+            }
+
+            var args = new List<string>
+            {
+                "--non-interactive",
+                "-F",
+                tmpMsgFile,
+            };
+
+            var seenMkdir = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var url in mkdirUrls)
+            {
+                if (!seenMkdir.Add(url))
+                {
+                    continue;
+                }
+
+                args.AddRange(["mkdir", url]);
+            }
+
+            foreach (var (tmp, url, _) in putItems)
+            {
+                args.AddRange(["put", tmp, url]);
+            }
+
+            var mucc = await _runner.RunAsync(_options.SvnmuccCommand, args, cancellationToken);
+            if (!mucc.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"svnmucc upload failed (exit {mucc.ExitCode}): {mucc.StandardError}".Trim());
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tmpMsgFile))
+                {
+                    File.Delete(tmpMsgFile);
+                }
+            }
+            catch
+            {
+            }
+
+            foreach (var (tmp, _, _) in putItems)
+            {
+                try
+                {
+                    if (File.Exists(tmp))
+                    {
+                        File.Delete(tmp);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    public async Task EditAsync(
         string repoLocalPath,
         string oldPath,
         string newPath,
-        byte[] contents,
+        byte[]? newContents,
+        IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
         CancellationToken cancellationToken = default)
     {
@@ -169,7 +324,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
             throw new ArgumentException("New path is required.", nameof(newPath));
         }
 
-        ArgumentNullException.ThrowIfNull(contents);
+        ArgumentNullException.ThrowIfNull(propertyEdits);
 
         var repoRoot = new Uri(Path.GetFullPath(repoLocalPath) + Path.DirectorySeparatorChar);
 
@@ -183,12 +338,26 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         var oldUrl = new Uri(repoRoot, oldRel).AbsoluteUri;
         var newUrl = new Uri(repoRoot, newRel).AbsoluteUri;
 
+        var needsMove = !string.Equals(oldRel, newRel, StringComparison.Ordinal);
+        var needsPut = newContents is not null;
+        var needsProps = propertyEdits.Count != 0;
+
+        if (!needsMove && !needsPut && !needsProps)
+        {
+            return;
+        }
+
         // Use svnmucc (no working copy needed).
-        var tmpFile = Path.Combine(Path.GetTempPath(), $"svnhub-put-{Guid.NewGuid():N}.tmp");
+        var tmpPutFile = Path.Combine(Path.GetTempPath(), $"svnhub-put-{Guid.NewGuid():N}.tmp");
         var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
+        var propFiles = new List<string>();
         try
         {
-            await File.WriteAllBytesAsync(tmpFile, contents, cancellationToken);
+            if (needsPut)
+            {
+                await File.WriteAllBytesAsync(tmpPutFile, newContents!, cancellationToken);
+            }
+
             await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
 
             var args = new List<string>
@@ -198,12 +367,34 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
                 tmpMsgFile,
             };
 
-            if (!string.Equals(oldRel, newRel, StringComparison.Ordinal))
+            if (needsMove)
             {
                 args.AddRange(["mv", oldUrl, newUrl]);
             }
 
-            args.AddRange(["put", tmpFile, newUrl]);
+            if (needsPut)
+            {
+                args.AddRange(["put", tmpPutFile, newUrl]);
+            }
+
+            foreach (var edit in propertyEdits)
+            {
+                if (string.IsNullOrWhiteSpace(edit.Name))
+                {
+                    continue;
+                }
+
+                if (edit.IsDelete)
+                {
+                    args.AddRange(["propdel", edit.Name, newUrl]);
+                    continue;
+                }
+
+                var file = Path.Combine(Path.GetTempPath(), $"svnhub-prop-{Guid.NewGuid():N}.txt");
+                propFiles.Add(file);
+                await File.WriteAllTextAsync(file, edit.Value ?? "", cancellationToken);
+                args.AddRange(["propsetf", edit.Name, file, newUrl]);
+            }
 
             var mucc = await _runner.RunAsync(_options.SvnmuccCommand, args, cancellationToken);
             if (!mucc.IsSuccess)
@@ -218,9 +409,9 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         {
             try
             {
-                if (File.Exists(tmpFile))
+                if (File.Exists(tmpPutFile))
                 {
-                    File.Delete(tmpFile);
+                    File.Delete(tmpPutFile);
                 }
             }
             catch
@@ -238,6 +429,20 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
             catch
             {
                 // best-effort cleanup
+            }
+
+            foreach (var file in propFiles)
+            {
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        File.Delete(file);
+                    }
+                }
+                catch
+                {
+                }
             }
         }
     }

@@ -68,8 +68,20 @@ public sealed class SetupModel : PageModel
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString("D")),
             new(ClaimTypes.Name, user.UserName),
-            new(ClaimTypes.Role, user.Role.ToString()),
         };
+
+        if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminRepo)));
+        }
+        if (user.Roles.HasFlag(PortalUserRoles.AdminSystem))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminSystem)));
+        }
+        if (user.Roles.HasFlag(PortalUserRoles.AdminHooks))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminHooks)));
+        }
 
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(
@@ -94,4 +106,3 @@ public sealed class SetupModel : PageModel
         public string ConfirmPassword { get; set; } = "";
     }
 }
-

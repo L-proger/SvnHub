@@ -7,7 +7,7 @@ using SvnHub.App.Services;
 
 namespace SvnHub.Web.Pages.Repos;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminRepo")]
 public sealed class CreateModel : PageModel
 {
     private readonly RepositoryService _repos;
@@ -58,4 +58,3 @@ public sealed class CreateModel : PageModel
         public bool InitializeStandardLayout { get; set; } = true;
     }
 }
-

@@ -50,7 +50,7 @@ public sealed class UserService
         Guid actorUserId,
         string userName,
         string password,
-        PortalRole role,
+        PortalUserRoles roles,
         CancellationToken cancellationToken = default
     )
     {
@@ -86,7 +86,7 @@ public sealed class UserService
             UiPasswordHash: UiPasswordHasher.Hash(password),
             SvnBcryptHash: bcryptHash,
             IsActive: true,
-            Role: role,
+            Roles: roles,
             CreatedAt: DateTimeOffset.UtcNow
         );
 
@@ -222,12 +222,12 @@ public sealed class UserService
             return OperationResult.Fail("You can't delete yourself.");
         }
 
-        if (user.Role == PortalRole.Admin)
+        if (user.Roles.HasFlag(PortalUserRoles.AdminSystem))
         {
-            var activeAdminCount = state.Users.Count(u => u.IsActive && u.Role == PortalRole.Admin);
-            if (activeAdminCount <= 1)
+            var activeAdminSystemCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminSystem));
+            if (activeAdminSystemCount <= 1)
             {
-                return OperationResult.Fail("You can't delete the last active admin.");
+                return OperationResult.Fail("You can't delete the last active AdminSystem user.");
             }
         }
 
@@ -271,10 +271,10 @@ public sealed class UserService
         return OperationResult.Ok();
     }
 
-    public async Task<OperationResult<PortalUser>> ChangeRoleAsync(
+    public async Task<OperationResult<PortalUser>> ChangeRolesAsync(
         Guid actorUserId,
         Guid userId,
-        PortalRole newRole,
+        PortalUserRoles newRoles,
         CancellationToken cancellationToken = default
     )
     {
@@ -290,21 +290,21 @@ public sealed class UserService
             return OperationResult<PortalUser>.Fail("User is inactive.");
         }
 
-        if (user.Role == newRole)
+        if (user.Roles == newRoles)
         {
             return OperationResult<PortalUser>.Ok(user);
         }
 
-        if (user.Role == PortalRole.Admin && newRole != PortalRole.Admin)
+        if (user.Roles.HasFlag(PortalUserRoles.AdminSystem) && !newRoles.HasFlag(PortalUserRoles.AdminSystem))
         {
-            var activeAdminCount = state.Users.Count(u => u.IsActive && u.Role == PortalRole.Admin);
-            if (activeAdminCount <= 1)
+            var activeAdminSystemCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminSystem));
+            if (activeAdminSystemCount <= 1)
             {
-                return OperationResult<PortalUser>.Fail("You can't demote the last active admin.");
+                return OperationResult<PortalUser>.Fail("You can't remove AdminSystem from the last active AdminSystem user.");
             }
         }
 
-        var updated = user with { Role = newRole };
+        var updated = user with { Roles = newRoles };
 
         var newState = state with
         {
@@ -316,10 +316,10 @@ public sealed class UserService
                     Id: Guid.NewGuid(),
                     CreatedAt: DateTimeOffset.UtcNow,
                     ActorUserId: actorUserId,
-                    Action: "user.change_role",
+                    Action: "user.change_roles",
                     Target: user.UserName,
                     Success: true,
-                    Details: newRole.ToString()
+                    Details: newRoles.ToString()
                 ),
             ],
         };

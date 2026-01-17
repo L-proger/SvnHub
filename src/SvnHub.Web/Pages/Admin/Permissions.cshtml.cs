@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminRepo")]
 public sealed class PermissionsModel : PageModel
 {
     private readonly PermissionService _permissions;

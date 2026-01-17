@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/SvnHub.Web.styles.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/code.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
 </head>
 <body>
@@ -35,19 +36,22 @@
                             <a class="nav-link" asp-area="" asp-page="/Repos/Index">Repos</a>
                         </li>
                     }
-                    @if (User?.IsInRole("Admin") ?? false)
+                    @if (User?.IsInRole("AdminSystem") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Users">Users</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" asp-area="" asp-page="/Admin/Settings">Settings</a>
+                        </li>
+                    }
+                    @if (User?.IsInRole("AdminRepo") ?? false)
+                    {
+                        <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Groups">Groups</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Permissions">Permissions</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Admin/Settings">Settings</a>
                         </li>
                     }
                 </ul>

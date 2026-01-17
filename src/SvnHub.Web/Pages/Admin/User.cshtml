@@ -14,7 +14,7 @@
     <div>
         <h1 class="mb-0">@Model.TargetUser.UserName</h1>
         <div class="text-muted small">
-            Role: @Model.TargetUser.Role · Created @Model.TargetUser.CreatedAt.ToString("u")
+            Roles: @Model.TargetUser.Roles · Created @Model.TargetUser.CreatedAt.ToString("u")
             @if (!Model.TargetUser.IsActive)
             {
                 <span class="ms-2 badge text-bg-secondary">Inactive</span>
@@ -36,17 +36,27 @@
 
 <hr class="mt-4" />
 
-<h2>Role</h2>
-<form method="post" asp-page-handler="ChangeRole" class="mt-2">
+<h2>Roles</h2>
+<form method="post" asp-page-handler="ChangeRoles" class="mt-2">
     <input type="hidden" name="userId" value="@Model.TargetUser.Id" />
     <div class="row">
-        <div class="col-md-4 mb-3">
-            <label asp-for="RoleInput.Role" class="form-label">Role</label>
-            <select asp-for="RoleInput.Role" class="form-select">
-                <option value="User">User</option>
-                <option value="Admin">Admin</option>
-            </select>
-            <span asp-validation-for="RoleInput.Role" class="text-danger"></span>
+        <div class="col-md-8 mb-3">
+            <label class="form-label">Roles</label>
+            <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                    <input asp-for="RolesInput.AdminRepo" class="form-check-input" />
+                    <label asp-for="RolesInput.AdminRepo" class="form-check-label"></label>
+                </div>
+                <div class="form-check">
+                    <input asp-for="RolesInput.AdminSystem" class="form-check-input" />
+                    <label asp-for="RolesInput.AdminSystem" class="form-check-label"></label>
+                </div>
+                <div class="form-check">
+                    <input asp-for="RolesInput.AdminHooks" class="form-check-input" />
+                    <label asp-for="RolesInput.AdminHooks" class="form-check-label"></label>
+                </div>
+            </div>
+            <div class="form-text">Admin = all roles checked.</div>
         </div>
         <div class="col-md-2 mb-3 d-flex align-items-end">
             <button class="btn btn-primary w-100" type="submit">Update</button>

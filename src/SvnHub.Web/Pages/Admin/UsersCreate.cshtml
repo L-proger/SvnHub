@@ -23,12 +23,23 @@
             <input asp-for="Input.Password" type="password" class="form-control" />
             <span asp-validation-for="Input.Password" class="text-danger"></span>
         </div>
-        <div class="col-md-2 mb-3">
-            <label asp-for="Input.Role" class="form-label"></label>
-            <select asp-for="Input.Role" class="form-select">
-                <option value="User">User</option>
-                <option value="Admin">Admin</option>
-            </select>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Roles</label>
+            <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                    <input asp-for="Input.AdminRepo" class="form-check-input" />
+                    <label asp-for="Input.AdminRepo" class="form-check-label"></label>
+                </div>
+                <div class="form-check">
+                    <input asp-for="Input.AdminSystem" class="form-check-input" />
+                    <label asp-for="Input.AdminSystem" class="form-check-label"></label>
+                </div>
+                <div class="form-check">
+                    <input asp-for="Input.AdminHooks" class="form-check-input" />
+                    <label asp-for="Input.AdminHooks" class="form-check-label"></label>
+                </div>
+            </div>
+            <div class="form-text">Leave all unchecked for a regular user.</div>
         </div>
         <div class="col-md-2 mb-3 d-flex align-items-end">
             <button class="btn btn-primary w-100" type="submit">Create</button>
@@ -42,4 +53,3 @@
 {
     <partial name="_ValidationScriptsPartial" />
 }
-

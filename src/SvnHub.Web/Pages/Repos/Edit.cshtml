@@ -6,7 +6,7 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h1 class="mb-0">@Model.RepoName</h1>
-    @if (User?.IsInRole("Admin") ?? false)
+    @if (User?.IsInRole("AdminRepo") ?? false)
     {
         <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
     }
@@ -60,15 +60,24 @@
 }
 else
 {
-    <form method="post" asp-page-handler="Commit" class="mt-3" autocomplete="off">
+<form method="post" asp-page-handler="Commit" class="mt-3" autocomplete="off">
         <input type="hidden" asp-for="Input.OriginalPath" />
+        <input type="hidden" asp-for="Input.IsNew" />
+        <input type="hidden" asp-for="Input.ParentPath" />
         <input type="hidden" asp-for="Input.IsDirectory" />
+        <input type="hidden" asp-for="Input.CanEditContents" />
 
         <div class="card file-viewer">
             <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div class="text-muted small">Edit @System.IO.Path.GetFileName(Model.Path)</div>
+                <div class="text-muted small">
+                    @(Model.IsNew
+                        ? (Model.IsDirectory ? "New folder" : "New file")
+                        : $"Edit {System.IO.Path.GetFileName(Model.Path)}")
+                </div>
             </div>
             <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
                 <div class="mb-3">
                     <label asp-for="Input.FileName" class="form-label"></label>
                     <input asp-for="Input.FileName" class="form-control" />
@@ -79,7 +88,13 @@ else
                 {
                     <div class="mb-3">
                         <label asp-for="Input.Contents" class="form-label"></label>
-                        <textarea asp-for="Input.Contents" class="form-control font-monospace" rows="24"></textarea>
+                        <div class="code-with-lines code-editor">
+                            <pre class="code-ln" id="editorLineNumbers" aria-hidden="true">@Model.EditorLineNumbers</pre>
+                            <textarea asp-for="Input.Contents"
+                                      class="sp-code-textarea"
+                                      rows="24"
+                                      id="editorText"></textarea>
+                        </div>
                         <span asp-validation-for="Input.Contents" class="text-danger"></span>
                     </div>
                 }
@@ -94,6 +109,73 @@ else
 
                 <hr />
 
+                <h2 class="h5">Properties</h2>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                        <tr class="text-muted small">
+                            <th style="width: 30%;">Name</th>
+                            <th>Value</th>
+                            <th class="text-end" style="width: 1%;">Delete</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @for (var i = 0; i < Model.Input.Properties.Count; i++)
+                        {
+                            <tr>
+	                                <td>
+	                                    @if (Model.Input.Properties[i].IsExisting)
+	                                    {
+	                                        <input asp-for="Input.Properties[i].Name"
+	                                               class="form-control form-control-sm"
+	                                               readonly />
+	                                    }
+	                                    else
+	                                    {
+	                                        <input asp-for="Input.Properties[i].Name"
+	                                               class="form-control form-control-sm" />
+	                                    }
+	                                    <input type="hidden" asp-for="Input.Properties[i].IsExisting" />
+	                                </td>
+	                                <td>
+	                                    @if (Model.Input.Properties[i].Delete)
+	                                    {
+	                                        <textarea asp-for="Input.Properties[i].Value"
+	                                                  class="form-control form-control-sm font-monospace"
+	                                                  rows="1"
+	                                                  disabled></textarea>
+	                                    }
+	                                    else
+	                                    {
+	                                        <textarea asp-for="Input.Properties[i].Value"
+	                                                  class="form-control form-control-sm font-monospace"
+	                                                  rows="1"></textarea>
+	                                    }
+	                                </td>
+                                <td class="text-end">
+                                    @if (Model.Input.Properties[i].IsExisting)
+                                    {
+                                        <input class="form-check-input" type="checkbox" asp-for="Input.Properties[i].Delete" />
+                                    }
+                                    else
+                                    {
+                                        <input class="form-check-input" type="checkbox" disabled />
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="addPropBtn">Add property</button>
+                </div>
+                <div class="form-text">
+                    Multi-line values are supported (e.g. <code>svn:ignore</code>). To delete a property, check "Delete".
+                </div>
+
+                <hr />
+
                 <div class="mb-3">
                     <label asp-for="Input.CommitMessage" class="form-label"></label>
                     <input asp-for="Input.CommitMessage" class="form-control" placeholder="Describe your changes" />
@@ -102,7 +184,16 @@ else
 
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Commit changes</button>
-                    @if (Model.IsDirectory)
+                    @if (Model.IsNew)
+                    {
+                        <a class="btn btn-outline-secondary"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
+                            Cancel
+                        </a>
+                    }
+                    else if (Model.IsDirectory)
                     {
                         <a class="btn btn-outline-secondary"
                            asp-page="/Repos/Tree"
@@ -129,4 +220,100 @@ else
 @section Scripts
 {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+    (function () {
+        const editor = document.getElementById('editorText');
+        const ln = document.getElementById('editorLineNumbers');
+        if (editor && ln) {
+            const buildLines = (count) => {
+                if (!count || count < 1) count = 1;
+                let out = '';
+                for (let i = 1; i <= count; i++) {
+                    out += i;
+                    if (i !== count) out += '\n';
+                }
+                return out;
+            };
+
+            const countLines = (s) => {
+                if (!s || s.length === 0) return 1;
+                let c = 1;
+                for (let i = 0; i < s.length; i++) {
+                    if (s.charCodeAt(i) === 10) c++;
+                }
+                return c;
+            };
+
+            const refresh = () => {
+                const lines = countLines(editor.value);
+                if (ln.dataset.count === String(lines)) return;
+                ln.dataset.count = String(lines);
+                ln.textContent = buildLines(lines);
+            };
+
+            editor.addEventListener('scroll', () => {
+                ln.scrollTop = editor.scrollTop;
+            });
+
+            const syncHeight = () => {
+                ln.style.height = editor.offsetHeight + 'px';
+            };
+
+            if (window.ResizeObserver) {
+                const ro = new ResizeObserver(() => syncHeight());
+                ro.observe(editor);
+            } else {
+                window.addEventListener('resize', syncHeight);
+            }
+
+            editor.addEventListener('input', () => {
+                refresh();
+            });
+
+            refresh();
+            syncHeight();
+        }
+
+        const btn = document.getElementById('addPropBtn');
+        if (!btn) return;
+
+        const tableBody = btn.closest('.card-body')?.querySelector('table tbody');
+        if (!tableBody) return;
+
+        let nextIndex = @Model.Input.Properties.Count;
+
+        function onDeleteToggle(e) {
+            const cb = e.target;
+            if (!cb || cb.type !== 'checkbox') return;
+            const row = cb.closest('tr');
+            const ta = row?.querySelector('textarea');
+            if (!ta) return;
+            ta.disabled = cb.checked;
+        }
+
+        tableBody.addEventListener('change', (e) => {
+            if (e.target && e.target.matches('input[type="checkbox"][name$=".Delete"]')) {
+                onDeleteToggle(e);
+            }
+        });
+
+        btn.addEventListener('click', () => {
+            const i = nextIndex++;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <input class="form-control form-control-sm" name="Input.Properties[${i}].Name" value="" />
+                    <input type="hidden" name="Input.Properties[${i}].IsExisting" value="false" />
+                </td>
+                <td>
+                    <textarea class="form-control form-control-sm font-monospace" rows="1" name="Input.Properties[${i}].Value"></textarea>
+                </td>
+                <td class="text-end">
+                    <input type="hidden" name="Input.Properties[${i}].Delete" value="false" />
+                    <input class="form-check-input" type="checkbox" disabled />
+                </td>`;
+            tableBody.appendChild(tr);
+        });
+    })();
+    </script>
 }

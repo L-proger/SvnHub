@@ -7,7 +7,7 @@ using SvnHub.App.Services;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminSystem")]
 public sealed class SettingsModel : PageModel
 {
     private readonly SettingsService _settings;
@@ -27,6 +27,7 @@ public sealed class SettingsModel : PageModel
     {
         Input.RepositoriesRootPath = _settings.GetEffectiveRepositoriesRootPath();
         Input.SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+        Input.MaxUploadMegabytes = (int)Math.Clamp(_settings.GetEffectiveMaxUploadBytes() / (1024 * 1024), 1, int.MaxValue);
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
@@ -46,6 +47,7 @@ public sealed class SettingsModel : PageModel
             Input.RepositoriesRootPath,
             Input.CreateIfMissing,
             Input.SvnBaseUrl,
+            (long)Math.Max(1, Input.MaxUploadMegabytes) * 1024 * 1024,
             cancellationToken);
 
         if (!result.Success)
@@ -67,7 +69,11 @@ public sealed class SettingsModel : PageModel
         [Display(Name = "SVN base URL")]
         public string SvnBaseUrl { get; set; } = "";
 
-        [Display(Name = "Create directory if missing")]
+        [Range(1, 2048)]
+        [Display(Name = "Max upload size (MB)")]
+        public int MaxUploadMegabytes { get; set; } = 100;
+
+        [Display(Name = "Create folder if missing")]
         public bool CreateIfMissing { get; set; } = true;
     }
 }

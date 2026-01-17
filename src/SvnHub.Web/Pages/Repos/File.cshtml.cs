@@ -7,6 +7,7 @@ using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
 using SvnHub.Web.Support;
+using System.Globalization;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -55,6 +56,10 @@ public sealed class FileModel : PageModel
     public string MarkdownHtml { get; private set; } = "";
     public bool IsImage { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
+    public string LineNumbers { get; private set; } = "";
+    public long FileSizeBytes { get; private set; }
+    public string FileSizeLabel { get; private set; } = "";
+    public int? LineCount { get; private set; }
     public bool CanWrite { get; private set; }
     public string? CheckoutUrl { get; private set; }
     public bool CanEdit { get; private set; }
@@ -97,6 +102,17 @@ public sealed class FileModel : PageModel
         try
         {
             Revision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            try
+            {
+                FileSizeBytes = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+                FileSizeLabel = FormatByteSize(FileSizeBytes);
+            }
+            catch
+            {
+                FileSizeBytes = 0;
+                FileSizeLabel = "";
+            }
+
             if (IsImage)
             {
                 // Render via Raw handler (binary); don't try to read it as text.
@@ -104,6 +120,8 @@ public sealed class FileModel : PageModel
                 HighlightedHtml = "";
                 MarkdownHtml = "";
                 IsMarkdown = false;
+                LineNumbers = "";
+                LineCount = null;
                 return Page();
             }
 
@@ -123,13 +141,22 @@ public sealed class FileModel : PageModel
             IsMarkdown = string.Equals(language, "markdown", StringComparison.Ordinal);
             if (IsMarkdown)
             {
+                LineNumbers = "";
+                LineCount = null;
                 MarkdownHtml = MarkdownRenderer.Render(Contents, repoName, Path);
                 HighlightedHtml = "";
             }
             else
             {
                 HighlightedHtml = SimpleSyntaxHighlighter.Highlight(Contents, language);
+                LineNumbers = LineNumberHelper.Build(Contents);
+                LineCount = LineNumberHelper.CountLines(Contents);
                 MarkdownHtml = "";
+            }
+            if (string.IsNullOrWhiteSpace(FileSizeLabel))
+            {
+                FileSizeBytes = Encoding.UTF8.GetByteCount(Contents);
+                FileSizeLabel = FormatByteSize(FileSizeBytes);
             }
         }
         catch (Exception ex)
@@ -138,6 +165,30 @@ public sealed class FileModel : PageModel
         }
 
         return Page();
+    }
+
+    private static string FormatByteSize(long bytes)
+    {
+        if (bytes < 0)
+        {
+            bytes = 0;
+        }
+
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double size = bytes;
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        if (unit == 0)
+        {
+            return $"{bytes} {units[unit]}";
+        }
+
+        return string.Format(CultureInfo.InvariantCulture, "{0:0.#} {1}", size, units[unit]);
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(string repoName, string? path, CancellationToken cancellationToken)

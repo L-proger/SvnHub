@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminSystem")]
 public sealed class UserModel : PageModel
 {
     private readonly UserService _users;
@@ -27,7 +27,7 @@ public sealed class UserModel : PageModel
     public string? Success { get; set; }
 
     [BindProperty]
-    public RoleInputModel RoleInput { get; set; } = new();
+    public RolesInputModel RolesInput { get; set; } = new();
 
     [BindProperty]
     public PasswordInputModel PasswordInput { get; set; } = new();
@@ -44,11 +44,13 @@ public sealed class UserModel : PageModel
         }
 
         TargetUser = user;
-        RoleInput.Role = user.Role.ToString();
+        RolesInput.AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo);
+        RolesInput.AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem);
+        RolesInput.AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks);
         return Page();
     }
 
-    public async Task<IActionResult> OnPostChangeRoleAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostChangeRolesAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId);
         if (user is null)
@@ -61,7 +63,7 @@ public sealed class UserModel : PageModel
         DeleteInput = new();
 
         ModelState.Clear();
-        if (!TryValidateModel(RoleInput, nameof(RoleInput)))
+        if (!TryValidateModel(RolesInput, nameof(RolesInput)))
         {
             return Page();
         }
@@ -71,20 +73,19 @@ public sealed class UserModel : PageModel
             return Forbid();
         }
 
-        var newRole = RoleInput.Role switch
-        {
-            "Admin" => PortalRole.Admin,
-            _ => PortalRole.User,
-        };
+        var newRoles = PortalUserRoles.None;
+        if (RolesInput.AdminRepo) newRoles |= PortalUserRoles.AdminRepo;
+        if (RolesInput.AdminSystem) newRoles |= PortalUserRoles.AdminSystem;
+        if (RolesInput.AdminHooks) newRoles |= PortalUserRoles.AdminHooks;
 
-        var result = await _users.ChangeRoleAsync(actorId, userId, newRole, cancellationToken);
+        var result = await _users.ChangeRolesAsync(actorId, userId, newRoles, cancellationToken);
         if (!result.Success)
         {
             Error = result.Error ?? "Failed to change role.";
             return RedirectToPage(new { userId });
         }
 
-        Success = $"Role updated for '{result.Value!.UserName}'.";
+        Success = $"Roles updated for '{result.Value!.UserName}'.";
         return RedirectToPage(new { userId });
     }
 
@@ -97,7 +98,12 @@ public sealed class UserModel : PageModel
         }
 
         TargetUser = user;
-        RoleInput = new() { Role = user.Role.ToString() };
+        RolesInput = new()
+        {
+            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
+            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
+            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
+        };
         DeleteInput = new();
 
         ModelState.Clear();
@@ -131,7 +137,12 @@ public sealed class UserModel : PageModel
         }
 
         TargetUser = user;
-        RoleInput = new() { Role = user.Role.ToString() };
+        RolesInput = new()
+        {
+            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
+            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
+            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
+        };
         PasswordInput = new();
 
         ModelState.Clear();
@@ -164,10 +175,16 @@ public sealed class UserModel : PageModel
         return RedirectToPage("/Admin/Users");
     }
 
-    public sealed class RoleInputModel
+    public sealed class RolesInputModel
     {
-        [Required]
-        public string Role { get; set; } = "User";
+        [Display(Name = "AdminRepo")]
+        public bool AdminRepo { get; set; }
+
+        [Display(Name = "AdminSystem")]
+        public bool AdminSystem { get; set; }
+
+        [Display(Name = "AdminHooks")]
+        public bool AdminHooks { get; set; }
     }
 
     public sealed class PasswordInputModel
@@ -185,4 +202,3 @@ public sealed class UserModel : PageModel
         public string ConfirmUserName { get; set; } = "";
     }
 }
-

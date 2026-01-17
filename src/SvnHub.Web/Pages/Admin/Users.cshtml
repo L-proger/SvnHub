@@ -56,7 +56,7 @@
                         @u.UserName
                     </a>
                     <div class="text-muted small">
-                        @UsersModel.ToRoleLabel(u.Role)
+                        @UsersModel.ToRolesLabel(u.Roles)
                         @if (!u.IsActive)
                         {
                             <span class="ms-2 badge text-bg-secondary">Inactive</span>
@@ -90,4 +90,3 @@
         </ul>
     </nav>
 }
-

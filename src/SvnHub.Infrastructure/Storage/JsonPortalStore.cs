@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SvnHub.App.Configuration;
 using SvnHub.App.Storage;
 using SvnHub.Domain;
@@ -57,12 +58,62 @@ public sealed class JsonPortalStore : IPortalStore
             }
 
             var jsonText = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<PortalState>(jsonText, JsonOptions) ?? PortalState.Empty();
+            var migrated = TryMigrate(jsonText);
+            var state = JsonSerializer.Deserialize<PortalState>(migrated, JsonOptions) ?? PortalState.Empty();
+
+            if (!string.Equals(jsonText, migrated, StringComparison.Ordinal))
+            {
+                AtomicFileWriter.WriteAllText(path, migrated);
+            }
+
+            return state;
         }
         catch
         {
             // MVP: if the state can't be read, fall back to empty (admin can restore from backup).
             return PortalState.Empty();
+        }
+    }
+
+    private static string TryMigrate(string json)
+    {
+        try
+        {
+            var node = JsonNode.Parse(json) as JsonObject;
+            if (node is null)
+            {
+                return json;
+            }
+
+            if (node["users"] is not JsonArray users)
+            {
+                return json;
+            }
+
+            var changed = false;
+            foreach (var u in users.OfType<JsonObject>())
+            {
+                if (u.ContainsKey("roles"))
+                {
+                    continue;
+                }
+
+                if (u.TryGetPropertyValue("role", out var legacyRoleNode) && legacyRoleNode is not null)
+                {
+                    // Legacy PortalRole: User=0, Admin=1
+                    var legacyRole = legacyRoleNode.GetValue<int>();
+                    var roles = legacyRole == 1 ? (int)PortalUserRoles.AllAdmin : (int)PortalUserRoles.None;
+                    u["roles"] = roles;
+                    u.Remove("role");
+                    changed = true;
+                }
+            }
+
+            return changed ? node.ToJsonString(JsonOptions) : json;
+        }
+        catch
+        {
+            return json;
         }
     }
 }

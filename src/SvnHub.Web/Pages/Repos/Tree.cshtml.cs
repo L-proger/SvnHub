@@ -1,11 +1,15 @@
+using System.IO.Compression;
+using System.Buffers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.App.System;
+using SvnHub.App.Configuration;
 using SvnHub.Domain;
 using SvnHub.Web.Support;
+using Microsoft.AspNetCore.Http;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -17,19 +21,25 @@ public sealed class TreeModel : PageModel
     private readonly ISvnLookClient _svnlook;
     private readonly ISvnRepositoryWriter _svnWriter;
     private readonly SettingsService _settings;
+    private readonly ICommandRunner _runner;
+    private readonly SvnHubOptions _options;
 
     public TreeModel(
         RepositoryService repos,
         AccessService access,
         ISvnLookClient svnlook,
         ISvnRepositoryWriter svnWriter,
-        SettingsService settings)
+        SettingsService settings,
+        ICommandRunner runner,
+        SvnHubOptions options)
     {
         _repos = repos;
         _access = access;
         _svnlook = svnlook;
         _svnWriter = svnWriter;
         _settings = settings;
+        _runner = runner;
+        _options = options;
     }
 
     public string RepoName { get; private set; } = "";
@@ -38,6 +48,10 @@ public sealed class TreeModel : PageModel
     public long Revision { get; private set; }
     public IReadOnlyList<SvnTreeEntry> Entries { get; private set; } = [];
     public ISet<string> DeletablePaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
+    public ISet<string> ZipPaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
+    public bool CanWriteHere { get; private set; }
+    public int DirectoryCount { get; private set; }
+    public int FileCount { get; private set; }
     public string? Error { get; private set; }
     public bool HasReadme { get; private set; }
     public string ReadmeHtml { get; private set; } = "";
@@ -75,13 +89,22 @@ public sealed class TreeModel : PageModel
             return Forbid();
         }
 
+        CanWriteHere = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
+
         try
         {
             Revision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
             Entries = await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            DirectoryCount = Entries.Count(e => e.IsDirectory);
+            FileCount = Entries.Count(e => !e.IsDirectory);
 
             DeletablePaths = Entries
                 .Where(e => _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Write)
+                .Select(e => e.Path)
+                .ToHashSet(StringComparer.Ordinal);
+
+            ZipPaths = Entries
+                .Where(e => e.IsDirectory && _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Read)
                 .Select(e => e.Path)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -103,6 +126,8 @@ public sealed class TreeModel : PageModel
         catch (Exception ex)
         {
             Error = ex.Message;
+            DirectoryCount = 0;
+            FileCount = 0;
         }
 
         return Page();
@@ -165,6 +190,406 @@ public sealed class TreeModel : PageModel
         return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
     }
 
+    public async Task<IActionResult> OnPostUploadAsync(
+        string repoName,
+        string? path,
+        string mode,
+        List<IFormFile> files,
+        string commitMessage,
+        CancellationToken cancellationToken)
+    {
+        RepoName = repoName;
+        Path = Normalize(path);
+        ParentPath = GetParent(Path);
+        SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+
+        if (files is null || files.Count == 0)
+        {
+            FlashError = "Select at least one file to upload.";
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        if (string.IsNullOrWhiteSpace(commitMessage))
+        {
+            FlashError = "Commit message is required.";
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Write)
+        {
+            return Forbid();
+        }
+
+        long rev;
+        try
+        {
+            rev = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            FlashError = ex.Message;
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        var maxUploadBytes = _settings.GetEffectiveMaxUploadBytes();
+
+        var totalBytes = files.Sum(f => (long)f.Length);
+        if (totalBytes > maxUploadBytes)
+        {
+            FlashError = $"Upload is too large (>{maxUploadBytes} bytes).";
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        foreach (var f in files)
+        {
+            if (f.Length > maxUploadBytes)
+            {
+                FlashError = $"File '{System.IO.Path.GetFileName(f.FileName)}' is too large (>{maxUploadBytes} bytes).";
+                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            }
+        }
+
+        var normalizedMode = (mode ?? "").Trim().ToLowerInvariant();
+        if (normalizedMode is not ("files" or "folder"))
+        {
+            FlashError = "Invalid upload mode.";
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        static string NormalizeUploadPath(string raw, bool allowSubdirs)
+        {
+            var p = (raw ?? "").Replace('\\', '/').Trim();
+            p = p.TrimStart('/');
+
+            if (!allowSubdirs)
+            {
+                return System.IO.Path.GetFileName(p);
+            }
+
+            while (p.Contains("//", StringComparison.Ordinal))
+            {
+                p = p.Replace("//", "/", StringComparison.Ordinal);
+            }
+
+            if (p.Contains("../", StringComparison.Ordinal) || p.Contains("/..", StringComparison.Ordinal) || p.StartsWith("..", StringComparison.Ordinal))
+            {
+                return "";
+            }
+
+            if (p.Contains(':'))
+            {
+                return "";
+            }
+
+            return p;
+        }
+
+        static bool IsSafeSegment(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+            {
+                return false;
+            }
+
+            if (s.Contains('/') || s.Contains('\\'))
+            {
+                return false;
+            }
+
+            return !s.Contains("..", StringComparison.Ordinal);
+        }
+
+        static string CombineRepoPath(string baseDir, string rel)
+        {
+            if (string.IsNullOrWhiteSpace(rel))
+            {
+                return "";
+            }
+
+            if (baseDir == "/")
+            {
+                return "/" + rel.TrimStart('/');
+            }
+
+            return baseDir.TrimEnd('/') + "/" + rel.TrimStart('/');
+        }
+
+        var allowSubdirs = normalizedMode == "folder";
+        var puts = new List<SvnPutFile>(files.Count);
+        var dirsToCreate = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var f in files)
+        {
+            var relRaw = NormalizeUploadPath(f.FileName, allowSubdirs);
+            if (string.IsNullOrWhiteSpace(relRaw))
+            {
+                FlashError = $"Invalid upload path: {f.FileName}";
+                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            }
+
+            var segments = relRaw.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length == 0)
+            {
+                FlashError = $"Invalid upload path: {f.FileName}";
+                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            }
+
+            if (segments.Any(s => !IsSafeSegment(s)))
+            {
+                FlashError = $"Invalid upload path: {f.FileName}";
+                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            }
+
+            // Accumulate directory creation requests for folder uploads.
+            if (allowSubdirs && segments.Length > 1)
+            {
+                var cur = "";
+                for (var i = 0; i < segments.Length - 1; i++)
+                {
+                    cur = cur.Length == 0 ? segments[i] : cur + "/" + segments[i];
+                    var fullDir = CombineRepoPath(Path, cur);
+                    dirsToCreate.Add(fullDir);
+                }
+            }
+
+            var rel = string.Join("/", segments);
+            var targetPath = CombineRepoPath(Path, rel);
+            if (string.IsNullOrWhiteSpace(targetPath))
+            {
+                FlashError = $"Invalid upload path: {f.FileName}";
+                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            }
+
+            if (_access.GetAccess(userId.Value, repo.Id, targetPath) < AccessLevel.Write)
+            {
+                return Forbid();
+            }
+
+            await using var ms = new MemoryStream((int)Math.Min(f.Length, int.MaxValue));
+            await f.CopyToAsync(ms, cancellationToken);
+            puts.Add(new SvnPutFile(targetPath, ms.ToArray()));
+        }
+
+        // Decide which directories actually need creation, by checking existing entries per-parent (cached).
+        var mkdirList = new List<string>();
+        if (dirsToCreate.Count != 0)
+        {
+            var cache = new Dictionary<string, IReadOnlyList<SvnTreeEntry>>(StringComparer.Ordinal);
+
+            async Task<IReadOnlyList<SvnTreeEntry>> GetChildrenAsync(string parent)
+            {
+                if (cache.TryGetValue(parent, out var existing))
+                {
+                    return existing;
+                }
+
+                try
+                {
+                    var list = await _svnlook.ListTreeAsync(repo.LocalPath, parent, rev, cancellationToken);
+                    cache[parent] = list;
+                    return list;
+                }
+                catch (Exception ex)
+                {
+                    // When uploading folders, we may need to probe children of a directory that does not exist yet.
+                    // Treat "path not found" as an empty listing.
+                    if (ex.Message.Contains("E160013", StringComparison.OrdinalIgnoreCase) ||
+                        ex.Message.Contains("File not found", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cache[parent] = Array.Empty<SvnTreeEntry>();
+                        return cache[parent];
+                    }
+
+                    throw;
+                }
+            }
+
+            foreach (var dir in dirsToCreate.OrderBy(p => p.Count(c => c == '/'), Comparer<int>.Default).ThenBy(p => p, StringComparer.Ordinal))
+            {
+                var parent = GetParent(dir);
+                var name = dir.TrimEnd('/');
+                name = name[(name.LastIndexOf('/') + 1)..];
+
+                var children = await GetChildrenAsync(parent);
+                var match = children.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.Ordinal));
+                if (match is not null)
+                {
+                    if (!match.IsDirectory)
+                    {
+                        FlashError = $"Cannot create folder '{dir}': a file with the same name already exists.";
+                        return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                    }
+
+                    continue; // already exists
+                }
+
+                mkdirList.Add(dir);
+
+                // Nested directories should treat this new directory as existing (but empty) during planning.
+                cache[dir] = Array.Empty<SvnTreeEntry>();
+
+                // Update cache so nested dirs can see their parent as existing without extra svnlook calls.
+                if (cache.TryGetValue(parent, out var cached))
+                {
+                    cache[parent] = cached.Concat([new SvnTreeEntry(name, dir, true)]).ToArray();
+                }
+            }
+        }
+
+        try
+        {
+            await _svnWriter.UploadAsync(repo.LocalPath, mkdirList, puts, commitMessage.Trim(), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            FlashError = ex.Message;
+            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        }
+
+        Message = $"Uploaded {puts.Count} file(s).";
+        return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+    }
+
+    public async Task<IActionResult> OnGetZipAsync(string repoName, string? path, CancellationToken cancellationToken)
+    {
+        RepoName = repoName;
+        Path = Normalize(path);
+        ParentPath = GetParent(Path);
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
+        {
+            return Forbid();
+        }
+
+        long rev;
+        try
+        {
+            rev = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        if (Path != "/")
+        {
+            try
+            {
+                var parent = GetParent(Path);
+                var entries = await _svnlook.ListTreeAsync(repo.LocalPath, parent, rev, cancellationToken);
+                var isDir = entries.Any(e => string.Equals(e.Path, Path, StringComparison.Ordinal) && e.IsDirectory);
+                if (!isDir)
+                {
+                    return BadRequest("Path is not a folder.");
+                }
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        var repoRootUri = new Uri(System.IO.Path.GetFullPath(repo.LocalPath) + System.IO.Path.DirectorySeparatorChar);
+        var rel = NormalizeRepoRelativePath(Path);
+        if (Path != "/" && string.IsNullOrWhiteSpace(rel))
+        {
+            return BadRequest("Invalid path.");
+        }
+
+        var targetUrl = Path == "/"
+            ? repoRootUri.AbsoluteUri
+            : new Uri(repoRootUri, rel).AbsoluteUri;
+
+        var exportDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"svnhub-export-{Guid.NewGuid():N}");
+        try
+        {
+            var export = await _runner.RunAsync(
+                _options.SvnCommand,
+                ["export", "--non-interactive", "--quiet", "-r", rev.ToString(), targetUrl, exportDir],
+                cancellationToken);
+
+            if (!export.IsSuccess)
+            {
+                return BadRequest($"svn export failed (exit {export.ExitCode}): {export.StandardError}".Trim());
+            }
+
+            var folderName = Path == "/"
+                ? repoName
+                : System.IO.Path.GetFileName(Path.TrimEnd('/'));
+
+            var zipName = $"{folderName}-r{rev}.zip";
+
+            Response.ContentType = "application/zip";
+            Response.Headers.ContentDisposition = $"attachment; filename=\"{zipName}\"";
+
+            using (var zipStream = new AsyncWriteStream(Response.Body, cancellationToken))
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                // Add empty directories explicitly.
+                foreach (var dir in Directory.EnumerateDirectories(exportDir, "*", SearchOption.AllDirectories))
+                {
+                    if (Directory.EnumerateFileSystemEntries(dir).Any())
+                    {
+                        continue;
+                    }
+
+                    var relDir = System.IO.Path.GetRelativePath(exportDir, dir).Replace('\\', '/').TrimEnd('/') + "/";
+                    archive.CreateEntry(relDir);
+                }
+
+                foreach (var file in Directory.EnumerateFiles(exportDir, "*", SearchOption.AllDirectories))
+                {
+                    var relFile = System.IO.Path.GetRelativePath(exportDir, file).Replace('\\', '/');
+                    var entry = archive.CreateEntry(relFile, CompressionLevel.Fastest);
+                    await using var input = System.IO.File.OpenRead(file);
+                    await using var output = entry.Open();
+                    await input.CopyToAsync(output, cancellationToken);
+                }
+            }
+
+            await Response.Body.FlushAsync(cancellationToken);
+            return new EmptyResult();
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(exportDir))
+                {
+                    Directory.Delete(exportDir, recursive: true);
+                }
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private static string Normalize(string? path)
     {
         if (string.IsNullOrWhiteSpace(path) || path == "/")
@@ -210,5 +635,83 @@ public sealed class TreeModel : PageModel
         }
 
         return path[..idx];
+    }
+
+    private static string NormalizeRepoRelativePath(string path)
+    {
+        var p = path.Trim().Replace('\\', '/').TrimStart('/');
+
+        while (p.Contains("//", StringComparison.Ordinal))
+        {
+            p = p.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        if (p.Contains("../", StringComparison.Ordinal) || p.Contains("/..", StringComparison.Ordinal))
+        {
+            return "";
+        }
+
+        return p;
+    }
+
+    private sealed class AsyncWriteStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly CancellationToken _ct;
+
+        public AsyncWriteStream(Stream inner, CancellationToken ct)
+        {
+            _inner = inner;
+            _ct = ct;
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() =>
+            _inner.FlushAsync(_ct).GetAwaiter().GetResult();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            _inner.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            _inner.WriteAsync(buffer.AsMemory(offset, count), _ct).GetAwaiter().GetResult();
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            var rented = ArrayPool<byte>.Shared.Rent(buffer.Length);
+            try
+            {
+                buffer.CopyTo(rented);
+                Write(rented, 0, buffer.Length);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            _inner.WriteAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            _inner.WriteAsync(buffer, cancellationToken);
     }
 }

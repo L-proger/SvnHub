@@ -6,7 +6,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminSystem")]
 public sealed class UsersModel : PageModel
 {
     private readonly UserService _users;
@@ -59,12 +59,20 @@ public sealed class UsersModel : PageModel
         }
     }
 
-    public static string ToRoleLabel(PortalRole role) =>
-        role switch
+    public static string ToRolesLabel(PortalUserRoles roles)
+    {
+        if (roles == PortalUserRoles.None)
         {
-            PortalRole.Admin => "Admin",
-            _ => "User",
-        };
+            return "User";
+        }
+
+        var parts = new List<string>();
+        if (roles.HasFlag(PortalUserRoles.AdminRepo)) parts.Add(nameof(PortalUserRoles.AdminRepo));
+        if (roles.HasFlag(PortalUserRoles.AdminSystem)) parts.Add(nameof(PortalUserRoles.AdminSystem));
+        if (roles.HasFlag(PortalUserRoles.AdminHooks)) parts.Add(nameof(PortalUserRoles.AdminHooks));
+
+        return string.Join(", ", parts);
+    }
 
     private static int NormalizePageSize(int pageSize) =>
         pageSize switch

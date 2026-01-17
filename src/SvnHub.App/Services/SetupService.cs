@@ -63,7 +63,7 @@ public sealed class SetupService
             UiPasswordHash: UiPasswordHasher.Hash(password),
             SvnBcryptHash: bcryptHash,
             IsActive: true,
-            Role: PortalRole.Admin,
+            Roles: PortalUserRoles.AllAdmin,
             CreatedAt: DateTimeOffset.UtcNow
         );
 

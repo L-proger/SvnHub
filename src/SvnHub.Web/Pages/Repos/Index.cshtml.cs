@@ -98,7 +98,7 @@ public sealed class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int pageSize = 10, string? q = null, CancellationToken cancellationToken = default)
     {
-        if (!(User?.IsInRole("Admin") ?? false))
+        if (!(User?.IsInRole("AdminRepo") ?? false))
         {
             return Forbid();
         }

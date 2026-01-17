@@ -7,6 +7,9 @@ namespace SvnHub.App.Services;
 
 public sealed class SettingsService
 {
+    public const long DefaultMaxUploadBytes = 100L * 1024 * 1024;
+    public const long MaxAllowedUploadBytes = 2L * 1024 * 1024 * 1024;
+
     private readonly IPortalStore _store;
     private readonly SvnHubOptions _options;
 
@@ -48,11 +51,34 @@ public sealed class SettingsService
         return "";
     }
 
+    public long GetEffectiveMaxUploadBytes()
+    {
+        var state = _store.Read();
+        return GetEffectiveMaxUploadBytes(state);
+    }
+
+    public long GetEffectiveMaxUploadBytes(PortalState state)
+    {
+        var v = state.Settings.MaxUploadBytes;
+        if (v <= 0)
+        {
+            return DefaultMaxUploadBytes;
+        }
+
+        if (v > MaxAllowedUploadBytes)
+        {
+            return MaxAllowedUploadBytes;
+        }
+
+        return v;
+    }
+
     public async Task<OperationResult> SetRepositoriesRootPathAsync(
         Guid actorUserId,
         string repositoriesRootPath,
         bool createIfMissing,
         string? svnBaseUrl,
+        long maxUploadBytes,
         CancellationToken cancellationToken = default
     )
     {
@@ -75,12 +101,12 @@ public sealed class SettingsService
             }
             catch (Exception ex)
             {
-                return OperationResult.Fail($"Failed to create directory: {ex.Message}");
+                return OperationResult.Fail($"Failed to create folder: {ex.Message}");
             }
         }
         else if (!Directory.Exists(normalized))
         {
-            return OperationResult.Fail("Directory does not exist (enable 'Create if missing' or create it manually).");
+            return OperationResult.Fail("Folder does not exist (enable 'Create if missing' or create it manually).");
         }
 
         var state = _store.Read();
@@ -90,10 +116,21 @@ public sealed class SettingsService
             return OperationResult.Fail("SVN base URL must be an absolute http(s) URL, or empty.");
         }
 
+        if (maxUploadBytes <= 0)
+        {
+            maxUploadBytes = DefaultMaxUploadBytes;
+        }
+
+        if (maxUploadBytes > MaxAllowedUploadBytes)
+        {
+            return OperationResult.Fail($"Max upload size is too large (>{MaxAllowedUploadBytes} bytes).");
+        }
+
         var newSettings = state.Settings with
         {
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
+            MaxUploadBytes = maxUploadBytes,
         };
 
         var newState = state with
@@ -110,6 +147,15 @@ public sealed class SettingsService
                     Target: "repositoriesRootPath",
                     Success: true,
                     Details: normalized
+                ),
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "settings.set_max_upload",
+                    Target: "maxUploadBytes",
+                    Success: true,
+                    Details: maxUploadBytes.ToString()
                 ),
             ],
         };

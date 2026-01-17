@@ -6,6 +6,13 @@ public interface ISvnLookClient
 
     Task<DateTimeOffset> GetHeadChangedAtAsync(string repoLocalPath, CancellationToken cancellationToken = default);
 
+    Task<long> GetFileSizeAsync(
+        string repoLocalPath,
+        string filePath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
     Task<IReadOnlyList<SvnTreeEntry>> ListTreeAsync(
         string repoLocalPath,
         string path,
@@ -23,6 +30,13 @@ public interface ISvnLookClient
     Task<byte[]> CatBytesAsync(
         string repoLocalPath,
         string filePath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<IReadOnlyList<SvnProperty>> GetPropertiesAsync(
+        string repoLocalPath,
+        string path,
         long revision,
         CancellationToken cancellationToken = default
     );

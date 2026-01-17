@@ -36,7 +36,7 @@
         </select>
         <input type="hidden" name="p" value="@Model.PageNumber" />
     </form>
-    @if (User?.IsInRole("Admin") ?? false)
+    @if (User?.IsInRole("AdminRepo") ?? false)
     {
         <div class="d-flex gap-2">
             <form method="post" asp-page-handler="Discover" class="d-inline">

@@ -31,6 +31,13 @@
         <span asp-validation-for="Input.SvnBaseUrl" class="text-danger"></span>
     </div>
 
+    <div class="mb-3">
+        <label asp-for="Input.MaxUploadMegabytes" class="form-label"></label>
+        <input asp-for="Input.MaxUploadMegabytes" type="number" min="1" max="2048" class="form-control" />
+        <div class="form-text">Maximum allowed upload size for the web UI (affects Upload).</div>
+        <span asp-validation-for="Input.MaxUploadMegabytes" class="text-danger"></span>
+    </div>
+
     <div class="form-check mb-3">
         <input asp-for="Input.CreateIfMissing" class="form-check-input" />
         <label asp-for="Input.CreateIfMissing" class="form-check-label"></label>

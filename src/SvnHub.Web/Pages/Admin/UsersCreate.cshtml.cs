@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "AdminSystem")]
 public sealed class UsersCreateModel : PageModel
 {
     private readonly UserService _users;
@@ -40,13 +40,17 @@ public sealed class UsersCreateModel : PageModel
             return Forbid();
         }
 
-        var role = Input.Role switch
-        {
-            "Admin" => PortalRole.Admin,
-            _ => PortalRole.User,
-        };
+        var roles = PortalUserRoles.None;
+        if (Input.AdminRepo) roles |= PortalUserRoles.AdminRepo;
+        if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
+        if (Input.AdminHooks) roles |= PortalUserRoles.AdminHooks;
 
-        var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, role, cancellationToken);
+        if (roles.HasFlag(PortalUserRoles.AdminRepo) || roles.HasFlag(PortalUserRoles.AdminSystem) || roles.HasFlag(PortalUserRoles.AdminHooks))
+        {
+            // ok
+        }
+
+        var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, roles, cancellationToken);
         if (!result.Success)
         {
             Error = result.Error ?? "Failed to create user.";
@@ -67,8 +71,13 @@ public sealed class UsersCreateModel : PageModel
         [MinLength(8)]
         public string Password { get; set; } = "";
 
-        [Required]
-        public string Role { get; set; } = "User";
+        [Display(Name = "AdminRepo")]
+        public bool AdminRepo { get; set; }
+
+        [Display(Name = "AdminSystem")]
+        public bool AdminSystem { get; set; }
+
+        [Display(Name = "AdminHooks")]
+        public bool AdminHooks { get; set; }
     }
 }
-

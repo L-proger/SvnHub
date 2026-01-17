@@ -6,7 +6,7 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h1 class="mb-0">@Model.RepoName</h1>
-    @if (User?.IsInRole("Admin") ?? false)
+    @if (User?.IsInRole("AdminRepo") ?? false)
     {
         <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
     }
@@ -64,6 +64,14 @@ else
         <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <div class="text-muted small">
                 @System.IO.Path.GetFileName(Model.Path)
+                @if (!string.IsNullOrWhiteSpace(Model.FileSizeLabel))
+                {
+                    <span class="mx-1">|</span>@Model.FileSizeLabel
+                }
+                @if (!Model.IsImage && !Model.IsMarkdown && Model.LineCount is not null)
+                {
+                    <span class="mx-1">|</span>@Model.LineCount.Value <text> line</text>@(Model.LineCount.Value == 1 ? "" : "s")
+                }
             </div>
             <div class="d-flex align-items-center gap-2">
                 @if (Model.CanEdit)
@@ -94,6 +102,15 @@ else
                         Copy SVN URL
                     </button>
                 }
+                @if (!Model.IsImage)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-copy-from="#copySrc"
+                            data-copy-msg="#copyMsg">
+                        Copy content
+                    </button>
+                }
                 @if (Model.CanWrite)
                 {
                     <form method="post" asp-page-handler="Delete" class="d-inline">
@@ -104,15 +121,6 @@ else
                             Delete
                         </button>
                     </form>
-                }
-                @if (!Model.IsImage)
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            data-copy-from="#copySrc"
-                            data-copy-msg="#copyMsg">
-                        Copy content
-                    </button>
                 }
                 <span class="text-muted small" id="copyMsg"></span>
             </div>
@@ -132,7 +140,10 @@ else
             }
             else
             {
-                <pre class="mb-0"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></pre>
+                <div class="code-with-lines">
+                    <pre class="code-ln" aria-hidden="true">@Model.LineNumbers</pre>
+                    <div class="code-src"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></div>
+                </div>
             }
         </div>
     </div>

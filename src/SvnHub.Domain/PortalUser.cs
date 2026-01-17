@@ -6,7 +6,6 @@ public sealed record PortalUser(
     string UiPasswordHash,
     string? SvnBcryptHash,
     bool IsActive,
-    PortalRole Role,
+    PortalUserRoles Roles,
     DateTimeOffset CreatedAt
 );
-

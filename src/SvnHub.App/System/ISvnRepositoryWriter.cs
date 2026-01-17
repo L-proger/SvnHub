@@ -8,18 +8,26 @@ public interface ISvnRepositoryWriter
         string message,
         CancellationToken cancellationToken = default);
 
-    Task MoveAsync(
+    Task CreateDirectoryAsync(
         string repoLocalPath,
-        string oldPath,
-        string newPath,
+        string path,
+        IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
         CancellationToken cancellationToken = default);
 
-    Task PutFileAsync(
+    Task UploadAsync(
+        string repoLocalPath,
+        IReadOnlyList<string> createDirectories,
+        IReadOnlyList<SvnPutFile> putFiles,
+        string message,
+        CancellationToken cancellationToken = default);
+
+    Task EditAsync(
         string repoLocalPath,
         string oldPath,
         string newPath,
-        byte[] contents,
+        byte[]? newContents,
+        IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
         CancellationToken cancellationToken = default);
 }
