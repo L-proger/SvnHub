@@ -1,0 +1,131 @@
+@page "/repos/{repoName}/history"
+@model SvnHub.Web.Pages.Repos.HistoryModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} - History {Model.Path}";
+    var openPath = Model.Path == "/" ? null : Model.Path;
+    var openPage = Model.IsDirectory ? "/Repos/Tree" : "/Repos/File";
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1 class="mb-0">@Model.RepoName</h1>
+</div>
+<div class="text-muted">r@(Model.HeadRevision)</div>
+
+<nav class="mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @{
+            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var isRoot = parts.Length == 0;
+            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
+                @if (isRoot)
+                {
+                    @Model.RepoName
+                }
+                else
+                {
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                }
+            </li>
+
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
+                    @if (isLast)
+                    {
+                        @parts[i]
+                    }
+                    else
+                    {
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                    }
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+else
+{
+    <div class="card file-viewer mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="text-muted small">
+                History <span class="mx-1">|</span> @Model.Rows.Count @(Model.Rows.Count == 1 ? "entry" : "entries")
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="@openPage"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@openPath">
+                    Open
+                </a>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            @if (Model.Rows.Count == 0)
+            {
+                <div class="p-3 text-muted">No history.</div>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var r in Model.Rows)
+                    {
+                        var rowPath = string.IsNullOrWhiteSpace(r.ChangedPath) ? Model.Path : r.ChangedPath;
+                        <div class="list-group-item">
+                            <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                                <div class="d-flex flex-column">
+                                    <div class="fw-semibold">
+                                        r@(r.Revision)
+                                        @if (!string.IsNullOrWhiteSpace(r.Message))
+                                        {
+                                            <span class="ms-2">@r.Message</span>
+                                        }
+                                    </div>
+                                    <div class="text-muted small">
+                                        @if (!string.IsNullOrWhiteSpace(r.Author))
+                                        {
+                                            <span>@r.Author</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(r.Age))
+                                        {
+                                            <span class="mx-1">|</span><span>@r.Age</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(r.ChangedPath) && r.ChangedPath != Model.Path)
+                                        {
+                                            <span class="mx-1">|</span><code>@r.ChangedPath</code>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <a class="btn btn-sm btn-outline-secondary"
+                                       title="View this path at this revision"
+                                       asp-page="@openPage"
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-path="@openPath"
+                                       asp-route-rev="@r.Revision">
+                                        View
+                                    </a>
+                                    <a class="btn btn-sm btn-outline-secondary"
+                                       title="View changes to this path in this revision"
+                                       asp-page="/Repos/Diff"
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-rev="@r.Revision"
+                                       asp-route-path="@rowPath">
+                                        View changes
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}

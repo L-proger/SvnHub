@@ -2,6 +2,7 @@ using SvnHub.App.Configuration;
 using SvnHub.App.System;
 using System.Globalization;
 using System.Text;
+using SvnHub.Domain;
 
 namespace SvnHub.Infrastructure.System;
 
@@ -149,6 +150,137 @@ public sealed class SvnLookClient : ISvnLookClient
         }
 
         return lastRev;
+    }
+
+    public async Task<IReadOnlyList<SvnHistoryEntry>> GetHistoryAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0)
+        {
+            limit = 50;
+        }
+
+        if (limit > 500)
+        {
+            limit = 500;
+        }
+
+        var repoRelPath = ToRepoRelativePath(path);
+
+        var args = new List<string>
+        {
+            "history",
+            "-r",
+            revision.ToString(CultureInfo.InvariantCulture),
+            "-l",
+            limit.ToString(CultureInfo.InvariantCulture),
+            repoLocalPath,
+        };
+
+        // For repository root, svnlook history path argument is optional.
+        if (!string.IsNullOrWhiteSpace(repoRelPath))
+        {
+            args.Add(repoRelPath);
+        }
+
+        var result = await _runner.RunBinaryAsync(_options.SvnlookCommand, args, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook history failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var text = DecodeSvnText(result.StandardOutput);
+        var lines = text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length != 0)
+            .ToArray();
+
+        if (lines.Length == 0)
+        {
+            return Array.Empty<SvnHistoryEntry>();
+        }
+
+        var entries = new List<SvnHistoryEntry>(capacity: Math.Min(limit, lines.Length));
+
+        foreach (var l in lines)
+        {
+            if (l.StartsWith("REVISION", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (l.StartsWith("----", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parts = l.Split(' ', '\t', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length < 2)
+            {
+                continue;
+            }
+
+            var token = parts[0].Trim();
+            if (token.StartsWith('r'))
+            {
+                token = token.TrimStart('r');
+            }
+
+            if (!long.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rev))
+            {
+                continue;
+            }
+
+            // The rest of the line is PATH (can contain spaces? usually not; svn paths can include spaces though).
+            // Use substring from the first whitespace after the revision token.
+            var idx = l.IndexOf(parts[0], StringComparison.Ordinal);
+            var after = idx >= 0 ? l[(idx + parts[0].Length)..] : l;
+            var pathPart = after.Trim();
+            if (pathPart.Length == 0)
+            {
+                pathPart = "/";
+            }
+
+            // svnlook outputs repo-absolute path; keep it.
+            entries.Add(new SvnHistoryEntry(rev, pathPart));
+        }
+
+        return entries;
+    }
+
+    public async Task<string> GetDiffAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var repoRelPath = ToRepoRelativePath(path);
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["diff", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook diff failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var diff = DecodeSvnText(result.StandardOutput).TrimEnd();
+
+        // `svnlook diff` doesn't support filtering by PATH (only REPOS_PATH), so filter client-side.
+        if (!string.IsNullOrWhiteSpace(repoRelPath))
+        {
+            diff = FilterDiffByPath(diff, repoRelPath);
+        }
+
+        return diff;
     }
 
     public async Task<DateTimeOffset> GetRevisionDateAsync(
@@ -371,6 +503,103 @@ public sealed class SvnLookClient : ISvnLookClient
                 }
             }
         }
+    }
+
+    private static string FilterDiffByPath(string diff, string repoRelPath)
+    {
+        if (string.IsNullOrWhiteSpace(diff))
+        {
+            return diff;
+        }
+
+        var target = repoRelPath.Trim().TrimStart('/');
+        if (target.Length == 0)
+        {
+            return diff;
+        }
+
+        var prefix = target.EndsWith('/') ? target : target + "/";
+
+        static bool IsBlockStart(string line, out string? blockPath)
+        {
+            blockPath = null;
+
+            if (line.StartsWith("Index:", StringComparison.Ordinal))
+            {
+                blockPath = line["Index:".Length..].Trim();
+                return true;
+            }
+
+            if (line.StartsWith("Added:", StringComparison.Ordinal) ||
+                line.StartsWith("Modified:", StringComparison.Ordinal) ||
+                line.StartsWith("Deleted:", StringComparison.Ordinal))
+            {
+                var idx = line.IndexOf(':', StringComparison.Ordinal);
+                blockPath = idx >= 0 ? line[(idx + 1)..].Trim() : null;
+                return true;
+            }
+
+            if (line.StartsWith("Property changes on:", StringComparison.Ordinal))
+            {
+                blockPath = line["Property changes on:".Length..].Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        static bool MatchPath(string? candidate, string targetPath, string targetPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            var p = candidate.Trim().TrimStart('/');
+            if (p.Length == 0)
+            {
+                return false;
+            }
+
+            return string.Equals(p, targetPath, StringComparison.Ordinal) ||
+                   p.StartsWith(targetPrefix, StringComparison.Ordinal);
+        }
+
+        var blocks = new List<string>();
+        var current = new StringBuilder();
+        var include = false;
+        var started = false;
+
+        foreach (var raw in diff.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+
+            if (IsBlockStart(line, out var p))
+            {
+                if (started && include && current.Length != 0)
+                {
+                    blocks.Add(current.ToString().TrimEnd());
+                }
+
+                current.Clear();
+                started = true;
+                include = MatchPath(p, target, prefix);
+            }
+
+            if (!started)
+            {
+                continue;
+            }
+
+            current.AppendLine(line);
+        }
+
+        if (started && include && current.Length != 0)
+        {
+            blocks.Add(current.ToString().TrimEnd());
+        }
+
+        return blocks.Count == 0 ? "" : string.Join(Environment.NewLine + Environment.NewLine, blocks);
     }
 
     public async Task<string> CatAsync(

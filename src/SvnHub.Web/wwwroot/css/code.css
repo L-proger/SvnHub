@@ -29,13 +29,24 @@
   min-width: 0;
 }
 
-/* Override base syntax.css styling to avoid double borders/padding in the line-number layout. */
-.code-with-lines .sh {
-  border: 0;
-  border-radius: 0;
+.code-with-lines .code-src pre {
+  margin: 0;
+}
+
+/* Match gutter metrics (font-size/line-height) so line numbers align with code lines. */
+.code-with-lines .code-src pre,
+.code-with-lines .code-src pre code,
+.code-with-lines .code-src pre code.hljs {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  white-space: pre;
+}
+
+/* highlight.js should not add its own padding/background inside our bordered container. */
+.code-with-lines pre code.hljs {
   padding: 0;
   background: transparent;
-  overflow: visible;
 }
 
 .code-editor .sp-code-textarea {

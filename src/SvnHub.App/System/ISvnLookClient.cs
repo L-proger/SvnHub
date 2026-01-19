@@ -1,3 +1,5 @@
+using SvnHub.Domain;
+
 namespace SvnHub.App.System;
 
 public interface ISvnLookClient
@@ -60,6 +62,21 @@ public interface ISvnLookClient
     );
 
     Task<IReadOnlyList<SvnProperty>> GetPropertiesAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<IReadOnlyList<SvnHistoryEntry>> GetHistoryAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        int limit,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<string> GetDiffAsync(
         string repoLocalPath,
         string path,
         long revision,

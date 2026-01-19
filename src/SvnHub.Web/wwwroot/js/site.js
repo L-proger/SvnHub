@@ -2,6 +2,98 @@
 // for details on configuring this project to bundle and minify static web assets.
 
 (() => {
+    const languageAliases = new Map([
+        ['cs', 'csharp'],
+        ['c#', 'csharp'],
+        ['c++', 'cpp'],
+        ['cc', 'cpp'],
+        ['cxx', 'cpp'],
+        ['hpp', 'cpp'],
+        ['hh', 'cpp'],
+        ['hxx', 'cpp'],
+        ['h', 'c'],
+        ['sv', 'verilog'],
+        ['systemverilog', 'verilog'],
+    ]);
+
+    const languageLoadCache = new Map();
+
+    function getRequestedLanguage(codeEl) {
+        if (!codeEl || !codeEl.classList) return null;
+        for (const cls of codeEl.classList) {
+            if (cls.startsWith('language-') && cls.length > 'language-'.length) {
+                const raw = cls.substring('language-'.length);
+                return raw || null;
+            }
+        }
+        return null;
+    }
+
+    function normalizeLanguage(lang) {
+        if (!lang) return null;
+        const lower = String(lang).trim().toLowerCase();
+        return languageAliases.get(lower) || lower;
+    }
+
+    function loadLanguage(lang) {
+        const hljs = window.hljs;
+        if (!hljs || !lang) return Promise.resolve(false);
+
+        if (hljs.getLanguage && hljs.getLanguage(lang)) {
+            return Promise.resolve(true);
+        }
+
+        // Some IDs are built-in or don't need loading.
+        if (lang === 'plaintext' || lang === 'text' || lang === 'nohighlight') {
+            return Promise.resolve(true);
+        }
+
+        if (languageLoadCache.has(lang)) {
+            return languageLoadCache.get(lang);
+        }
+
+        const promise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = `/lib/highlightjs/languages/${encodeURIComponent(lang)}.min.js`;
+            script.async = true;
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.head.appendChild(script);
+        }).finally(() => {
+            // Keep cache entry; prevents repeated failing loads.
+        });
+
+        languageLoadCache.set(lang, promise);
+        return promise;
+    }
+
+    function highlightAllCode() {
+        const hljs = window.hljs;
+        if (!hljs || typeof hljs.highlightElement !== 'function') return;
+
+        const blocks = Array.from(document.querySelectorAll('pre code'));
+
+        const langs = new Set();
+        for (const block of blocks) {
+            const requested = normalizeLanguage(getRequestedLanguage(block));
+            if (requested) {
+                langs.add(requested);
+            }
+        }
+
+        const loads = Array.from(langs).map(loadLanguage);
+
+        Promise.all(loads).finally(() => {
+            for (const block of blocks) {
+                try {
+                    hljs.highlightElement(block);
+                } catch {
+                    // ignore
+                }
+            }
+        });
+    }
+
     async function copyText(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text ?? '');
@@ -59,4 +151,7 @@
             setMsg(el, 'Copy failed');
         }
     });
+
+    // Run after the DOM is ready; site.js is loaded at the end of <body> so this is effectively immediate.
+    highlightAllCode();
 })();

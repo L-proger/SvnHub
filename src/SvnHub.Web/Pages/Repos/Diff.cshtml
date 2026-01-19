@@ -1,0 +1,106 @@
+@page "/repos/{repoName}/diff"
+@model SvnHub.Web.Pages.Repos.DiffModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} - Diff r{Model.Revision} {Model.Path}";
+    var browsePath = Model.Path == "/" ? null : Model.Path;
+    var openPage = Model.IsDirectory ? "/Repos/Tree" : "/Repos/File";
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1 class="mb-0">@Model.RepoName</h1>
+</div>
+<div class="text-muted">r@(Model.HeadRevision)</div>
+
+<nav class="mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @{
+            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var isRoot = parts.Length == 0;
+            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
+                @if (isRoot)
+                {
+                    @Model.RepoName
+                }
+                else
+                {
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                }
+            </li>
+
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
+                    @if (isLast)
+                    {
+                        @parts[i]
+                    }
+                    else
+                    {
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                    }
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+else
+{
+    <div class="card file-viewer mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="text-muted small">
+                Diff <span class="mx-1">|</span> r@(Model.Revision)
+                @if (!string.IsNullOrWhiteSpace(Model.Author))
+                {
+                    <span class="mx-1">|</span>@Model.Author
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.Age))
+                {
+                    <span class="mx-1">|</span>@Model.Age
+                }
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/History"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@browsePath">
+                    History
+                </a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="@openPage"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@browsePath"
+                   asp-route-rev="@Model.Revision">
+                    Open
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrWhiteSpace(Model.Message))
+            {
+                <div class="text-muted small mb-2">@Model.Message</div>
+            }
+            @if (string.IsNullOrWhiteSpace(Model.Diff))
+            {
+                <div class="text-muted">No diff output.</div>
+            }
+            else
+            {
+                <div class="code-src">
+                    <pre class="mb-0"><code class="language-diff">@Model.Diff</code></pre>
+                </div>
+            }
+            @if (Model.IsTruncated)
+            {
+                <div class="text-muted mt-2">Output truncated.</div>
+            }
+        </div>
+    </div>
+}

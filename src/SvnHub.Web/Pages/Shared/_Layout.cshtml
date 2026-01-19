@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="~/SvnHub.Web.styles.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/code.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/highlightjs/styles/github-dark.min.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
 </head>
 <body>
@@ -89,6 +90,7 @@
 
 <script src="~/lib/jquery/dist/jquery.min.js"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="~/lib/highlightjs/highlight.min.js"></script>
 <script src="~/js/site.js" asp-append-version="true"></script>
 
 @await RenderSectionAsync("Scripts", required: false)

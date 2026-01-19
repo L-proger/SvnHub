@@ -25,7 +25,7 @@
                 }
                 else
                 {
-                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-rev="@Model.ViewRevision">@Model.RepoName</a>
                 }
             </li>
 
@@ -41,7 +41,7 @@
                     }
                     else
                     {
-                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current" asp-route-rev="@Model.ViewRevision">@parts[i]</a>
                     }
                 </li>
             }
@@ -87,12 +87,18 @@ else
                    asp-page="/Repos/File"
                    asp-page-handler="Raw"
                    asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@Model.Path">Raw</a>
+                   asp-route-path="@Model.Path"
+                   asp-route-rev="@Model.ViewRevision">Raw</a>
                 <a class="btn btn-sm btn-outline-secondary"
                    asp-page="/Repos/File"
                    asp-page-handler="Download"
                    asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@Model.Path">Download</a>
+                   asp-route-path="@Model.Path"
+                   asp-route-rev="@Model.ViewRevision">Download</a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/History"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@Model.Path">History</a>
                 @if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
                 {
                     <button type="button"
@@ -111,7 +117,7 @@ else
                         Copy content
                     </button>
                 }
-                @if (Model.CanWrite)
+                @if (Model.CanEdit)
                 {
                     <form method="post" asp-page-handler="Delete" class="d-inline">
                         <input type="hidden" name="path" value="@Model.Path" />
@@ -131,7 +137,7 @@ else
                 <div class="text-center">
                     <img class="img-fluid border rounded d-inline-block"
                          alt="@Model.Path"
-                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path }, null)" />
+                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision }, null)" />
                 </div>
             }
             else if (Model.IsMarkdown)
@@ -142,7 +148,9 @@ else
             {
                 <div class="code-with-lines">
                     <pre class="code-ln" aria-hidden="true">@Model.LineNumbers</pre>
-                    <div class="code-src"><code class="sh">@Html.Raw(Model.HighlightedHtml)</code></div>
+                    <div class="code-src">
+                        <pre class="mb-0"><code class="language-@Model.Language">@Model.Contents</code></pre>
+                    </div>
                 </div>
             }
         </div>
@@ -161,7 +169,6 @@ else
 
 @section Head
 {
-    <link rel="stylesheet" href="~/css/syntax.css" asp-append-version="true" />
     @if (Model.IsMarkdown)
     {
         <link rel="stylesheet" href="~/css/markdown.css" asp-append-version="true" />

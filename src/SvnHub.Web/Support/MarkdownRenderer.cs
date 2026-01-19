@@ -1,352 +1,336 @@
 using System.Text;
+using AngleSharp.Dom;
+using Ganss.Xss;
+using Markdig;
 
 namespace SvnHub.Web.Support;
 
 public static class MarkdownRenderer
 {
+    private static readonly MarkdownPipeline Pipeline = CreatePipeline();
+
     public static string Render(string markdown) => Render(markdown, context: null);
 
     public static string Render(string markdown, string repoName, string currentPath) =>
-        Render(markdown, new MarkdownContext(repoName, currentPath));
+        Render(markdown, new MarkdownContext(repoName, currentPath, Revision: null));
+
+    public static string Render(string markdown, string repoName, string currentPath, long? revision) =>
+        Render(markdown, new MarkdownContext(repoName, currentPath, revision));
 
     private static string Render(string markdown, MarkdownContext? context)
     {
-        if (string.IsNullOrEmpty(markdown))
+        if (string.IsNullOrWhiteSpace(markdown))
         {
             return "";
         }
 
-        var sb = new StringBuilder(markdown.Length + Math.Min(32_000, markdown.Length / 2));
+        // GitHub renders Markdown inside <details> blocks (a non-standard behavior).
+        // We emulate this by expanding <details> blocks into HTML with rendered inner Markdown.
+        var expanded = context is null
+            ? markdown
+            : ExpandDetailsBlocks(markdown, context, depth: 0);
+
+        var html = Markdown.ToHtml(expanded, Pipeline);
+        return context is null ? html : SanitizeAndRewrite(html, context);
+    }
+
+    private static MarkdownPipeline CreatePipeline()
+    {
+        var builder = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .UseAutoLinks();
+
+        return builder.Build();
+    }
+
+    private static string ExpandDetailsBlocks(string markdown, MarkdownContext context, int depth)
+    {
+        // Avoid pathological recursion.
+        if (depth >= 4)
+        {
+            return markdown;
+        }
 
         var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var sb = new StringBuilder(markdown.Length + 256);
 
         var i = 0;
-        var inCodeFence = false;
-        var codeFenceLang = "";
-        var codeFence = new StringBuilder();
-
-        var listMode = ListMode.None;
-        var paragraph = new List<string>();
-        var blockquote = new List<string>();
-
-        void FlushParagraph()
-        {
-            if (paragraph.Count == 0) return;
-            sb.Append("<p>");
-            sb.Append(RenderInline(string.Join(" ", paragraph), context));
-            sb.AppendLine("</p>");
-            paragraph.Clear();
-        }
-
-        void FlushBlockquote()
-        {
-            if (blockquote.Count == 0) return;
-            sb.Append("<blockquote>");
-            sb.Append(RenderBlock(string.Join("\n", blockquote), context));
-            sb.AppendLine("</blockquote>");
-            blockquote.Clear();
-        }
-
-        void OpenList(ListMode mode)
-        {
-            if (listMode != ListMode.None) return;
-            listMode = mode;
-            sb.AppendLine(mode == ListMode.Unordered ? "<ul>" : "<ol>");
-        }
-
-        void CloseList()
-        {
-            if (listMode == ListMode.None) return;
-            sb.AppendLine(listMode == ListMode.Unordered ? "</ul>" : "</ol>");
-            listMode = ListMode.None;
-        }
-
-        void FlushAllBlocks()
-        {
-            FlushBlockquote();
-            CloseList();
-            FlushParagraph();
-        }
-
         while (i < lines.Length)
         {
             var line = lines[i];
-            i++;
-
-            if (inCodeFence)
-            {
-                if (line.StartsWith("```", StringComparison.Ordinal))
-                {
-                    var language = NormalizeCodeFenceLanguage(codeFenceLang);
-                    var highlighted = SimpleSyntaxHighlighter.Highlight(codeFence.ToString(), language);
-                    sb.Append("<pre><code class=\"sh\">");
-                    sb.Append(highlighted);
-                    sb.AppendLine("</code></pre>");
-
-                    inCodeFence = false;
-                    codeFenceLang = "";
-                    codeFence.Clear();
-                    continue;
-                }
-
-                codeFence.AppendLine(line);
-                continue;
-            }
-
-            if (line.StartsWith("```", StringComparison.Ordinal))
-            {
-                FlushAllBlocks();
-                inCodeFence = true;
-                codeFenceLang = line.Trim('`', ' ').Trim();
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                FlushAllBlocks();
-                continue;
-            }
-
-            // Headings: # ... ######
             var trimmed = line.TrimStart();
-            if (trimmed.StartsWith('#'))
-            {
-                var level = 0;
-                while (level < trimmed.Length && level < 6 && trimmed[level] == '#')
-                {
-                    level++;
-                }
 
-                if (level > 0 && (level == trimmed.Length || trimmed[level] == ' '))
-                {
-                    FlushAllBlocks();
-                    var content = trimmed[level..].Trim();
-                    sb.Append("<h");
-                    sb.Append(level);
-                    sb.Append(">");
-                    sb.Append(RenderInline(content, context));
-                    sb.Append("</h");
-                    sb.Append(level);
-                    sb.AppendLine(">");
-                    continue;
-                }
-            }
-
-            // Blockquote: > ...
-            if (trimmed.StartsWith("> ", StringComparison.Ordinal) || string.Equals(trimmed, ">", StringComparison.Ordinal))
+            if (!trimmed.StartsWith("<details", StringComparison.OrdinalIgnoreCase))
             {
-                CloseList();
-                FlushParagraph();
-                blockquote.Add(trimmed.Length >= 2 ? trimmed[2..] : "");
+                sb.AppendLine(line);
+                i++;
                 continue;
             }
 
-            // Unordered list: - / *
-            if (trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("* ", StringComparison.Ordinal))
-            {
-                FlushBlockquote();
-                FlushParagraph();
-                OpenList(ListMode.Unordered);
-                sb.Append("<li>");
-                sb.Append(RenderInline(trimmed[2..], context));
-                sb.AppendLine("</li>");
-                continue;
-            }
+            var openLine = trimmed;
+            var hasOpen =
+                openLine.Contains(" open", StringComparison.OrdinalIgnoreCase) ||
+                openLine.Contains("\topen", StringComparison.OrdinalIgnoreCase) ||
+                openLine.Contains("open>", StringComparison.OrdinalIgnoreCase) ||
+                openLine.Contains("open=\"", StringComparison.OrdinalIgnoreCase) ||
+                openLine.Contains("open='", StringComparison.OrdinalIgnoreCase);
 
-            // Ordered list: "1. "
-            if (TryParseOrderedListItem(trimmed, out var orderedText))
-            {
-                FlushBlockquote();
-                FlushParagraph();
-                OpenList(ListMode.Ordered);
-                sb.Append("<li>");
-                sb.Append(RenderInline(orderedText, context));
-                sb.AppendLine("</li>");
-                continue;
-            }
-
-            // Otherwise: paragraph line
-            FlushBlockquote();
-            CloseList();
-            paragraph.Add(trimmed);
-        }
-
-        FlushAllBlocks();
-
-        if (inCodeFence)
-        {
-            var language = NormalizeCodeFenceLanguage(codeFenceLang);
-            var highlighted = SimpleSyntaxHighlighter.Highlight(codeFence.ToString(), language);
-            sb.Append("<pre><code class=\"sh\">");
-            sb.Append(highlighted);
-            sb.AppendLine("</code></pre>");
-        }
-
-        return sb.ToString();
-    }
-
-    private static string NormalizeCodeFenceLanguage(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return "plaintext";
-        }
-
-        var first = raw.Trim();
-        var space = first.IndexOfAny([' ', '\t']);
-        if (space >= 0)
-        {
-            first = first[..space];
-        }
-
-        first = first.Trim().ToLowerInvariant();
-
-        return first switch
-        {
-            "csharp" => "csharp",
-            "cs" => "csharp",
-            "c#" => "csharp",
-            "cpp" => "cpp",
-            "c++" => "cpp",
-            "cc" => "cpp",
-            "cxx" => "cpp",
-            "h" => "c",
-            "hpp" => "cpp",
-            "hh" => "cpp",
-            "hxx" => "cpp",
-            "c" => "c",
-            "verilog" => "verilog",
-            "sv" => "verilog",
-            "systemverilog" => "verilog",
-            _ => "plaintext",
-        };
-    }
-
-    private static bool TryParseOrderedListItem(string line, out string itemText)
-    {
-        itemText = "";
-        var dot = line.IndexOf('.', StringComparison.Ordinal);
-        if (dot <= 0 || dot + 1 >= line.Length)
-        {
-            return false;
-        }
-
-        // require "N. " where N is digits
-        for (var i = 0; i < dot; i++)
-        {
-            if (!char.IsDigit(line[i]))
-            {
-                return false;
-            }
-        }
-
-        if (line[dot + 1] != ' ')
-        {
-            return false;
-        }
-
-        itemText = line[(dot + 2)..];
-        return true;
-    }
-
-    private static string RenderBlock(string text, MarkdownContext? context)
-    {
-        // MVP: render block by escaping and applying inline formatting per line.
-        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var sb = new StringBuilder(text.Length + 64);
-        for (var i = 0; i < lines.Length; i++)
-        {
-            if (i != 0) sb.Append("<br/>");
-            sb.Append(RenderInline(lines[i], context));
-        }
-        return sb.ToString();
-    }
-
-    private static string RenderInline(string text, MarkdownContext? context)
-    {
-        // MVP inline formatting:
-        // - `code`
-        // - **bold**
-        // - *italic*
-        // - [text](url) with basic URL allowlist
-        var sb = new StringBuilder(text.Length + 32);
-
-        var i = 0;
-        while (i < text.Length)
-        {
-            // Inline code
-            if (text[i] == '`')
-            {
-                var end = text.IndexOf('`', i + 1);
-                if (end > i + 1)
-                {
-                    sb.Append("<code>");
-                    AppendHtmlEncoded(sb, text.AsSpan(i + 1, end - i - 1));
-                    sb.Append("</code>");
-                    i = end + 1;
-                    continue;
-                }
-            }
-
-            // Link [text](url)
-            if (text[i] == '[')
-            {
-                var closeBracket = text.IndexOf(']', i + 1);
-                if (closeBracket > i + 1 && closeBracket + 1 < text.Length && text[closeBracket + 1] == '(')
-                {
-                    var closeParen = text.IndexOf(')', closeBracket + 2);
-                    if (closeParen > closeBracket + 2)
-                    {
-                        var linkText = text.AsSpan(i + 1, closeBracket - i - 1);
-                        var url = text.AsSpan(closeBracket + 2, closeParen - (closeBracket + 2)).ToString().Trim();
-
-                        if (IsAllowedUrl(url))
-                        {
-                            sb.Append("<a href=\"");
-                            AppendHtmlEncoded(sb, ResolveUrl(url, context));
-                            sb.Append("\">");
-                            sb.Append(RenderInline(linkText.ToString(), context));
-                            sb.Append("</a>");
-                            i = closeParen + 1;
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // Bold **text**
-            if (text[i] == '*' && i + 1 < text.Length && text[i + 1] == '*')
-            {
-                var end = text.IndexOf("**", i + 2, StringComparison.Ordinal);
-                if (end > i + 2)
-                {
-                    sb.Append("<strong>");
-                    sb.Append(RenderInline(text[(i + 2)..end], context));
-                    sb.Append("</strong>");
-                    i = end + 2;
-                    continue;
-                }
-            }
-
-            // Italic *text*
-            if (text[i] == '*')
-            {
-                var end = text.IndexOf('*', i + 1);
-                if (end > i + 1)
-                {
-                    sb.Append("<em>");
-                    sb.Append(RenderInline(text[(i + 1)..end], context));
-                    sb.Append("</em>");
-                    i = end + 1;
-                    continue;
-                }
-            }
-
-            AppendHtmlEncoded(sb, text.AsSpan(i, 1));
             i++;
+
+            string? summaryText = null;
+            var inner = new List<string>();
+
+            while (i < lines.Length)
+            {
+                var innerLine = lines[i];
+                var innerTrim = innerLine.Trim();
+                i++;
+
+                if (innerTrim.StartsWith("</details", StringComparison.OrdinalIgnoreCase))
+                {
+                    break;
+                }
+
+                if (summaryText is null &&
+                    innerTrim.StartsWith("<summary", StringComparison.OrdinalIgnoreCase) &&
+                    innerTrim.Contains("</summary>", StringComparison.OrdinalIgnoreCase))
+                {
+                    summaryText = ExtractSummaryText(innerTrim);
+                    continue;
+                }
+
+                inner.Add(innerLine);
+            }
+
+            sb.Append("<details class=\"md-details\"");
+            if (hasOpen)
+            {
+                sb.Append(" open");
+            }
+            sb.AppendLine(">");
+
+            if (!string.IsNullOrWhiteSpace(summaryText))
+            {
+                var summaryHtml = Markdown.ToHtml(summaryText, Pipeline).Trim();
+                summaryHtml = StripOuterParagraph(summaryHtml);
+                sb.Append("<summary>");
+                sb.Append(summaryHtml);
+                sb.AppendLine("</summary>");
+            }
+
+            if (inner.Count != 0)
+            {
+                var innerMd = string.Join("\n", inner);
+                var innerExpanded = ExpandDetailsBlocks(innerMd, context, depth + 1);
+                var innerHtml = Markdown.ToHtml(innerExpanded, Pipeline);
+                sb.AppendLine(innerHtml);
+            }
+
+            sb.AppendLine("</details>");
         }
 
         return sb.ToString();
+    }
+
+    private static string? ExtractSummaryText(string summaryLine)
+    {
+        var gt = summaryLine.IndexOf('>');
+        var close = summaryLine.LastIndexOf("</summary>", StringComparison.OrdinalIgnoreCase);
+        if (gt < 0 || close <= gt)
+        {
+            return null;
+        }
+
+        return summaryLine[(gt + 1)..close];
+    }
+
+    private static string StripOuterParagraph(string html)
+    {
+        var trimmed = html.Trim();
+        if (trimmed.StartsWith("<p>", StringComparison.OrdinalIgnoreCase) &&
+            trimmed.EndsWith("</p>", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed[3..^4].Trim();
+        }
+
+        return trimmed;
+    }
+
+    private static string SanitizeAndRewrite(string html, MarkdownContext context)
+    {
+        var sanitizer = CreateSanitizer();
+
+        sanitizer.PostProcessNode += (_, e) =>
+        {
+            if (e.Node is not IElement el)
+            {
+                return;
+            }
+
+            switch (el.TagName.ToUpperInvariant())
+            {
+                case "A":
+                    RewriteAnchor(el, context);
+                    break;
+                case "IMG":
+                    RewriteImage(el, context);
+                    break;
+                case "TABLE":
+                    DecorateTable(el);
+                    break;
+                case "DETAILS":
+                    el.ClassList.Add("md-details");
+                    break;
+                case "INPUT":
+                    // Markdig task lists render checkboxes. Ensure they're inert.
+                    if (string.Equals(el.GetAttribute("type"), "checkbox", StringComparison.OrdinalIgnoreCase))
+                    {
+                        el.SetAttribute("disabled", "");
+                    }
+                    break;
+            }
+        };
+
+        return sanitizer.Sanitize(html);
+    }
+
+    private static HtmlSanitizer CreateSanitizer()
+    {
+        var sanitizer = new HtmlSanitizer();
+
+        sanitizer.AllowedSchemes.Clear();
+        sanitizer.AllowedSchemes.Add("http");
+        sanitizer.AllowedSchemes.Add("https");
+        sanitizer.AllowedSchemes.Add("mailto");
+
+        sanitizer.AllowedTags.Clear();
+        foreach (var tag in new[]
+                 {
+                     "div",
+                     "p", "br", "hr",
+                     "h1", "h2", "h3", "h4", "h5", "h6",
+                     "strong", "em", "del",
+                     "code", "pre", "span",
+                     "blockquote",
+                     "ul", "ol", "li",
+                     "a", "img",
+                     "table", "thead", "tbody", "tr", "th", "td",
+                     "details", "summary",
+                     "input",
+                 })
+        {
+            sanitizer.AllowedTags.Add(tag);
+        }
+
+        sanitizer.AllowedAttributes.Clear();
+        foreach (var attr in new[]
+                 {
+                     "href", "src", "alt", "title",
+                     "class",
+                     "id",
+                     "name",
+                     "width", "height",
+                     "align",
+                     "open",
+                     "type", "checked", "disabled",
+                 })
+        {
+            sanitizer.AllowedAttributes.Add(attr);
+        }
+
+        // Disallow inline styles; align is supported via attribute -> CSS class mapping.
+        sanitizer.AllowedCssProperties.Clear();
+
+        return sanitizer;
+    }
+
+    private static void RewriteAnchor(IElement el, MarkdownContext context)
+    {
+        var href = el.GetAttribute("href");
+        if (string.IsNullOrWhiteSpace(href))
+        {
+            return;
+        }
+
+        if (!IsAllowedUrl(href))
+        {
+            el.RemoveAttribute("href");
+            return;
+        }
+
+        var resolved = ResolveLinkUrl(href, context);
+        if (!string.Equals(resolved, href, StringComparison.Ordinal))
+        {
+            el.SetAttribute("href", resolved);
+        }
+    }
+
+    private static void RewriteImage(IElement el, MarkdownContext context)
+    {
+        var src = el.GetAttribute("src");
+        if (string.IsNullOrWhiteSpace(src))
+        {
+            return;
+        }
+
+        if (!IsAllowedUrl(src))
+        {
+            el.RemoveAttribute("src");
+            return;
+        }
+
+        var resolved = ResolveImageUrl(src, context);
+        el.SetAttribute("src", resolved);
+
+        el.SetAttribute("loading", "lazy");
+        el.ClassList.Add("md-img");
+
+        var align = el.GetAttribute("align");
+        if (!string.IsNullOrWhiteSpace(align))
+        {
+            var a = align.Trim().ToLowerInvariant();
+            switch (a)
+            {
+                case "left":
+                    el.ClassList.Add("md-img-align-left");
+                    break;
+                case "right":
+                    el.ClassList.Add("md-img-align-right");
+                    break;
+                case "center":
+                    el.ClassList.Add("md-img-align-center");
+                    break;
+            }
+        }
+    }
+
+    private static void DecorateTable(IElement table)
+    {
+        table.ClassList.Add("md-table");
+
+        // Wrap with a scroll container if not already wrapped.
+        if (table.ParentElement is { } parent && parent.ClassList.Contains("md-table-wrap"))
+        {
+            return;
+        }
+
+        var doc = table.Owner;
+        if (doc is null)
+        {
+            return;
+        }
+
+        var wrap = doc.CreateElement("div");
+        wrap.ClassList.Add("md-table-wrap");
+
+        var originalParent = table.Parent;
+        if (originalParent is null)
+        {
+            return;
+        }
+
+        originalParent.ReplaceChild(wrap, table);
+        wrap.AppendChild(table);
     }
 
     private static bool IsAllowedUrl(string url)
@@ -366,11 +350,6 @@ public static class MarkdownRenderer
             return true;
         }
 
-        if (url.StartsWith("/", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             return uri.Scheme is "http" or "https" or "mailto";
@@ -380,13 +359,8 @@ public static class MarkdownRenderer
         return !url.Contains(':');
     }
 
-    private static string ResolveUrl(string url, MarkdownContext? context)
+    private static string ResolveLinkUrl(string url, MarkdownContext context)
     {
-        if (context is null)
-        {
-            return url;
-        }
-
         var raw = url.Trim();
         if (raw.Length == 0 || raw.StartsWith('#'))
         {
@@ -419,27 +393,75 @@ public static class MarkdownRenderer
         }
 
         var baseUrl = isTree
-            ? BuildTreeUrl(context.RepoName, svnPath)
-            : BuildFileUrl(context.RepoName, svnPath);
+            ? BuildTreeUrl(context.RepoName, svnPath, context.Revision)
+            : BuildFileUrl(context.RepoName, svnPath, context.Revision);
 
         return baseUrl + fragment;
     }
 
-    private static string BuildTreeUrl(string repoName, string svnPath)
+    private static string ResolveImageUrl(string url, MarkdownContext context)
+    {
+        var raw = url.Trim();
+        if (raw.Length == 0 || raw.StartsWith('#'))
+        {
+            return raw;
+        }
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out _))
+        {
+            return raw;
+        }
+
+        // For repository images, ignore any query/fragment to avoid passing arbitrary params to handlers.
+        var cut = raw.IndexOfAny(['?', '#']);
+        var rawPath = cut >= 0 ? raw[..cut] : raw;
+
+        // Normalize separators for Windows-authored docs.
+        rawPath = rawPath.Replace('\\', '/');
+
+        string svnPath;
+        if (rawPath.StartsWith("/", StringComparison.Ordinal))
+        {
+            svnPath = NormalizeRepoPath(rawPath);
+        }
+        else
+        {
+            var baseDir = GetDirectoryPath(context.CurrentPath);
+            svnPath = ResolveRelativePath(baseDir, rawPath);
+        }
+
+        return BuildRawFileUrl(context.RepoName, svnPath, context.Revision);
+    }
+
+    private static string BuildTreeUrl(string repoName, string svnPath, long? revision)
     {
         var repoSegment = Uri.EscapeDataString(repoName);
         if (string.IsNullOrWhiteSpace(svnPath) || svnPath == "/")
         {
-            return $"/repos/{repoSegment}/tree";
+            return revision is null
+                ? $"/repos/{repoSegment}/tree"
+                : $"/repos/{repoSegment}/tree?rev={revision.Value}";
         }
 
-        return $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}";
+        return revision is null
+            ? $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}"
+            : $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
     }
 
-    private static string BuildFileUrl(string repoName, string svnPath)
+    private static string BuildFileUrl(string repoName, string svnPath, long? revision)
     {
         var repoSegment = Uri.EscapeDataString(repoName);
-        return $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}";
+        return revision is null
+            ? $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}"
+            : $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
+    }
+
+    private static string BuildRawFileUrl(string repoName, string svnPath, long? revision)
+    {
+        var repoSegment = Uri.EscapeDataString(repoName);
+        return revision is null
+            ? $"/repos/{repoSegment}/file?handler=Raw&path={Uri.EscapeDataString(svnPath)}"
+            : $"/repos/{repoSegment}/file?handler=Raw&path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
     }
 
     private static string GetDirectoryPath(string currentPath)
@@ -526,40 +548,5 @@ public static class MarkdownRenderer
         return p;
     }
 
-    private static void AppendHtmlEncoded(StringBuilder sb, ReadOnlySpan<char> text)
-    {
-        foreach (var ch in text)
-        {
-            switch (ch)
-            {
-                case '&':
-                    sb.Append("&amp;");
-                    break;
-                case '<':
-                    sb.Append("&lt;");
-                    break;
-                case '>':
-                    sb.Append("&gt;");
-                    break;
-                case '"':
-                    sb.Append("&quot;");
-                    break;
-                case '\'':
-                    sb.Append("&#39;");
-                    break;
-                default:
-                    sb.Append(ch);
-                    break;
-            }
-        }
-    }
-
-    private enum ListMode
-    {
-        None = 0,
-        Unordered = 1,
-        Ordered = 2,
-    }
-
-    private sealed record MarkdownContext(string RepoName, string CurrentPath);
+    private sealed record MarkdownContext(string RepoName, string CurrentPath, long? Revision);
 }

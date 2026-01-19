@@ -47,7 +47,9 @@ public sealed class FileModel : PageModel
     public string RepoName { get; private set; } = "";
     public string Path { get; private set; } = "/";
     public string ParentPath { get; private set; } = "/";
+    public long HeadRevision { get; private set; }
     public long Revision { get; private set; }
+    public long? ViewRevision { get; private set; }
     public string Contents { get; private set; } = "";
     public bool IsTruncated { get; private set; }
     public string? Error { get; private set; }
@@ -56,6 +58,7 @@ public sealed class FileModel : PageModel
     public string MarkdownHtml { get; private set; } = "";
     public bool IsImage { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
+    public string Language { get; private set; } = "plaintext";
     public string LineNumbers { get; private set; } = "";
     public long FileSizeBytes { get; private set; }
     public string FileSizeLabel { get; private set; } = "";
@@ -64,7 +67,7 @@ public sealed class FileModel : PageModel
     public string? CheckoutUrl { get; private set; }
     public bool CanEdit { get; private set; }
 
-    public async Task<IActionResult> OnGetAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
         RepoName = repoName;
         if (string.IsNullOrWhiteSpace(path))
@@ -76,6 +79,7 @@ public sealed class FileModel : PageModel
         ParentPath = GetParent(Path);
         CheckoutUrl = SvnCheckoutUrl.Build(_settings.GetEffectiveSvnBaseUrl(), repoName, Path);
         var language = GuessLanguage(Path);
+        Language = language;
         IsImage = IsImagePath(Path);
         ImageContentType = GetContentTypeOrDefault(Path);
 
@@ -97,11 +101,13 @@ public sealed class FileModel : PageModel
         }
 
         CanWrite = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
-        CanEdit = CanWrite;
+        ViewRevision = rev;
 
         try
         {
-            Revision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            Revision = ResolveRevision(rev, HeadRevision);
+            CanEdit = CanWrite && rev is null;
             try
             {
                 FileSizeBytes = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
@@ -143,12 +149,12 @@ public sealed class FileModel : PageModel
             {
                 LineNumbers = "";
                 LineCount = null;
-                MarkdownHtml = MarkdownRenderer.Render(Contents, repoName, Path);
+                MarkdownHtml = MarkdownRenderer.Render(Contents, repoName, Path, rev);
                 HighlightedHtml = "";
             }
             else
             {
-                HighlightedHtml = SimpleSyntaxHighlighter.Highlight(Contents, language);
+                HighlightedHtml = "";
                 LineNumbers = LineNumberHelper.Build(Contents);
                 LineCount = LineNumberHelper.CountLines(Contents);
                 MarkdownHtml = "";
@@ -236,7 +242,7 @@ public sealed class FileModel : PageModel
         return RedirectToPage("/Repos/Tree", new { repoName, path = ParentPath == "/" ? null : ParentPath });
     }
 
-    public async Task<IActionResult> OnGetDownloadAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetDownloadAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
         RepoName = repoName;
         if (string.IsNullOrWhiteSpace(path))
@@ -263,12 +269,13 @@ public sealed class FileModel : PageModel
             return Forbid();
         }
 
-        long rev;
+        long effectiveRev;
         byte[] content;
         try
         {
-            rev = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
-            content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, rev, cancellationToken);
+            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            effectiveRev = ResolveRevision(rev, HeadRevision);
+            content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -288,11 +295,11 @@ public sealed class FileModel : PageModel
 
         var contentType = GetContentTypeOrDefault(fileName);
 
-        Response.Headers.ETag = $"W/\"{repoName}:{rev}:{Path}\"";
+        Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType, fileName);
     }
 
-    public async Task<IActionResult> OnGetRawAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetRawAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
         RepoName = repoName;
         if (string.IsNullOrWhiteSpace(path))
@@ -319,12 +326,13 @@ public sealed class FileModel : PageModel
             return Forbid();
         }
 
-        long rev;
+        long effectiveRev;
         byte[] content;
         try
         {
-            rev = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
-            content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, rev, cancellationToken);
+            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            effectiveRev = ResolveRevision(rev, HeadRevision);
+            content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -340,8 +348,23 @@ public sealed class FileModel : PageModel
         var contentType = GetContentTypeOrDefault(fileName);
         contentType = NormalizeRawTextContentType(fileName, contentType);
 
-        Response.Headers.ETag = $"W/\"{repoName}:{rev}:{Path}\"";
+        Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType);
+    }
+
+    private static long ResolveRevision(long? requested, long head)
+    {
+        if (requested is null)
+        {
+            return head;
+        }
+
+        if (requested.Value <= 0 || requested.Value > head)
+        {
+            throw new InvalidOperationException($"Invalid revision: r{requested.Value}.");
+        }
+
+        return requested.Value;
     }
 
     private static string GuessLanguage(string path)

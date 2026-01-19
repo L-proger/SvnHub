@@ -25,7 +25,7 @@
                 }
                 else
                 {
-                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-rev="@Model.ViewRevision">@Model.RepoName</a>
                 }
             </li>
 
@@ -41,7 +41,7 @@
                     }
                     else
                     {
-                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
+                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current" asp-route-rev="@Model.ViewRevision">@parts[i]</a>
                     }
                 </li>
             }
@@ -54,7 +54,6 @@
     @if (Model.HasReadme)
     {
         <link rel="stylesheet" href="~/css/markdown.css" asp-append-version="true" />
-        <link rel="stylesheet" href="~/css/syntax.css" asp-append-version="true" />
     }
 }
 
@@ -83,13 +82,20 @@ else
             </div>
             <div class="d-flex align-items-center gap-2">
                 <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/History"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
+                    History
+                </a>
+                <a class="btn btn-sm btn-outline-secondary"
                    asp-page="/Repos/Tree"
                    asp-page-handler="Zip"
                    asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
+                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)"
+                   asp-route-rev="@Model.ViewRevision">
                     Download ZIP
                 </a>
-                @if (Model.CanWriteHere)
+                @if (Model.CanWriteActions)
                 {
                     <div class="dropdown">
                         <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
@@ -137,7 +143,7 @@ else
                          </ul>
                      </div>
                  }
-                @if (Model.CanWriteHere && Model.Path != "/")
+                @if (Model.CanWriteActions && Model.Path != "/")
                 {
                     <form method="post"
                           asp-page-handler="DeleteEntry"
@@ -184,7 +190,8 @@ else
                                     <a class="dropdown-item"
                                        asp-page="/Repos/Tree"
                                        asp-page-handler="Zip"
-                                       asp-route-repoName="@Model.RepoName">
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-rev="@Model.ViewRevision">
                                         Download ZIP
                                     </a>
                                 </li>
@@ -232,6 +239,7 @@ else
                                         <a asp-page="/Repos/Tree"
                                            asp-route-repoName="@Model.RepoName"
                                            asp-route-path="@e.Path"
+                                           asp-route-rev="@Model.ViewRevision"
                                            class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                             @e.Name
                                         </a>
@@ -241,6 +249,7 @@ else
                                         <a asp-page="/Repos/File"
                                            asp-route-repoName="@Model.RepoName"
                                            asp-route-path="@e.Path"
+                                           asp-route-rev="@Model.ViewRevision"
                                            class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                             @e.Name
                                         </a>
@@ -288,11 +297,12 @@ else
                                 @if (canZip)
                                 {
                                     <li>
-                                        <a class="dropdown-item"
+                                       <a class="dropdown-item"
                                            asp-page="/Repos/Tree"
                                            asp-page-handler="Zip"
                                            asp-route-repoName="@Model.RepoName"
-                                           asp-route-path="@e.Path">
+                                           asp-route-path="@e.Path"
+                                           asp-route-rev="@Model.ViewRevision">
                                             Download ZIP
                                         </a>
                                     </li>
@@ -332,7 +342,7 @@ else
         </div>
     </div>
 
-    @if (Model.CanWriteHere)
+    @if (Model.CanWriteActions)
     {
         <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -392,9 +402,33 @@ else
 
     @if (Model.HasReadme)
     {
-        <hr />
-        <h2>README</h2>
-        <div class="md">@Html.Raw(Model.ReadmeHtml)</div>
+        <div class="card file-viewer mt-3">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex align-items-center gap-2 text-muted small">
+                    <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M4 0h5.5L14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5V5h3.5L9.5 1.5z"/>
+                    </svg>
+                    <span>@System.IO.Path.GetFileName(Model.ReadmePath)</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    @if (Model.CanEditReadme)
+                    {
+                        <a class="btn btn-sm btn-outline-secondary"
+                           asp-page="/Repos/Edit"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@Model.ReadmePath">Edit</a>
+                    }
+                    <a class="btn btn-sm btn-outline-secondary"
+                       asp-page="/Repos/File"
+                       asp-route-repoName="@Model.RepoName"
+                       asp-route-path="@Model.ReadmePath"
+                       asp-route-rev="@Model.ViewRevision">Open</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="md">@Html.Raw(Model.ReadmeHtml)</div>
+            </div>
+        </div>
     }
 }
 

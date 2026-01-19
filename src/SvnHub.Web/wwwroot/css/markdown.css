@@ -21,7 +21,15 @@
   margin: 0.75rem 0;
 }
 
-.md pre code:not(.sh) {
+.md pre {
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color, rgba(0, 0, 0, 0.08));
+  border-radius: 0.5rem;
+  background: var(--sp-code-bg, #f6f8fa);
+  overflow-x: auto;
+}
+
+.md pre code.hljs {
   padding: 0;
   background: transparent;
 }
@@ -37,6 +45,66 @@
   margin-bottom: 0.75rem;
 }
 
+.md img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem auto;
+}
+
+.md img.md-img-align-left {
+  float: left;
+  display: inline-block;
+  margin: 0.25rem 0.75rem 0.75rem 0;
+}
+
+.md img.md-img-align-right {
+  float: right;
+  display: inline-block;
+  margin: 0.25rem 0 0.75rem 0.75rem;
+}
+
+.md img.md-img-align-center {
+  float: none;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.md details.md-details {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.md details.md-details > summary {
+  cursor: pointer;
+}
+
+.md .md-table-wrap {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.md table.md-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.md table.md-table th,
+.md table.md-table td {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  vertical-align: top;
+}
+
+.md table.md-table thead th {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.03);
+}
+
 :root[data-bs-theme="dark"] .md :not(pre) > code {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -44,4 +112,18 @@
 :root[data-bs-theme="dark"] .md blockquote {
   border-left-color: rgba(240, 246, 252, 0.15);
   color: rgba(201, 209, 217, 0.85);
+}
+
+:root[data-bs-theme="dark"] .md details.md-details {
+  border-color: rgba(240, 246, 252, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+:root[data-bs-theme="dark"] .md table.md-table th,
+:root[data-bs-theme="dark"] .md table.md-table td {
+  border-color: rgba(240, 246, 252, 0.12);
+}
+
+:root[data-bs-theme="dark"] .md table.md-table thead th {
+  background: rgba(255, 255, 255, 0.03);
 }

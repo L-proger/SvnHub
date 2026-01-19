@@ -16,6 +16,18 @@ namespace SvnHub.Web.Pages.Repos;
 [Authorize]
 public sealed class TreeModel : PageModel
 {
+    private static readonly string[] ReadmeFileNames =
+    [
+        "README",
+        "README.md",
+        "README.mkd",
+        "README.markdown",
+        "README.txt",
+        "README.rst",
+        "README.adoc",
+        "README.asciidoc",
+    ];
+
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
@@ -45,17 +57,22 @@ public sealed class TreeModel : PageModel
     public string RepoName { get; private set; } = "";
     public string Path { get; private set; } = "/";
     public string ParentPath { get; private set; } = "/";
+    public long HeadRevision { get; private set; }
     public long Revision { get; private set; }
+    public long? ViewRevision { get; private set; }
     public IReadOnlyList<SvnTreeEntry> Entries { get; private set; } = [];
     public IReadOnlyList<TreeRow> Rows { get; private set; } = [];
     public ISet<string> DeletablePaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
     public ISet<string> ZipPaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
     public bool CanWriteHere { get; private set; }
+    public bool CanWriteActions { get; private set; }
     public int DirectoryCount { get; private set; }
     public int FileCount { get; private set; }
     public string? Error { get; private set; }
     public bool HasReadme { get; private set; }
     public string ReadmeHtml { get; private set; } = "";
+    public string ReadmePath { get; private set; } = "";
+    public bool CanEditReadme { get; private set; }
     public string SvnBaseUrl { get; private set; } = "";
 
     public string? GetCheckoutUrl(string entryPath) => SvnCheckoutUrl.Build(SvnBaseUrl, RepoName, entryPath);
@@ -66,12 +83,13 @@ public sealed class TreeModel : PageModel
     [TempData]
     public string? FlashError { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
         RepoName = repoName;
         Path = Normalize(path);
         ParentPath = GetParent(Path);
         SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+        ViewRevision = rev;
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -91,28 +109,34 @@ public sealed class TreeModel : PageModel
         }
 
         CanWriteHere = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
+        CanWriteActions = CanWriteHere && rev is null;
 
         try
         {
-            Revision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            Revision = ResolveRevision(rev, HeadRevision);
             Entries = await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
             DirectoryCount = Entries.Count(e => e.IsDirectory);
             FileCount = Entries.Count(e => !e.IsDirectory);
             Rows = await LoadRowsAsync(repo.LocalPath, Entries, Revision, cancellationToken);
 
-            DeletablePaths = Entries
-                .Where(e => _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Write)
-                .Select(e => e.Path)
-                .ToHashSet(StringComparer.Ordinal);
+            DeletablePaths = CanWriteActions
+                ? Entries
+                    .Where(e => _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Write)
+                    .Select(e => e.Path)
+                    .ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
 
             ZipPaths = Entries
                 .Where(e => e.IsDirectory && _access.GetAccess(userId.Value, repo.Id, e.Path) >= AccessLevel.Read)
                 .Select(e => e.Path)
                 .ToHashSet(StringComparer.Ordinal);
 
-            var readme = Entries.FirstOrDefault(e =>
-                !e.IsDirectory &&
-                string.Equals(e.Name, "README.md", StringComparison.OrdinalIgnoreCase));
+            var readme = Entries
+                .Where(e => !e.IsDirectory && IsReadmeFileName(e.Name))
+                .OrderBy(e => GetReadmePriority(e.Name))
+                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
 
             if (readme is not null)
             {
@@ -121,8 +145,10 @@ public sealed class TreeModel : PageModel
                 {
                     readmeText = readmeText[..200_000];
                 }
-                ReadmeHtml = MarkdownRenderer.Render(readmeText, repoName, readme.Path);
+                ReadmeHtml = MarkdownRenderer.Render(readmeText, repoName, readme.Path, rev);
+                ReadmePath = readme.Path;
                 HasReadme = true;
+                CanEditReadme = CanWriteActions && _access.GetAccess(userId.Value, repo.Id, readme.Path) >= AccessLevel.Write;
             }
         }
         catch (Exception ex)
@@ -133,6 +159,27 @@ public sealed class TreeModel : PageModel
         }
 
         return Page();
+    }
+
+    private static bool IsReadmeFileName(string name) =>
+        ReadmeFileNames.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+
+    private static int GetReadmePriority(string name)
+    {
+        // Prefer Markdown first (common default), then plain README, then others.
+        if (string.Equals(name, "README.md", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "README.markdown", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "README.mkd", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (string.Equals(name, "README", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 2;
     }
 
     private async Task<IReadOnlyList<TreeRow>> LoadRowsAsync(
@@ -567,11 +614,12 @@ public sealed class TreeModel : PageModel
         return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
     }
 
-    public async Task<IActionResult> OnGetZipAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetZipAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
         RepoName = repoName;
         Path = Normalize(path);
         ParentPath = GetParent(Path);
+        ViewRevision = rev;
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -590,10 +638,11 @@ public sealed class TreeModel : PageModel
             return Forbid();
         }
 
-        long rev;
+        long effectiveRev;
         try
         {
-            rev = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            effectiveRev = ResolveRevision(rev, HeadRevision);
         }
         catch (Exception ex)
         {
@@ -605,7 +654,7 @@ public sealed class TreeModel : PageModel
             try
             {
                 var parent = GetParent(Path);
-                var entries = await _svnlook.ListTreeAsync(repo.LocalPath, parent, rev, cancellationToken);
+                var entries = await _svnlook.ListTreeAsync(repo.LocalPath, parent, effectiveRev, cancellationToken);
                 var isDir = entries.Any(e => string.Equals(e.Path, Path, StringComparison.Ordinal) && e.IsDirectory);
                 if (!isDir)
                 {
@@ -634,7 +683,7 @@ public sealed class TreeModel : PageModel
         {
             var export = await _runner.RunAsync(
                 _options.SvnCommand,
-                ["export", "--non-interactive", "--quiet", "-r", rev.ToString(), targetUrl, exportDir],
+                ["export", "--non-interactive", "--quiet", "-r", effectiveRev.ToString(), targetUrl, exportDir],
                 cancellationToken);
 
             if (!export.IsSuccess)
@@ -646,7 +695,7 @@ public sealed class TreeModel : PageModel
                 ? repoName
                 : System.IO.Path.GetFileName(Path.TrimEnd('/'));
 
-            var zipName = $"{folderName}-r{rev}.zip";
+            var zipName = $"{folderName}-r{effectiveRev}.zip";
 
             Response.ContentType = "application/zip";
             Response.Headers.ContentDisposition = $"attachment; filename=\"{zipName}\"";
@@ -693,6 +742,21 @@ public sealed class TreeModel : PageModel
                 // best-effort cleanup
             }
         }
+    }
+
+    private static long ResolveRevision(long? requested, long head)
+    {
+        if (requested is null)
+        {
+            return head;
+        }
+
+        if (requested.Value <= 0 || requested.Value > head)
+        {
+            throw new InvalidOperationException($"Invalid revision: r{requested.Value}.");
+        }
+
+        return requested.Value;
     }
 
     private static string Normalize(string? path)
