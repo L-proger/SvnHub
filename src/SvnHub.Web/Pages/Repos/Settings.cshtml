@@ -38,6 +38,125 @@
 
 <hr class="mt-4" />
 
+<h2>Default access</h2>
+<form method="post" asp-page-handler="DefaultAccess" class="mt-2" autocomplete="off">
+    <div class="mb-3">
+        <label asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-label"></label>
+        <select asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-select">
+            <option value="Inherit">Inherit server default (@Model.ServerDefaultAuthenticatedAccess)</option>
+            <option value="None">None (private / allow-list)</option>
+            <option value="Read">Read</option>
+            <option value="Write">Write</option>
+        </select>
+        <div class="form-text">Controls the authz rule for <code>$authenticated</code> at repository root.</div>
+    </div>
+    <button class="btn btn-primary" type="submit">Save</button>
+</form>
+
+<hr class="mt-4" />
+
+<h2>Access</h2>
+@if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
+{
+    <div class="alert alert-info">
+        This repository is private (allow-list). Only users/groups listed below have access.
+    </div>
+}
+else
+{
+    <div class="alert alert-secondary">
+        Default access for authenticated users: <strong>@Model.EffectiveAuthenticatedDefaultAccess</strong>. Use rules below to grant additional access.
+    </div>
+}
+
+@if (Model.AccessRules.Count > 0)
+{
+    <table class="table table-sm mt-2">
+        <thead>
+        <tr>
+            <th>Path</th>
+            <th>Subject</th>
+            <th>Access</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.AccessRules)
+        {
+            <tr>
+                <td><code>@r.Path</code></td>
+                <td>@r.SubjectDisplay</td>
+                <td>@r.Access</td>
+                <td>@r.CreatedAt.ToString("u")</td>
+                <td class="text-end">
+                    <form method="post" asp-page-handler="DeleteAccessRule" class="d-inline">
+                        <input type="hidden" name="ruleId" value="@r.Id" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
+{
+    <div class="text-muted">No rules yet. Add at least one rule to allow access.</div>
+}
+else
+{
+    <div class="text-muted">No rules yet.</div>
+}
+
+<h3 class="mt-4">Add rule</h3>
+<form method="post" asp-page-handler="AddAccessRule" class="mt-2" autocomplete="off">
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label asp-for="AccessRuleInput.Path" class="form-label"></label>
+            <input asp-for="AccessRuleInput.Path" class="form-control" placeholder="/" />
+            <span asp-validation-for="AccessRuleInput.Path" class="text-danger"></span>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label asp-for="AccessRuleInput.SubjectType" class="form-label"></label>
+            <select asp-for="AccessRuleInput.SubjectType" class="form-select">
+                <option value="User">User</option>
+                <option value="Group">Group</option>
+            </select>
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">User</label>
+            <select asp-for="AccessRuleInput.UserId" class="form-select">
+                @foreach (var u in Model.UserOptions)
+                {
+                    <option value="@u.Id">@u.UserName</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label class="form-label">Group</label>
+            <select asp-for="AccessRuleInput.GroupId" class="form-select">
+                @foreach (var g in Model.GroupOptions)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label asp-for="AccessRuleInput.Access" class="form-label"></label>
+            <select asp-for="AccessRuleInput.Access" class="form-select">
+                <option value="Read">Read</option>
+                <option value="Write">Write</option>
+            </select>
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Add</button>
+    </div>
+</form>
+
+<hr class="mt-4" />
+
 <h2>Delete</h2>
 <div class="alert alert-warning">
     Delete moves the repository folder into a <code>.deleted</code> folder and hides it from the UI.

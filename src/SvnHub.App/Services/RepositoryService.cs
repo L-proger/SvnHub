@@ -56,6 +56,7 @@ public sealed class RepositoryService
     public async Task<OperationResult<Repository>> CreateAsync(
         Guid actorUserId,
         string name,
+        AccessLevel? authenticatedDefaultAccess,
         bool initializeStandardLayout,
         CancellationToken cancellationToken = default
     )
@@ -88,7 +89,8 @@ public sealed class RepositoryService
             Name: name,
             LocalPath: localPath,
             CreatedAt: DateTimeOffset.UtcNow,
-            IsArchived: false
+            IsArchived: false,
+            AuthenticatedDefaultAccess: authenticatedDefaultAccess
         );
 
         var newState = state with
@@ -122,6 +124,69 @@ public sealed class RepositoryService
         }
 
         return OperationResult<Repository>.Ok(repo);
+    }
+
+    public async Task<OperationResult<Repository>> SetAuthenticatedDefaultAccessAsync(
+        Guid actorUserId,
+        Guid repositoryId,
+        AccessLevel? authenticatedDefaultAccess,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var state = _store.Read();
+        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
+        if (repo is null || repo.IsArchived)
+        {
+            return OperationResult<Repository>.Fail("Repository not found.");
+        }
+
+        if (repo.AuthenticatedDefaultAccess == authenticatedDefaultAccess)
+        {
+            return OperationResult<Repository>.Ok(repo);
+        }
+
+        var updated = repo with { AuthenticatedDefaultAccess = authenticatedDefaultAccess };
+        var newRepos = state.Repositories.Select(r => r.Id == repositoryId ? updated : r).ToList();
+
+        var details = authenticatedDefaultAccess switch
+        {
+            null => "inherit",
+            AccessLevel.None => "none",
+            AccessLevel.Read => "read",
+            AccessLevel.Write => "write",
+            _ => "inherit",
+        };
+
+        var newState = state with
+        {
+            Repositories = newRepos,
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "repo.default_access",
+                    Target: repo.Name,
+                    Success: true,
+                    Details: details
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+
+        try
+        {
+            await _authFilesWriter.WriteAuthzAsync(newState, cancellationToken);
+            await _authFilesWriter.ReloadApacheAsync(cancellationToken);
+        }
+        catch
+        {
+        }
+
+        return OperationResult<Repository>.Ok(updated);
     }
 
     public async Task<OperationResult<Repository>> RenameAsync(
@@ -334,7 +399,8 @@ public sealed class RepositoryService
                     Name: name,
                     LocalPath: dir,
                     CreatedAt: DateTimeOffset.UtcNow,
-                    IsArchived: false
+                    IsArchived: false,
+                    AuthenticatedDefaultAccess: null
                 ));
                 discovered++;
                 continue;

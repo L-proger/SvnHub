@@ -32,6 +32,17 @@
     </div>
 
     <div class="mb-3">
+        <label asp-for="Input.DefaultAuthenticatedAccess" class="form-label"></label>
+        <select asp-for="Input.DefaultAuthenticatedAccess" class="form-select">
+            <option value="None">None (private / allow-list)</option>
+            <option value="Read">Read</option>
+            <option value="Write">Write</option>
+        </select>
+        <div class="form-text">Controls the default authz rule for <code>$authenticated</code> at repository root (unless overridden per-repo).</div>
+        <span asp-validation-for="Input.DefaultAuthenticatedAccess" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
         <label asp-for="Input.MaxUploadMegabytes" class="form-label"></label>
         <input asp-for="Input.MaxUploadMegabytes" type="number" min="1" max="2048" class="form-control" />
         <div class="form-text">Maximum allowed upload size for the web UI (affects Upload).</div>

@@ -150,6 +150,12 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
         foreach (var repo in state.Repositories.Where(r => !r.IsArchived).OrderBy(r => r.Name, StringComparer.Ordinal))
         {
             var repoRules = rulesByRepo.GetValueOrDefault(repo.Id) ?? [];
+            var defaultAuthenticatedAccess = repo.AuthenticatedDefaultAccess ?? state.Settings.DefaultAuthenticatedAccess;
+            if (defaultAuthenticatedAccess is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
+            {
+                defaultAuthenticatedAccess = AccessLevel.Write;
+            }
+
             var paths = repoRules
                 .Select(r => r.Path)
                 .Append("/")
@@ -164,7 +170,18 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
                 sb.Append(':');
                 sb.Append(path);
                 sb.AppendLine("]");
-                sb.AppendLine("* = r");
+
+                // Allow-list always: do not emit "* = r". Use $authenticated defaults instead.
+                var authenticatedLine = defaultAuthenticatedAccess switch
+                {
+                    AccessLevel.Read => "$authenticated = r",
+                    AccessLevel.Write => "$authenticated = rw",
+                    _ => null,
+                };
+                if (!string.IsNullOrWhiteSpace(authenticatedLine))
+                {
+                    sb.AppendLine(authenticatedLine);
+                }
                 sb.AppendLine("@admins = rw");
 
                 var sectionRules = repoRules

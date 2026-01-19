@@ -51,6 +51,23 @@ public sealed class SettingsService
         return "";
     }
 
+    public AccessLevel GetEffectiveDefaultAuthenticatedAccess()
+    {
+        var state = _store.Read();
+        return GetEffectiveDefaultAuthenticatedAccess(state);
+    }
+
+    public static AccessLevel GetEffectiveDefaultAuthenticatedAccess(PortalState state)
+    {
+        return state.Settings.DefaultAuthenticatedAccess switch
+        {
+            AccessLevel.None => AccessLevel.None,
+            AccessLevel.Read => AccessLevel.Read,
+            AccessLevel.Write => AccessLevel.Write,
+            _ => AccessLevel.Write,
+        };
+    }
+
     public long GetEffectiveMaxUploadBytes()
     {
         var state = _store.Read();
@@ -78,6 +95,7 @@ public sealed class SettingsService
         string repositoriesRootPath,
         bool createIfMissing,
         string? svnBaseUrl,
+        AccessLevel defaultAuthenticatedAccess,
         long maxUploadBytes,
         CancellationToken cancellationToken = default
     )
@@ -130,6 +148,7 @@ public sealed class SettingsService
         {
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
+            DefaultAuthenticatedAccess = defaultAuthenticatedAccess,
             MaxUploadBytes = maxUploadBytes,
         };
 
@@ -147,6 +166,15 @@ public sealed class SettingsService
                     Target: "repositoriesRootPath",
                     Success: true,
                     Details: normalized
+                ),
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "settings.set_default_access",
+                    Target: "defaultAuthenticatedAccess",
+                    Success: true,
+                    Details: defaultAuthenticatedAccess.ToString()
                 ),
                 new AuditEvent(
                     Id: Guid.NewGuid(),

@@ -5,6 +5,6 @@ public sealed record Repository(
     string Name,
     string LocalPath,
     DateTimeOffset CreatedAt,
-    bool IsArchived
+    bool IsArchived,
+    AccessLevel? AuthenticatedDefaultAccess = null
 );
-

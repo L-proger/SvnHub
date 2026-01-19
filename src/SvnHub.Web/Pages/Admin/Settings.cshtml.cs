@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
+using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
@@ -28,6 +29,7 @@ public sealed class SettingsModel : PageModel
         Input.RepositoriesRootPath = _settings.GetEffectiveRepositoriesRootPath();
         Input.SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
         Input.MaxUploadMegabytes = (int)Math.Clamp(_settings.GetEffectiveMaxUploadBytes() / (1024 * 1024), 1, int.MaxValue);
+        Input.DefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
@@ -47,6 +49,7 @@ public sealed class SettingsModel : PageModel
             Input.RepositoriesRootPath,
             Input.CreateIfMissing,
             Input.SvnBaseUrl,
+            Input.DefaultAuthenticatedAccess,
             (long)Math.Max(1, Input.MaxUploadMegabytes) * 1024 * 1024,
             cancellationToken);
 
@@ -68,6 +71,9 @@ public sealed class SettingsModel : PageModel
 
         [Display(Name = "SVN base URL")]
         public string SvnBaseUrl { get; set; } = "";
+
+        [Display(Name = "Default access for authenticated users")]
+        public AccessLevel DefaultAuthenticatedAccess { get; set; } = AccessLevel.Write;
 
         [Range(1, 2048)]
         [Display(Name = "Max upload size (MB)")]

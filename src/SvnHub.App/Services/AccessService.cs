@@ -22,6 +22,12 @@ public sealed class AccessService
             return AccessLevel.None;
         }
 
+        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
+        if (repo is null || repo.IsArchived)
+        {
+            return AccessLevel.None;
+        }
+
         if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
         {
             return AccessLevel.Write;
@@ -44,8 +50,14 @@ public sealed class AccessService
             .Cast<PermissionRule>()
             .ToArray();
 
-        // Default: every authenticated user can read everything unless explicitly denied/overridden.
-        var baseline = AccessLevel.Read;
+        var defaultAuthenticatedAccess = repo.AuthenticatedDefaultAccess ?? state.Settings.DefaultAuthenticatedAccess;
+        if (defaultAuthenticatedAccess is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
+        {
+            defaultAuthenticatedAccess = AccessLevel.Write;
+        }
+
+        // Default: allow-list always; baseline is driven by $authenticated default access.
+        var baseline = defaultAuthenticatedAccess;
 
         if (userRule is null && groupRules.Length == 0)
         {

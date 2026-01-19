@@ -5,6 +5,12 @@ public sealed record PortalSettings
     public string RepositoriesRootPath { get; init; } = "";
 
     /// <summary>
+    /// Default access granted to authenticated users for repositories, unless overridden per-repository.
+    /// Used to generate authz rules for $authenticated.
+    /// </summary>
+    public AccessLevel DefaultAuthenticatedAccess { get; init; } = AccessLevel.Write;
+
+    /// <summary>
     /// Public base URL for SVN repositories (e.g. https://svn.example.com/svn).
     /// Used to build "checkout" URLs for files/folders in the UI.
     /// </summary>

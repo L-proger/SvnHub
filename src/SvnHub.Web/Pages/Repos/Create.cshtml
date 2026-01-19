@@ -22,6 +22,16 @@
         <input asp-for="Input.InitializeStandardLayout" class="form-check-input" />
         <label asp-for="Input.InitializeStandardLayout" class="form-check-label"></label>
     </div>
+    <div class="mb-3">
+        <label asp-for="Input.DefaultAuthenticatedAccess" class="form-label"></label>
+        <select asp-for="Input.DefaultAuthenticatedAccess" class="form-select">
+            <option value="Inherit">Inherit server default (@Model.ServerDefaultAuthenticatedAccess)</option>
+            <option value="None">None (private / allow-list)</option>
+            <option value="Read">Read</option>
+            <option value="Write">Write</option>
+        </select>
+        <div class="form-text">This controls the authz rule for <code>$authenticated</code> at repository root.</div>
+    </div>
 
     <div class="d-flex gap-2">
         <button class="btn btn-primary" type="submit">Create</button>
@@ -33,4 +43,3 @@
 {
     <partial name="_ValidationScriptsPartial" />
 }
-
