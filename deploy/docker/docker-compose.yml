@@ -1,0 +1,9 @@
+services:
+  svnhub:
+    build: ../..
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ${SVNHUB_DATA}:/var/lib/svnhub/data
+      - ${SVNHUB_REPOS}:/var/lib/svnhub/repos
+    restart: unless-stopped

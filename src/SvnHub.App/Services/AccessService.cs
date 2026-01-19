@@ -29,11 +29,7 @@ public sealed class AccessService
 
         var normalized = NormalizePath(path);
 
-        var groupIds = state.GroupMembers
-            .Where(m => m.UserId == userId)
-            .Select(m => m.GroupId)
-            .Distinct()
-            .ToArray();
+        var groupIds = ExpandGroupIdsForUser(state, userId);
 
         var userRule = GetBestMatchRule(
             state.PermissionRules,
@@ -139,6 +135,41 @@ public sealed class AccessService
         }
 
         return requested.Length == rulePath.Length || requested[rulePath.Length] == '/';
+    }
+
+    private static Guid[] ExpandGroupIdsForUser(PortalState state, Guid userId)
+    {
+        var direct = state.GroupMembers
+            .Where(m => m.UserId == userId)
+            .Select(m => m.GroupId)
+            .Distinct()
+            .ToArray();
+
+        if (direct.Length == 0 || state.GroupGroupMembers.Count == 0)
+        {
+            return direct;
+        }
+
+        var result = new HashSet<Guid>(direct);
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var edge in state.GroupGroupMembers)
+            {
+                if (!result.Contains(edge.ChildGroupId))
+                {
+                    continue;
+                }
+
+                if (result.Add(edge.GroupId))
+                {
+                    changed = true;
+                }
+            }
+        }
+
+        return result.ToArray();
     }
 
     private static string NormalizePath(string? path)

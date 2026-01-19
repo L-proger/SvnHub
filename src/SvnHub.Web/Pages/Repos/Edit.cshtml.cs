@@ -322,7 +322,13 @@ public sealed class EditModel : PageModel
             {
                 if (Input.IsDirectory)
                 {
-                    await _writer.CreateDirectoryAsync(createRepo.LocalPath, createNewPath, createEdits, createMsg, cancellationToken);
+                    await _writer.CreateDirectoryAsync(
+                        createRepo.LocalPath,
+                        createNewPath,
+                        createEdits,
+                        createMsg,
+                        User?.Identity?.Name,
+                        cancellationToken);
                     return RedirectToPage("/Repos/Tree", new { repoName, path = createNewPath });
                 }
 
@@ -334,7 +340,15 @@ public sealed class EditModel : PageModel
                 }
 
                 // For create: oldPath == newPath to avoid svnmucc mv.
-                await _writer.EditAsync(createRepo.LocalPath, createNewPath, createNewPath, createContentBytes, createEdits, createMsg, cancellationToken);
+                await _writer.EditAsync(
+                    createRepo.LocalPath,
+                    createNewPath,
+                    createNewPath,
+                    createContentBytes,
+                    createEdits,
+                    createMsg,
+                    User?.Identity?.Name,
+                    cancellationToken);
                 return RedirectToPage("/Repos/File", new { repoName, path = createNewPath });
             }
             catch (Exception ex)
@@ -434,7 +448,7 @@ public sealed class EditModel : PageModel
 
         try
         {
-            await _writer.EditAsync(repo.LocalPath, Path, newPath, contentBytes, edits, msg, cancellationToken);
+            await _writer.EditAsync(repo.LocalPath, Path, newPath, contentBytes, edits, msg, User?.Identity?.Name, cancellationToken);
         }
         catch (Exception ex)
         {

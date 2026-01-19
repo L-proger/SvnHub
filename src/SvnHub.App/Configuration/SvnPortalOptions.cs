@@ -2,13 +2,9 @@ namespace SvnHub.App.Configuration;
 
 public sealed class SvnHubOptions
 {
-    public string DataFilePath { get; set; } = "data/SvnHub.json";
+    public string DataDirectory { get; set; } = "data";
 
     public string RepositoriesRootPath { get; set; } = "/srv/svn/repos";
-
-    public string AuthzPath { get; set; } = "/etc/svn/authz";
-
-    public string HtpasswdPath { get; set; } = "/etc/svn/htpasswd";
 
     public string HtpasswdCommand { get; set; } = "htpasswd";
 

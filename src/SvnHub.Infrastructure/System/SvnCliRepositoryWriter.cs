@@ -18,6 +18,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         string repoLocalPath,
         string path,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repoLocalPath))
@@ -39,15 +40,51 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
 
         var targetUrl = new Uri(repoRoot, rel).AbsoluteUri;
 
-        var result = await _runner.RunAsync(
-            _options.SvnCommand,
-            ["delete", "--force-log", "-m", message, targetUrl],
-            cancellationToken);
-
-        if (!result.IsSuccess)
+        // Use -F file and a temporary svn config dir forcing UTF-8 log encoding, for consistent Unicode commit messages.
+        var tmpConfigDir = CreateTempConfigDir();
+        var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
+        try
         {
-            throw new InvalidOperationException(
-                $"svn delete failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+            await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+            await WriteUtf8LogEncodingConfigAsync(tmpConfigDir, cancellationToken);
+
+            var args = new List<string>
+            {
+                "--non-interactive",
+                "--config-dir",
+                tmpConfigDir,
+            };
+
+            if (!string.IsNullOrWhiteSpace(userName))
+            {
+                args.AddRange(["--username", userName]);
+            }
+
+            args.AddRange(["delete", "--force-log", "-F", tmpMsgFile, targetUrl]);
+
+            var result = await _runner.RunAsync(_options.SvnCommand, args, cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"svn delete failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tmpMsgFile))
+                {
+                    File.Delete(tmpMsgFile);
+                }
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
+
+            TryDeleteDirectory(tmpConfigDir);
         }
     }
 
@@ -74,6 +111,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         string path,
         IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repoLocalPath))
@@ -97,21 +135,29 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
 
         var url = new Uri(repoRoot, rel).AbsoluteUri;
 
+        var tmpConfigDir = CreateTempConfigDir();
         var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
         var propFiles = new List<string>();
 
         try
         {
             await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+            await WriteUtf8LogEncodingConfigAsync(tmpConfigDir, cancellationToken);
 
             var args = new List<string>
             {
                 "--non-interactive",
+                !string.IsNullOrWhiteSpace(userName) ? "-u" : "",
+                !string.IsNullOrWhiteSpace(userName) ? userName! : "",
+                "--config-dir",
+                tmpConfigDir,
                 "-F",
                 tmpMsgFile,
                 "mkdir",
                 url,
             };
+
+            args.RemoveAll(string.IsNullOrWhiteSpace);
 
             foreach (var edit in propertyEdits)
             {
@@ -165,6 +211,8 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
                 {
                 }
             }
+
+            TryDeleteDirectory(tmpConfigDir);
         }
     }
 
@@ -173,6 +221,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         IReadOnlyList<string> createDirectories,
         IReadOnlyList<SvnPutFile> putFiles,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repoLocalPath))
@@ -231,10 +280,12 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
             return;
         }
 
+        var tmpConfigDir = CreateTempConfigDir();
         var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
         try
         {
             await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+            await WriteUtf8LogEncodingConfigAsync(tmpConfigDir, cancellationToken);
 
             foreach (var (tmp, _, contents) in putItems)
             {
@@ -244,9 +295,15 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
             var args = new List<string>
             {
                 "--non-interactive",
+                !string.IsNullOrWhiteSpace(userName) ? "-u" : "",
+                !string.IsNullOrWhiteSpace(userName) ? userName! : "",
+                "--config-dir",
+                tmpConfigDir,
                 "-F",
                 tmpMsgFile,
             };
+
+            args.RemoveAll(string.IsNullOrWhiteSpace);
 
             var seenMkdir = new HashSet<string>(StringComparer.Ordinal);
             foreach (var url in mkdirUrls)
@@ -297,6 +354,8 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
                 {
                 }
             }
+
+            TryDeleteDirectory(tmpConfigDir);
         }
     }
 
@@ -307,6 +366,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         byte[]? newContents,
         IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repoLocalPath))
@@ -348,6 +408,7 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
         }
 
         // Use svnmucc (no working copy needed).
+        var tmpConfigDir = CreateTempConfigDir();
         var tmpPutFile = Path.Combine(Path.GetTempPath(), $"svnhub-put-{Guid.NewGuid():N}.tmp");
         var tmpMsgFile = Path.Combine(Path.GetTempPath(), $"svnhub-msg-{Guid.NewGuid():N}.txt");
         var propFiles = new List<string>();
@@ -359,13 +420,20 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
             }
 
             await File.WriteAllTextAsync(tmpMsgFile, message ?? "", cancellationToken);
+            await WriteUtf8LogEncodingConfigAsync(tmpConfigDir, cancellationToken);
 
             var args = new List<string>
             {
                 "--non-interactive",
+                !string.IsNullOrWhiteSpace(userName) ? "-u" : "",
+                !string.IsNullOrWhiteSpace(userName) ? userName! : "",
+                "--config-dir",
+                tmpConfigDir,
                 "-F",
                 tmpMsgFile,
             };
+
+            args.RemoveAll(string.IsNullOrWhiteSpace);
 
             if (needsMove)
             {
@@ -444,6 +512,44 @@ public sealed class SvnCliRepositoryWriter : ISvnRepositoryWriter
                 {
                 }
             }
+
+            TryDeleteDirectory(tmpConfigDir);
+        }
+    }
+
+    private static string CreateTempConfigDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"svnhub-svnconfig-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static Task WriteUtf8LogEncodingConfigAsync(string configDir, CancellationToken cancellationToken)
+    {
+        // Subversion reads "config" file from config-dir.
+        // Force UTF-8 log encoding so commit messages with Cyrillic are accepted consistently.
+        var configPath = Path.Combine(configDir, "config");
+        var content = "[miscellany]\nlog-encoding = UTF-8\n";
+        return File.WriteAllTextAsync(configPath, content, cancellationToken);
+    }
+
+    private static void TryDeleteDirectory(string? dir)
+    {
+        if (string.IsNullOrWhiteSpace(dir))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+        catch
+        {
+            // best-effort cleanup
         }
     }
 }

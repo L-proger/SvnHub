@@ -16,10 +16,13 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 builder.Services.AddRazorPages();
 
 var options = builder.Configuration.GetSection("SvnHub").Get<SvnHubOptions>() ?? new SvnHubOptions();
-if (!Path.IsPathRooted(options.DataFilePath))
+if (!Path.IsPathRooted(options.DataDirectory))
 {
-    options.DataFilePath = Path.Combine(builder.Environment.ContentRootPath, options.DataFilePath);
+    options.DataDirectory = Path.Combine(builder.Environment.ContentRootPath, options.DataDirectory);
 }
+
+options.DataDirectory = Path.GetFullPath(options.DataDirectory);
+Directory.CreateDirectory(options.DataDirectory);
 
 builder.Services.AddSingleton(options);
 
@@ -33,7 +36,7 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddSingleton<IPortalStore, JsonPortalStore>();
+builder.Services.AddSingleton<IPortalStore, MultiFilePortalStore>();
 builder.Services.AddSingleton<ICommandRunner, ProcessCommandRunner>();
 builder.Services.AddSingleton<IHtpasswdService, HtpasswdService>();
 builder.Services.AddSingleton<IAuthFilesWriter, AuthFilesWriter>();

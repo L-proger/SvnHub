@@ -16,6 +16,7 @@
     <tr>
         <th>Name</th>
         <th>Members</th>
+        <th>Subgroups</th>
     </tr>
     </thead>
     <tbody>
@@ -24,6 +25,7 @@
         <tr>
             <td>@g.Name</td>
             <td>@string.Join(", ", g.Members)</td>
+            <td>@string.Join(", ", g.Subgroups)</td>
         </tr>
     }
     </tbody>
@@ -70,8 +72,34 @@
     </div>
 </form>
 
+<h2 class="mt-4">Add subgroup</h2>
+<form method="post" asp-page-handler="AddSubgroup" class="mt-2">
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="AddSubgroupInput.GroupId" class="form-label">Group</label>
+            <select asp-for="AddSubgroupInput.GroupId" class="form-select">
+                @foreach (var g in Model.GroupOptions)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 mb-3">
+            <label asp-for="AddSubgroupInput.ChildGroupId" class="form-label">Subgroup</label>
+            <select asp-for="AddSubgroupInput.ChildGroupId" class="form-select">
+                @foreach (var g in Model.GroupOptions)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 mb-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Add</button>
+        </div>
+    </div>
+</form>
+
 @section Scripts
 {
     <partial name="_ValidationScriptsPartial" />
 }
-

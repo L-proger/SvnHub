@@ -5,6 +5,7 @@ public sealed record PortalState(
     List<PortalUser> Users,
     List<Group> Groups,
     List<GroupMember> GroupMembers,
+    List<GroupGroupMember> GroupGroupMembers,
     List<PermissionRule> PermissionRules,
     List<AuditEvent> AuditEvents
 )
@@ -17,6 +18,7 @@ public sealed record PortalState(
             Users: [],
             Groups: [],
             GroupMembers: [],
+            GroupGroupMembers: [],
             PermissionRules: [],
             AuditEvents: []
         );
@@ -28,6 +30,7 @@ public sealed record PortalState(
             Users = [..Users],
             Groups = [..Groups],
             GroupMembers = [..GroupMembers],
+            GroupGroupMembers = [..GroupGroupMembers],
             PermissionRules = [..PermissionRules],
             AuditEvents = [..AuditEvents],
             Settings = Settings,

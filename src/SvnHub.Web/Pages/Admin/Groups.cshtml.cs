@@ -26,6 +26,9 @@ public sealed class GroupsModel : PageModel
     [BindProperty]
     public AddMemberInputModel AddMemberInput { get; set; } = new();
 
+    [BindProperty]
+    public AddSubgroupInputModel AddSubgroupInput { get; set; } = new();
+
     public IReadOnlyList<GroupRow> Groups { get; private set; } = [];
     public IReadOnlyList<Group> GroupOptions { get; private set; } = [];
     public IReadOnlyList<PortalUser> UserOptions { get; private set; } = [];
@@ -79,17 +82,36 @@ public sealed class GroupsModel : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostAddSubgroupAsync(CancellationToken cancellationToken)
+    {
+        Load();
+
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
+        {
+            return Forbid();
+        }
+
+        var result = await _groups.AddSubgroupAsync(actorId, AddSubgroupInput.GroupId, AddSubgroupInput.ChildGroupId, cancellationToken);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to add subgroup.";
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
     private void Load()
     {
-        Groups = _groups.ListGroupsWithMembers()
-            .Select(x => new GroupRow(x.Group, x.Members))
+        Groups = _groups.ListGroupsWithDetails()
+            .Select(x => new GroupRow(x.Group, x.Members, x.Subgroups))
             .ToArray();
 
         GroupOptions = _groups.ListGroups();
         UserOptions = _users.ListUsers();
     }
 
-    public sealed record GroupRow(Group Group, string[] Members)
+    public sealed record GroupRow(Group Group, string[] Members, string[] Subgroups)
     {
         public Guid Id => Group.Id;
         public string Name => Group.Name;
@@ -109,5 +131,14 @@ public sealed class GroupsModel : PageModel
 
         [Required]
         public Guid UserId { get; set; }
+    }
+
+    public sealed class AddSubgroupInputModel
+    {
+        [Required]
+        public Guid GroupId { get; set; }
+
+        [Required]
+        public Guid ChildGroupId { get; set; }
     }
 }

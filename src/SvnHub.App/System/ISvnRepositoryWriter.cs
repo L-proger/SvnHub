@@ -6,6 +6,7 @@ public interface ISvnRepositoryWriter
         string repoLocalPath,
         string path,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default);
 
     Task CreateDirectoryAsync(
@@ -13,6 +14,7 @@ public interface ISvnRepositoryWriter
         string path,
         IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default);
 
     Task UploadAsync(
@@ -20,6 +22,7 @@ public interface ISvnRepositoryWriter
         IReadOnlyList<string> createDirectories,
         IReadOnlyList<SvnPutFile> putFiles,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default);
 
     Task EditAsync(
@@ -29,5 +32,6 @@ public interface ISvnRepositoryWriter
         byte[]? newContents,
         IReadOnlyList<SvnPropertyEdit> propertyEdits,
         string message,
+        string? userName = null,
         CancellationToken cancellationToken = default);
 }

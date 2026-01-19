@@ -18,6 +18,17 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
         _options = options;
     }
 
+    private string DataDirectory
+    {
+        get
+        {
+            return Path.GetFullPath(_options.DataDirectory);
+        }
+    }
+
+    private string HtpasswdPath => Path.Combine(DataDirectory, "htpasswd");
+    private string AuthzPath => Path.Combine(DataDirectory, "authz");
+
     public Task WriteHtpasswdAsync(IReadOnlyList<PortalUser> users, CancellationToken cancellationToken = default)
     {
         var sb = new StringBuilder();
@@ -35,7 +46,7 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
             sb.Append('\n');
         }
 
-        AtomicFileWriter.WriteAllText(_options.HtpasswdPath, sb.ToString());
+        AtomicFileWriter.WriteAllText(HtpasswdPath, sb.ToString());
         return Task.CompletedTask;
     }
 
@@ -62,15 +73,65 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
                 .Where(u => u.IsActive)
                 .ToDictionary(u => u.Id, u => u.UserName);
 
+            var directUserMembersByGroup = state.GroupMembers
+                .GroupBy(m => m.GroupId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.UserId).Distinct().ToArray());
+
+            var childGroupsByGroup = state.GroupGroupMembers
+                .GroupBy(m => m.GroupId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ChildGroupId).Distinct().ToArray());
+
+            var expandedUserCache = new Dictionary<Guid, string[]>(capacity: state.Groups.Count);
+
+            string[] ExpandUsers(Guid groupId, HashSet<Guid> stack)
+            {
+                if (expandedUserCache.TryGetValue(groupId, out var cached))
+                {
+                    return cached;
+                }
+
+                if (!stack.Add(groupId))
+                {
+                    // Cycle detected; ignore to keep generation stable.
+                    return Array.Empty<string>();
+                }
+
+                var users = new List<string>();
+
+                if (directUserMembersByGroup.TryGetValue(groupId, out var userIds))
+                {
+                    foreach (var uid in userIds)
+                    {
+                        if (activeUserNamesById.TryGetValue(uid, out var name) && !string.IsNullOrWhiteSpace(name))
+                        {
+                            users.Add(name);
+                        }
+                    }
+                }
+
+                if (childGroupsByGroup.TryGetValue(groupId, out var childIds))
+                {
+                    foreach (var child in childIds)
+                    {
+                        users.AddRange(ExpandUsers(child, stack));
+                    }
+                }
+
+                stack.Remove(groupId);
+
+                var result = users
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                expandedUserCache[groupId] = result;
+                return result;
+            }
+
             foreach (var group in state.Groups.OrderBy(g => g.Name, StringComparer.Ordinal))
             {
-                var members = state.GroupMembers
-                    .Where(m => m.GroupId == group.Id)
-                    .Select(m => activeUserNamesById.GetValueOrDefault(m.UserId))
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Select(n => n!)
-                    .OrderBy(n => n, StringComparer.Ordinal)
-                    .ToArray();
+                var members = ExpandUsers(group.Id, new HashSet<Guid>());
 
                 sb.Append(group.Name);
                 sb.Append(" = ");
@@ -140,7 +201,7 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
             }
         }
 
-        AtomicFileWriter.WriteAllText(_options.AuthzPath, sb.ToString());
+        AtomicFileWriter.WriteAllText(AuthzPath, sb.ToString());
         return Task.CompletedTask;
     }
 

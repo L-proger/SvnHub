@@ -224,7 +224,7 @@ public sealed class FileModel : PageModel
 
         try
         {
-            await _svnWriter.DeleteAsync(repo.LocalPath, Path, message, cancellationToken);
+            await _svnWriter.DeleteAsync(repo.LocalPath, Path, message, User?.Identity?.Name, cancellationToken);
         }
         catch (Exception ex)
         {

@@ -283,7 +283,7 @@ public sealed class TreeModel : PageModel
 
         try
         {
-            await _svnWriter.DeleteAsync(repo.LocalPath, normalizedTarget, message, cancellationToken);
+            await _svnWriter.DeleteAsync(repo.LocalPath, normalizedTarget, message, User?.Identity?.Name, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -555,7 +555,7 @@ public sealed class TreeModel : PageModel
 
         try
         {
-            await _svnWriter.UploadAsync(repo.LocalPath, mkdirList, puts, commitMessage.Trim(), cancellationToken);
+            await _svnWriter.UploadAsync(repo.LocalPath, mkdirList, puts, commitMessage.Trim(), User?.Identity?.Name, cancellationToken);
         }
         catch (Exception ex)
         {
