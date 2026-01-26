@@ -9,3 +9,4 @@
 *.cache
 *.log
 data/
+/deploy/docker/.env

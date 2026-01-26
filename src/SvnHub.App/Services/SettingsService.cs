@@ -48,7 +48,7 @@ public sealed class SettingsService
             return state.Settings.SvnBaseUrl;
         }
 
-        return "";
+        return _options.SvnBaseUrl;
     }
 
     public AccessLevel GetEffectiveDefaultAuthenticatedAccess()

@@ -6,6 +6,8 @@ public sealed class SvnHubOptions
 
     public string RepositoriesRootPath { get; set; } = "/srv/svn/repos";
 
+    public string SvnBaseUrl { get; set; } = "http://localhost:8080/svn";
+
     public string HtpasswdCommand { get; set; } = "htpasswd";
 
     public string SvnadminCommand { get; set; } = "svnadmin";
