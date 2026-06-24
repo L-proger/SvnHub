@@ -57,6 +57,7 @@ public sealed class FileModel : PageModel
     public bool IsMarkdown { get; private set; }
     public string MarkdownHtml { get; private set; } = "";
     public bool IsImage { get; private set; }
+    public bool IsPdf { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
     public string Language { get; private set; } = "plaintext";
     public string LineNumbers { get; private set; } = "";
@@ -73,6 +74,7 @@ public sealed class FileModel : PageModel
         Error is null &&
         PreviewUnavailableMessage is null &&
         !IsImage &&
+        !IsPdf &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -89,6 +91,7 @@ public sealed class FileModel : PageModel
         var language = RepositoryFileClassifier.GuessLanguage(Path);
         Language = language;
         IsImage = RepositoryFileClassifier.IsImagePath(Path);
+        var isPdfPath = RepositoryFileClassifier.IsPdfPath(Path);
         ImageContentType = RepositoryFileClassifier.GetContentTypeOrDefault(Path);
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
@@ -143,13 +146,25 @@ public sealed class FileModel : PageModel
             if (IsImage)
             {
                 // Render via Raw handler (binary); don't try to read it as text.
-                Contents = "";
-                HighlightedHtml = "";
-                MarkdownHtml = "";
-                IsMarkdown = false;
-                LineNumbers = "";
-                LineCount = null;
+                ClearTextPreviewState();
                 return Page();
+            }
+
+            if (isPdfPath)
+            {
+                var pdfSniffBytes = await _svnlook.CatPrefixBytesAsync(
+                    repo.LocalPath,
+                    Path,
+                    Revision,
+                    RepositoryFileClassifier.SniffByteCount,
+                    cancellationToken);
+
+                if (RepositoryFileClassifier.LooksPdfContent(pdfSniffBytes))
+                {
+                    IsPdf = true;
+                    ClearTextPreviewState();
+                    return Page();
+                }
             }
 
             var sniffBytes = await _svnlook.CatPrefixBytesAsync(
@@ -204,6 +219,16 @@ public sealed class FileModel : PageModel
         }
 
         return Page();
+    }
+
+    private void ClearTextPreviewState()
+    {
+        Contents = "";
+        HighlightedHtml = "";
+        MarkdownHtml = "";
+        IsMarkdown = false;
+        LineNumbers = "";
+        LineCount = null;
     }
 
     private static string FormatByteSize(long bytes)

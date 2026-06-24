@@ -45,6 +45,17 @@ public static class RepositoryFileClassifier
         return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp";
     }
 
+    public static bool IsPdfPath(string path) =>
+        string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
+
+    public static bool LooksPdfContent(ReadOnlySpan<byte> bytes) =>
+        bytes.Length >= 5 &&
+        bytes[0] == (byte)'%' &&
+        bytes[1] == (byte)'P' &&
+        bytes[2] == (byte)'D' &&
+        bytes[3] == (byte)'F' &&
+        bytes[4] == (byte)'-';
+
     public static string GetContentTypeOrDefault(string fileName)
     {
         if (ContentTypeProvider.TryGetContentType(fileName, out var contentType))

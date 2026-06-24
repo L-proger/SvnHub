@@ -68,7 +68,7 @@ else
                 {
                     <span class="mx-1">|</span>@Model.FileSizeLabel
                 }
-                @if (!Model.IsImage && !Model.IsMarkdown && Model.LineCount is not null)
+                @if (!Model.IsImage && !Model.IsPdf && !Model.IsMarkdown && Model.LineCount is not null)
                 {
                     <span class="mx-1">|</span>@Model.LineCount.Value <text> line</text>@(Model.LineCount.Value == 1 ? "" : "s")
                 }
@@ -146,6 +146,13 @@ else
                          alt="@Model.Path"
                          src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision }, null)" />
                 </div>
+            }
+            else if (Model.IsPdf)
+            {
+                <iframe class="file-pdf-preview"
+                        title="@System.IO.Path.GetFileName(Model.Path)"
+                        src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision }, null)">
+                </iframe>
             }
             else if (Model.IsMarkdown)
             {
