@@ -2,6 +2,7 @@
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
+    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsMarkdown ? Model.LineCount : null;
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -62,17 +63,7 @@ else
 {
     <div class="card file-viewer mt-3">
         <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-            <div class="text-muted small">
-                @System.IO.Path.GetFileName(Model.Path)
-                @if (!string.IsNullOrWhiteSpace(Model.FileSizeLabel))
-                {
-                    <span class="mx-1">|</span>@Model.FileSizeLabel
-                }
-                @if (!Model.IsImage && !Model.IsPdf && !Model.IsMarkdown && Model.LineCount is not null)
-                {
-                    <span class="mx-1">|</span>@Model.LineCount.Value <text> line</text>@(Model.LineCount.Value == 1 ? "" : "s")
-                }
-            </div>
+            @await Html.PartialAsync("Shared/_FilePreviewTitle", new SvnHub.Web.Support.FilePreviewTitleModel(Model.Path, Model.FileSizeLabel, lineCount))
             <div class="d-flex align-items-center gap-2">
                 @if (Model.CanEdit)
                 {

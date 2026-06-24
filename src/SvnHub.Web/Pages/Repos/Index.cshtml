@@ -1,5 +1,6 @@
 @page
 @model SvnHub.Web.Pages.Repos.IndexModel
+@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
 @{
     ViewData["Title"] = "Repositories";
 }
@@ -69,13 +70,21 @@
         var updatedLabel = updatedAt is null
             ? "Updated \u2014"
             : $"Updated {SvnHub.Web.Pages.Repos.IndexModel.FormatUpdatedAgo(updatedAt.Value, DateTimeOffset.UtcNow)}";
+        var repositoryIconHref = FileIcons.GetRepositoryIconHref();
 
         <div class="list-group-item">
             <div class="d-flex align-items-start justify-content-between gap-3">
                 <div class="d-flex align-items-start gap-3">
-                    <svg class="sp-icon repo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                        <path d="M3.75 1A2.75 2.75 0 0 0 1 3.75v10.5c0 .414.336.75.75.75h10.5A2.75 2.75 0 0 0 15 12.25V2.75A1.75 1.75 0 0 0 13.25 1Zm0 1.5h9.5c.138 0 .25.112.25.25v9.5c0 .69-.56 1.25-1.25 1.25H2.5v-.25c0-.69.56-1.25 1.25-1.25h7.5a.75.75 0 0 0 .75-.75V4.75a.75.75 0 0 0-.75-.75h-7.5a1.25 1.25 0 1 1 0-2.5Zm0 4h6.75v4H3.75c-.45 0-.878.108-1.25.3V5.68c.373.204.8.32 1.25.32Z"/>
-                    </svg>
+                    @if (!string.IsNullOrWhiteSpace(repositoryIconHref))
+                    {
+                        <img class="sp-icon repo-icon sp-file-icon" src="@Url.Content(repositoryIconHref)" alt="" aria-hidden="true" />
+                    }
+                    else
+                    {
+                        <svg class="sp-icon repo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path d="M3.75 1A2.75 2.75 0 0 0 1 3.75v10.5c0 .414.336.75.75.75h10.5A2.75 2.75 0 0 0 15 12.25V2.75A1.75 1.75 0 0 0 13.25 1Zm0 1.5h9.5c.138 0 .25.112.25.25v9.5c0 .69-.56 1.25-1.25 1.25H2.5v-.25c0-.69.56-1.25 1.25-1.25h7.5a.75.75 0 0 0 .75-.75V4.75a.75.75 0 0 0-.75-.75h-7.5a1.25 1.25 0 1 1 0-2.5Zm0 4h6.75v4H3.75c-.45 0-.878.108-1.25.3V5.68c.373.204.8.32 1.25.32Z"/>
+                        </svg>
+                    }
                     <div class="flex-grow-1">
                         <a asp-page="/Repos/Tree"
                            asp-route-repoName="@r.Name"

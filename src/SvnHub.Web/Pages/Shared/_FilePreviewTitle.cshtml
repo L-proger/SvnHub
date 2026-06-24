@@ -1,0 +1,23 @@
+@model SvnHub.Web.Support.FilePreviewTitleModel
+@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
+@{
+    var fileIconHref = FileIcons.GetIconHref(Model.Path, isDirectory: false);
+}
+
+<div class="d-flex align-items-center gap-2 text-muted small" style="min-width: 0;">
+    @if (!string.IsNullOrWhiteSpace(fileIconHref))
+    {
+        <img class="sp-icon sp-file-icon" src="@Url.Content(fileIconHref)" alt="" aria-hidden="true" />
+    }
+    <div class="text-truncate" style="min-width: 0;">
+        @System.IO.Path.GetFileName(Model.Path)
+        @if (!string.IsNullOrWhiteSpace(Model.FileSizeLabel))
+        {
+            <span class="mx-1">|</span>@Model.FileSizeLabel
+        }
+        @if (Model.LineCount is not null)
+        {
+            <span class="mx-1">|</span>@Model.LineCount.Value <text> line</text>@(Model.LineCount.Value == 1 ? "" : "s")
+        }
+    </div>
+</div>

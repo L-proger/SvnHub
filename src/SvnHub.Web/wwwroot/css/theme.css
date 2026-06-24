@@ -145,6 +145,10 @@ body {
   border-radius: 0;
 }
 
+.sp-tree-list .list-group-item {
+  padding: 0.45rem 1rem;
+}
+
 .sp-list .list-group-item:first-child,
 .repo-list .list-group-item:first-child {
   border-top-left-radius: 8px;
@@ -164,6 +168,15 @@ body {
   height: 20px;
   color: var(--bs-tertiary-color);
   flex: 0 0 auto;
+}
+
+.sp-file-icon {
+  object-fit: contain;
+}
+
+.sp-tree-list .sp-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .repo-name {
@@ -186,6 +199,10 @@ body {
   font-weight: 500;
 }
 
+.sp-tree-list .sp-entry-name {
+  font-size: 0.95rem;
+}
+
 .sp-entry-name:hover,
 .sp-entry-name:focus {
   color: #5c9bd6 !important;
@@ -200,6 +217,11 @@ body {
   margin-left: auto;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.sp-tree-list .sp-entry-meta {
+  gap: 1rem;
+  font-size: 0.875rem;
 }
 
 .sp-entry-meta .sp-entry-msg {
@@ -217,12 +239,12 @@ body {
 }
 
 .sp-entry-meta .sp-entry-author {
-  width: 8rem;
+  width: 7rem;
   text-align: right;
 }
 
 .sp-entry-meta .sp-entry-age {
-  width: 9.5rem;
+  width: 8rem;
 }
 
 .sp-entry-meta .sp-entry-rev {

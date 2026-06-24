@@ -127,6 +127,7 @@ builder.Services.AddSingleton<AccessService>();
 builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
+builder.Services.AddSingleton<MaterialFileIconService>();
 
 var app = builder.Build();
 

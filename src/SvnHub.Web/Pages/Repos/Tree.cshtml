@@ -1,5 +1,6 @@
 @page "/repos/{repoName}/tree"
 @model SvnHub.Web.Pages.Repos.TreeModel
+@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
 }
@@ -161,15 +162,23 @@ else
             </div>
         </div>
 
-        <div class="list-group list-group-flush sp-list">
+        <div class="list-group list-group-flush sp-list sp-tree-list">
             @if (Model.Path == "/")
             {
+                var rootIconHref = FileIcons.GetIconHref(Model.RepoName, isDirectory: true, isOpen: true);
                 <div class="list-group-item">
-                    <div class="d-flex align-items-start justify-content-between gap-3">
-                        <div class="d-flex align-items-start gap-3">
-                            <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
-                            </svg>
+                    <div class="d-flex align-items-center justify-content-between gap-3">
+                        <div class="d-flex align-items-center gap-2">
+                            @if (!string.IsNullOrWhiteSpace(rootIconHref))
+                            {
+                                <img class="sp-icon sp-file-icon" src="@Url.Content(rootIconHref)" alt="" aria-hidden="true" />
+                            }
+                            else
+                            {
+                                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                                </svg>
+                            }
                             <div class="flex-grow-1">
                                 <div class="sp-entry-name">@Model.RepoName</div>
                                 <div class="text-muted small">Repository root</div>
@@ -215,10 +224,15 @@ else
             @foreach (var row in Model.Rows)
             {
                 var e = row.Entry;
+                var entryIconHref = FileIcons.GetIconHref(e.Path, e.IsDirectory);
                 <div class="list-group-item">
-                    <div class="d-flex align-items-start justify-content-between gap-3">
-                        <div class="d-flex align-items-start gap-3 flex-grow-1" style="min-width: 0;">
-                            @if (e.IsDirectory)
+                    <div class="d-flex align-items-center justify-content-between gap-3">
+                        <div class="d-flex align-items-center gap-2 flex-grow-1" style="min-width: 0;">
+                            @if (!string.IsNullOrWhiteSpace(entryIconHref))
+                            {
+                                <img class="sp-icon sp-file-icon" src="@Url.Content(entryIconHref)" alt="" aria-hidden="true" />
+                            }
+                            else if (e.IsDirectory)
                             {
                                 <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
                                     <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
@@ -232,7 +246,7 @@ else
                                 </svg>
                             }
 
-                            <div class="d-flex align-items-start justify-content-between flex-grow-1 gap-3" style="min-width: 0;">
+                            <div class="d-flex align-items-center justify-content-between flex-grow-1 gap-3" style="min-width: 0;">
                                 <div class="flex-grow-1" style="min-width: 0;">
                                     @if (e.IsDirectory)
                                     {
@@ -404,12 +418,7 @@ else
     {
         <div class="card file-viewer mt-3">
             <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                <div class="d-flex align-items-center gap-2 text-muted small">
-                    <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                        <path d="M4 0h5.5L14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5V5h3.5L9.5 1.5z"/>
-                    </svg>
-                    <span>@System.IO.Path.GetFileName(Model.ReadmePath)</span>
-                </div>
+                @await Html.PartialAsync("Shared/_FilePreviewTitle", new SvnHub.Web.Support.FilePreviewTitleModel(Model.ReadmePath))
                 <div class="d-flex align-items-center gap-2">
                     @if (Model.CanEditReadme)
                     {
