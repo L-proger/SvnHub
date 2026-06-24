@@ -7,13 +7,23 @@ Your **host Apache2** terminates **HTTPS** and reverse-proxies to the container.
 
 This setup uses **bind mounts** so you control where data lives on the host.
 
-1) Copy `.env.example` to `.env` and edit paths:
+1) Copy the committed example file to the local runtime `.env` file:
+
+```sh
+cp deploy/docker/.env.example deploy/docker/.env
+```
+
+The real `deploy/docker/.env` is ignored by Git and should stay local to the
+server.
+
+2) Edit `deploy/docker/.env`:
+
 - `SVNHUB_DATA=/srv/svnhub/data`
 - `SVNHUB_REPOS=/srv/svnhub/repos`
 - `SVNHUB_UID=10001`
 - `SVNHUB_GID=10001`
 
-2) Create the directories on the host:
+3) Create the directories on the host:
 - `sudo mkdir -p /srv/svnhub/data /srv/svnhub/repos`
 
 These map to container paths:
@@ -89,8 +99,26 @@ Leave `SVNHUB_FIX_OWNERSHIP=0` for normal operation after ownership is correct.
 ## Run (docker compose)
 
 From repo root:
-- `cp deploy/docker/.env.example deploy/docker/.env`
-- `docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d --build`
+
+```sh
+cd deploy/docker
+docker compose up -d --build
+```
+
+If `docker compose version` fails, install the Compose plugin or use the legacy
+standalone command:
+
+```sh
+sudo apt update
+sudo apt install docker-compose-v2
+docker compose version
+```
+
+Fallback:
+
+```sh
+docker-compose up -d --build
+```
 
 The container binds to `127.0.0.1:8080` by default.
 
@@ -104,13 +132,14 @@ delete them.
 From repo root:
 
 ```sh
-docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d --build --remove-orphans
+cd deploy/docker
+docker compose up -d --build --remove-orphans
 ```
 
 Then check startup logs:
 
 ```sh
-docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml logs -f --tail=100
+docker compose logs -f --tail=100
 ```
 
 On Windows/PowerShell you can run the helper:

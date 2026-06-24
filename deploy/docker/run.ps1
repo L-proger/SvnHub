@@ -106,11 +106,11 @@ $lines | Set-Content -LiteralPath $envPath -Encoding UTF8
 
 Write-Host "Starting SvnHub container..."
 
-$composeArgs = @("compose", "--env-file", ".env", "up", "-d", "--build")
+$composeArgs = @("compose", "up", "-d", "--build")
 & docker @composeArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "docker compose failed, trying docker-compose..."
-    & docker-compose --env-file .env up -d --build
+    & docker-compose up -d --build
     exit $LASTEXITCODE
 }
 exit 0
