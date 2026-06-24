@@ -21,6 +21,7 @@ public sealed class MultiFilePortalStore : IPortalStore
     private readonly string _usersPath;
     private readonly string _groupsPath;
     private readonly string _permissionsPath;
+    private readonly string _apiTokensPath;
     private readonly string _auditPath;
 
     private PortalState _state;
@@ -37,6 +38,7 @@ public sealed class MultiFilePortalStore : IPortalStore
         _usersPath = Path.Combine(_dataDir, "users.json");
         _groupsPath = Path.Combine(_dataDir, "groups.json");
         _permissionsPath = Path.Combine(_dataDir, "permissions.json");
+        _apiTokensPath = Path.Combine(_dataDir, "api-tokens.json");
         _auditPath = Path.Combine(_dataDir, "audit.json");
 
         _state = LoadOrCreate().Snapshot();
@@ -68,6 +70,7 @@ public sealed class MultiFilePortalStore : IPortalStore
         var users = ReadFileOrDefault(_usersPath, static () => new List<PortalUser>());
         var groupsBundle = ReadFileOrDefault(_groupsPath, static () => new GroupsBundle());
         var rules = ReadFileOrDefault(_permissionsPath, static () => new List<PermissionRule>());
+        var apiTokens = ReadFileOrDefault(_apiTokensPath, static () => new List<ApiToken>());
         var audit = ReadFileOrDefault(_auditPath, static () => new List<AuditEvent>());
 
         return PortalState.Empty() with
@@ -78,6 +81,7 @@ public sealed class MultiFilePortalStore : IPortalStore
             GroupMembers = groupsBundle.GroupMembers ?? [],
             GroupGroupMembers = groupsBundle.GroupGroupMembers ?? [],
             PermissionRules = rules,
+            ApiTokens = apiTokens,
             AuditEvents = audit,
             Settings = settings ?? new PortalSettings(),
         };
@@ -95,6 +99,7 @@ public sealed class MultiFilePortalStore : IPortalStore
             GroupGroupMembers = state.GroupGroupMembers,
         });
         WriteFileAtomic(_permissionsPath, state.PermissionRules);
+        WriteFileAtomic(_apiTokensPath, state.ApiTokens);
         WriteFileAtomic(_auditPath, state.AuditEvents);
     }
 
@@ -130,4 +135,3 @@ public sealed class MultiFilePortalStore : IPortalStore
         public List<GroupGroupMember>? GroupGroupMembers { get; set; }
     }
 }
-

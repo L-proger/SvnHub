@@ -35,6 +35,7 @@ These map to container paths:
   - `repos.json`
   - `groups.json`
   - `permissions.json`
+  - `api-tokens.json`
   - `audit.json`
   - `authz`
   - `htpasswd`
@@ -129,6 +130,20 @@ The container binds to `127.0.0.1:8080` by default.
 web UI for preview, raw, and download responses. The default is 50 MB
 (`52428800`). Larger files are not loaded by the UI process; use SVN checkout or
 the repository SVN URL for them.
+
+## Application tokens
+
+SvnHub exposes a read-only integration endpoint at `/mcp`. Users can create
+personal application tokens from the account menu at `/account`. External
+clients should send:
+
+```http
+Authorization: Bearer svnhub_app_...
+```
+
+Personal token metadata is stored in `/var/lib/svnhub/data/api-tokens.json`.
+Only token hashes are stored, and normal repository permissions still apply for
+the token owner.
 
 ## Update
 

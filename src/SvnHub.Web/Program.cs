@@ -1,12 +1,16 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
+using ModelContextProtocol.Protocol;
 using SvnHub.App.Configuration;
 using SvnHub.App.Services;
 using SvnHub.App.Storage;
 using SvnHub.App.System;
 using SvnHub.Infrastructure.Storage;
 using SvnHub.Infrastructure.System;
+using SvnHub.Domain;
+using SvnHub.Web.Mcp;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +18,7 @@ var builder = WebApplication.CreateBuilder(args);
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddRazorPages();
+builder.Services.AddHttpContextAccessor();
 
 var options = builder.Configuration.GetSection("SvnHub").Get<SvnHubOptions>() ?? new SvnHubOptions();
 if (!Path.IsPathRooted(options.DataDirectory))
@@ -32,9 +37,51 @@ builder.Services
     {
         o.LoginPath = "/Login";
         o.AccessDeniedPath = "/Login";
+        o.Events.OnRedirectToLogin = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/mcp"))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
+        o.Events.OnRedirectToAccessDenied = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/mcp"))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            }
+
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services
+    .AddMcpServer(o =>
+    {
+        o.ServerInfo = new Implementation
+        {
+            Name = "SvnHub",
+            Title = "SvnHub",
+            Version = "1.0.0",
+            Description = "Read-only access to repositories visible to the authenticated SvnHub user.",
+        };
+        o.ServerInstructions =
+            "Use these tools for read-only SVN repository inspection. Do not assume binary or oversized files have previewable contents.";
+    })
+    .WithHttpTransport(o =>
+    {
+        o.Stateless = true;
+    })
+    .WithTools<SvnHubMcpTools>()
+    .AddAuthorizationFilters();
 
 builder.Services.AddSingleton<IPortalStore, MultiFilePortalStore>();
 builder.Services.AddSingleton<ICommandRunner, ProcessCommandRunner>();
@@ -50,6 +97,7 @@ builder.Services.AddSingleton<GroupService>();
 builder.Services.AddSingleton<PermissionService>();
 builder.Services.AddSingleton<AccessService>();
 builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<ApiTokenService>();
 
 var app = builder.Build();
 
@@ -179,11 +227,75 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthentication();
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/mcp")
+        && !(context.User.Identity?.IsAuthenticated ?? false)
+        && TryAuthenticateMcpApiToken(context, out var principal))
+    {
+        context.User = principal;
+    }
+
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapStaticAssets();
+app.MapMcp("/mcp").RequireAuthorization();
 app.MapRazorPages().WithStaticAssets();
 
 app.MapGet("/health", () => Results.Ok("ok"));
 
 app.Run();
+
+static bool TryAuthenticateMcpApiToken(HttpContext context, out ClaimsPrincipal principal)
+{
+    principal = new ClaimsPrincipal(new ClaimsIdentity());
+
+    var header = context.Request.Headers.Authorization.ToString();
+    const string prefix = "Bearer ";
+    if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var token = header[prefix.Length..].Trim();
+
+    var apiTokens = context.RequestServices.GetRequiredService<ApiTokenService>();
+    var apiTokenUser = apiTokens.AuthenticateBearerToken(token);
+    if (apiTokenUser is not null)
+    {
+        principal = BuildPrincipal(apiTokenUser);
+        return true;
+    }
+
+    return false;
+}
+
+static ClaimsPrincipal BuildPrincipal(PortalUser user)
+{
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, user.Id.ToString("D")),
+        new(ClaimTypes.Name, user.UserName),
+    };
+
+    if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
+    {
+        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminRepo)));
+    }
+
+    if (user.Roles.HasFlag(PortalUserRoles.AdminSystem))
+    {
+        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminSystem)));
+    }
+
+    if (user.Roles.HasFlag(PortalUserRoles.AdminHooks))
+    {
+        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminHooks)));
+    }
+
+    return new ClaimsPrincipal(new ClaimsIdentity(claims, "McpApiToken"));
+}

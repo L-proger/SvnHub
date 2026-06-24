@@ -7,6 +7,7 @@ public sealed record PortalState(
     List<GroupMember> GroupMembers,
     List<GroupGroupMember> GroupGroupMembers,
     List<PermissionRule> PermissionRules,
+    List<ApiToken> ApiTokens,
     List<AuditEvent> AuditEvents
 )
 {
@@ -20,6 +21,7 @@ public sealed record PortalState(
             GroupMembers: [],
             GroupGroupMembers: [],
             PermissionRules: [],
+            ApiTokens: [],
             AuditEvents: []
         );
 
@@ -32,6 +34,7 @@ public sealed record PortalState(
             GroupMembers = [..GroupMembers],
             GroupGroupMembers = [..GroupGroupMembers],
             PermissionRules = [..PermissionRules],
+            ApiTokens = [..ApiTokens],
             AuditEvents = [..AuditEvents],
             Settings = Settings,
         };

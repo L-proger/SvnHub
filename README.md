@@ -60,6 +60,20 @@ Read the full Docker guide in `deploy/docker/README.md`.
 file preview, raw, and download responses. Larger files remain available through
 normal SVN checkout/update.
 
+## Application Tokens
+
+SvnHub exposes a read-only integration endpoint at `/mcp`. Users can create
+personal application tokens from the account menu at `/account`. External
+clients should send the token as:
+
+```http
+Authorization: Bearer svnhub_app_...
+```
+
+Personal token metadata is stored in `api-tokens.json`; only token hashes are
+stored, and the plain token is shown once after creation. Repository permissions
+are evaluated for the token owner.
+
 ## Runtime Data
 
 Keep SvnHub runtime data outside the Git checkout. The data directory contains:
@@ -69,6 +83,7 @@ Keep SvnHub runtime data outside the Git checkout. The data directory contains:
 - `repos.json`
 - `groups.json`
 - `permissions.json`
+- `api-tokens.json`
 - `audit.json`
 - `authz`
 - `htpasswd`
