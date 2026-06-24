@@ -10,6 +10,8 @@ This setup uses **bind mounts** so you control where data lives on the host.
 1) Copy `.env.example` to `.env` and edit paths:
 - `SVNHUB_DATA=/srv/svnhub/data`
 - `SVNHUB_REPOS=/srv/svnhub/repos`
+- `SVNHUB_UID=10001`
+- `SVNHUB_GID=10001`
 
 2) Create the directories on the host:
 - `sudo mkdir -p /srv/svnhub/data /srv/svnhub/repos`
@@ -26,13 +28,99 @@ These map to container paths:
   - `authz`
   - `htpasswd`
 
+## File ownership model
+
+Inside the container SvnHub runs as a single service user named `svnhub`.
+Both the ASP.NET app and Apache SVN workers use this identity, so files created
+through the UI and files written by Subversion have the same owner.
+
+Linux bind mounts use numeric IDs, not names. By default the service identity is:
+- `SVNHUB_UID=10001`
+- `SVNHUB_GID=10001`
+
+For a new empty install, the entrypoint initializes the top-level mounted
+directories for that UID/GID. It does not recursively change non-empty
+repositories by default.
+
+## Existing Repositories
+
+For an existing Subversion repository tree, prefer matching the container service
+identity to the host owner instead of recursively changing ownership.
+
+1) Find the current numeric owner/group:
+
+```sh
+stat -c '%u:%g %n' /srv/svn/repos
+find /srv/svn/repos -mindepth 1 -maxdepth 1 -type d -exec stat -c '%u:%g %n' {} \;
+```
+
+2) Put those numbers in `.env`:
+
+```env
+SVNHUB_REPOS=/srv/svn/repos
+SVNHUB_UID=1001
+SVNHUB_GID=1001
+SVNHUB_FIX_OWNERSHIP=0
+```
+
+3) Make sure the data directory is writable by the same service identity. For a
+new SvnHub data directory, either leave it empty and let the entrypoint initialize
+the top-level directory, or prepare it explicitly:
+
+```sh
+sudo mkdir -p /srv/svnhub/data
+sudo chown 1001:1001 /srv/svnhub/data
+sudo chmod 2770 /srv/svnhub/data
+```
+
+4) Start the container and use the UI's Discover action to register repositories.
+Discover reads repository folders and writes SvnHub metadata; it does not rewrite
+repository contents.
+
+Use `SVNHUB_FIX_OWNERSHIP=1` only when you intentionally want SvnHub to take over
+both mounted trees:
+
+```env
+SVNHUB_FIX_OWNERSHIP=1
+```
+
+Leave `SVNHUB_FIX_OWNERSHIP=0` for normal operation after ownership is correct.
+
 ## Run (docker compose)
 
 From repo root:
 - `cp deploy/docker/.env.example deploy/docker/.env`
-- `docker compose -f deploy/docker/docker-compose.yml up -d --build`
+- `docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d --build`
 
 The container binds to `127.0.0.1:8080` by default.
+
+## Update
+
+When this repository has been updated in place, rebuild and recreate the
+container from the new source tree. The SVN repositories and SvnHub state live in
+the host bind mounts from `.env`, so recreating the container does not move or
+delete them.
+
+From repo root:
+
+```sh
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml up -d --build --remove-orphans
+```
+
+Then check startup logs:
+
+```sh
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml logs -f --tail=100
+```
+
+On Windows/PowerShell you can run the helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/docker/update.ps1
+```
+
+Do not use `down -v` for normal updates. If you need to roll back, check out the
+previous repository version and run the same update command again.
 
 ## Host Apache2 (HTTPS)
 
@@ -43,6 +131,4 @@ Use `deploy/docker/host-apache-ssl-proxy.conf` as an example vhost:
 ## Notes
 
 - The container uses internal Apache for `/svn` and proxies `/` to Kestrel (SvnHub UI).
-- By default the container entrypoint attempts `chown -R www-data:www-data` on both mounted volumes.
-  - For large bind-mounts you may want to do this once on the host and set `SVNHUB_SKIP_CHOWN=1`.
-
+- If mounted directories are not writable by the configured UID/GID, startup fails with a permissions hint instead of silently changing repository ownership.

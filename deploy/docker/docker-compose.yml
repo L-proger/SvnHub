@@ -3,6 +3,12 @@ services:
     build: ../..
     ports:
       - "127.0.0.1:8080:8080"
+    environment:
+      SVNHUB_UID: ${SVNHUB_UID:-10001}
+      SVNHUB_GID: ${SVNHUB_GID:-10001}
+      SVNHUB_FIX_OWNERSHIP: ${SVNHUB_FIX_OWNERSHIP:-0}
+      SvnHub__ApacheReloadProgram: ""
+      SvnHub__ApacheReloadArguments: ""
     volumes:
       - ${SVNHUB_DATA}:/var/lib/svnhub/data
       - ${SVNHUB_REPOS}:/var/lib/svnhub/repos
