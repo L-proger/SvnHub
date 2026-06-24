@@ -53,7 +53,7 @@ public sealed class UserModel : PageModel
 
     public async Task<IActionResult> OnPostChangeRolesAsync(Guid userId, CancellationToken cancellationToken)
     {
-        if (!LoadTargetUser(userId))
+        if (!LoadTargetUser(userId, populateRolesInput: false))
         {
             return NotFound();
         }
@@ -175,7 +175,7 @@ public sealed class UserModel : PageModel
         return RedirectToPage("/Admin/Users");
     }
 
-    private bool LoadTargetUser(Guid userId)
+    private bool LoadTargetUser(Guid userId, bool populateRolesInput = true)
     {
         var users = _users.ListUsers();
         var user = users.FirstOrDefault(u => u.Id == userId);
@@ -185,14 +185,17 @@ public sealed class UserModel : PageModel
         }
 
         TargetUser = user;
-        RolesInput = new()
+        if (populateRolesInput)
         {
-            Owner = user.Roles.HasFlag(PortalUserRoles.Owner),
-            AdminUsers = user.Roles.HasFlag(PortalUserRoles.AdminUsers),
-            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
-            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
-            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
-        };
+            RolesInput = new()
+            {
+                Owner = user.Roles.HasFlag(PortalUserRoles.Owner),
+                AdminUsers = user.Roles.HasFlag(PortalUserRoles.AdminUsers),
+                AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
+                AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
+                AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
+            };
+        }
 
         var isOwner = User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
         var isUserAdmin = User?.IsInRole(nameof(PortalUserRoles.AdminUsers)) ?? false;

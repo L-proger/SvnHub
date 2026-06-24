@@ -52,12 +52,12 @@
                 <div class="form-text">Leave all unchecked for a regular user.</div>
             </div>
         }
-        <div class="col-md-2 mb-3 d-flex align-items-end">
-            <button class="btn btn-primary w-100" type="submit">Create</button>
-        </div>
     </div>
 
-    <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Cancel</a>
+    <div class="d-flex justify-content-end gap-2">
+        <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Cancel</a>
+        <button class="btn btn-primary" type="submit">Create</button>
+    </div>
 </form>
 
 @section Scripts
