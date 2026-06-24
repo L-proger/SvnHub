@@ -165,6 +165,7 @@ public sealed class IndexModel : PageModel
         pageSize switch
         {
             10 => 10,
+            15 => 15,
             25 => 25,
             50 => 50,
             100 => 100,

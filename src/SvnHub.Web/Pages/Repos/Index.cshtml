@@ -30,6 +30,7 @@
         <select id="pageSize" name="pageSize" class="form-select form-select-sm" style="width: auto"
                 onchange="this.form.p.value = 1; this.form.submit();">
             @if (Model.PageSize == 10) { <option value="10" selected>10</option> } else { <option value="10">10</option> }
+            @if (Model.PageSize == 15) { <option value="15" selected>15</option> } else { <option value="15">15</option> }
             @if (Model.PageSize == 25) { <option value="25" selected>25</option> } else { <option value="25">25</option> }
             @if (Model.PageSize == 50) { <option value="50" selected>50</option> } else { <option value="50">50</option> }
             @if (Model.PageSize == 100) { <option value="100" selected>100</option> } else { <option value="100">100</option> }
