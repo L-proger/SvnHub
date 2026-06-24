@@ -12,6 +12,13 @@ public static class RepositoryFileClassifier
 
     public static string GuessLanguage(string path)
     {
+        var fileName = Path.GetFileName(path);
+        var fileNameLanguage = GuessLanguageByFileName(fileName);
+        if (fileNameLanguage is not null)
+        {
+            return fileNameLanguage;
+        }
+
         var ext = Path.GetExtension(path);
         if (string.IsNullOrWhiteSpace(ext))
         {
@@ -22,7 +29,30 @@ public static class RepositoryFileClassifier
         return ext switch
         {
             "md" => "markdown",
+            "markdown" => "markdown",
+            "mkd" => "markdown",
+            "adoc" => "asciidoc",
+            "asciidoc" => "asciidoc",
+            "yml" => "yaml",
+            "yaml" => "yaml",
+            "json" => "json",
+            "xml" => "xml",
+            "csproj" => "xml",
+            "props" => "xml",
+            "targets" => "xml",
+            "config" => "xml",
+            "qrc" => "xml",
+            "html" => "xml",
+            "htm" => "xml",
+            "css" => "css",
+            "scss" => "scss",
+            "less" => "less",
+            "js" => "javascript",
+            "mjs" => "javascript",
+            "cjs" => "javascript",
+            "ts" => "typescript",
             "cs" => "csharp",
+            "csx" => "csharp",
             "c" => "c",
             "h" => "c",
             "cc" => "cpp",
@@ -31,6 +61,48 @@ public static class RepositoryFileClassifier
             "hpp" => "cpp",
             "hh" => "cpp",
             "hxx" => "cpp",
+            "cmake" => "cmake",
+            "mk" => "makefile",
+            "mak" => "makefile",
+            "dockerfile" => "dockerfile",
+            "ini" => "ini",
+            "cfg" => "ini",
+            "conf" => "ini",
+            "properties" => "properties",
+            "ps1" => "powershell",
+            "psm1" => "powershell",
+            "psd1" => "powershell",
+            "sh" => "bash",
+            "bash" => "bash",
+            "zsh" => "bash",
+            "bat" => "dos",
+            "cmd" => "dos",
+            "java" => "java",
+            "go" => "go",
+            "rs" => "rust",
+            "py" => "python",
+            "rb" => "ruby",
+            "php" => "php",
+            "sql" => "sql",
+            "gradle" => "gradle",
+            "groovy" => "groovy",
+            "kt" => "kotlin",
+            "kts" => "kotlin",
+            "swift" => "swift",
+            "fs" => "fsharp",
+            "fsx" => "fsharp",
+            "vb" => "vbnet",
+            "lua" => "lua",
+            "pl" => "perl",
+            "pm" => "perl",
+            "r" => "r",
+            "dart" => "dart",
+            "scala" => "scala",
+            "hs" => "haskell",
+            "ex" => "elixir",
+            "exs" => "elixir",
+            "erl" => "erlang",
+            "hrl" => "erlang",
             "v" => "verilog",
             "vh" => "verilog",
             "sv" => "verilog",
@@ -128,13 +200,20 @@ public static class RepositoryFileClassifier
         return ext is
             ".md" or ".markdown" or ".mkd" or ".rst" or ".adoc" or ".asciidoc" or
             ".txt" or ".log" or ".ini" or ".cfg" or ".conf" or ".config" or
+            ".properties" or ".editorconfig" or
             ".yml" or ".yaml" or
             ".pro" or ".pri" or ".qrc" or
             ".cs" or ".csx" or ".csproj" or ".sln" or ".props" or ".targets" or
-            ".json" or ".xml" or ".html" or ".htm" or ".css" or ".js" or
+            ".json" or ".xml" or ".html" or ".htm" or ".css" or ".scss" or ".less" or
+            ".js" or ".mjs" or ".cjs" or ".ts" or
             ".c" or ".h" or ".cc" or ".cpp" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
+            ".cmake" or ".mk" or ".mak" or ".dockerfile" or
             ".v" or ".vh" or ".sv" or ".svh" or
-            ".ps1" or ".psm1" or ".sh" or ".bat" or ".cmd";
+            ".ps1" or ".psm1" or ".psd1" or ".sh" or ".bash" or ".zsh" or ".bat" or ".cmd" or
+            ".java" or ".go" or ".rs" or ".py" or ".rb" or ".php" or ".sql" or
+            ".gradle" or ".groovy" or ".kt" or ".kts" or ".swift" or ".fs" or ".fsx" or
+            ".vb" or ".lua" or ".pl" or ".pm" or ".r" or ".dart" or ".scala" or ".hs" or
+            ".ex" or ".exs" or ".erl" or ".hrl";
     }
 
     public static bool LooksTextContent(ReadOnlySpan<byte> bytes) => !LooksBinary(bytes);
@@ -200,9 +279,41 @@ public static class RepositoryFileClassifier
     private static bool IsMarkdownFileName(string fileName) =>
         string.Equals(Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
 
+    private static string? GuessLanguageByFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        if (string.Equals(fileName, "CMakeLists.txt", StringComparison.OrdinalIgnoreCase))
+        {
+            return "cmake";
+        }
+
+        if (string.Equals(fileName, "Dockerfile", StringComparison.OrdinalIgnoreCase))
+        {
+            return "dockerfile";
+        }
+
+        if (string.Equals(fileName, "Makefile", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(fileName, "GNUmakefile", StringComparison.OrdinalIgnoreCase))
+        {
+            return "makefile";
+        }
+
+        if (string.Equals(fileName, ".editorconfig", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ini";
+        }
+
+        return null;
+    }
+
     private static bool IsKnownExtensionlessTextFile(string fileName) =>
         string.Equals(fileName, "README", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(fileName, "LICENSE", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(fileName, "NOTICE", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(fileName, "CHANGELOG", StringComparison.OrdinalIgnoreCase);
+        string.Equals(fileName, "CHANGELOG", StringComparison.OrdinalIgnoreCase) ||
+        GuessLanguageByFileName(fileName) is not null;
 }
