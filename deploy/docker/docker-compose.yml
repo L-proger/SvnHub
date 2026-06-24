@@ -4,7 +4,7 @@ services:
       context: ../..
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8888:8080"
     environment:
       SVNHUB_UID: ${SVNHUB_UID:-10001}
       SVNHUB_GID: ${SVNHUB_GID:-10001}
