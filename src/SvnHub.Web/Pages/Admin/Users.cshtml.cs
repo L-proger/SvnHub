@@ -33,9 +33,9 @@ public sealed class UsersModel : PageModel
     public int FromIndex { get; private set; }
     public int ToIndex { get; private set; }
 
-    public void OnGet(int p = 1, int pageSize = 10)
+    public void OnGet(int p = 1, int? pageSize = null)
     {
-        PageSize = PaginationOptions.NormalizePageSize(pageSize);
+        PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
 
         var all = _users.ListUsers();

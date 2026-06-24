@@ -49,7 +49,7 @@ public sealed class IndexModel : PageModel
 
     public string? GetCheckoutUrl(string repoName) => SvnCheckoutUrl.Build(SvnBaseUrl, repoName, "/");
 
-    public async Task OnGetAsync(int p = 1, int pageSize = 10, string? q = null)
+    public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null)
     {
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -59,7 +59,7 @@ public sealed class IndexModel : PageModel
         }
 
         SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
-        PageSize = PaginationOptions.NormalizePageSize(pageSize);
+        PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);
 
@@ -98,7 +98,7 @@ public sealed class IndexModel : PageModel
         UpdatedAtByRepoName = await LoadUpdatedDatesAsync(Repositories, HttpContext.RequestAborted);
     }
 
-    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int pageSize = 10, string? q = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, CancellationToken cancellationToken = default)
     {
         if (!(User?.IsInRole("AdminRepo") ?? false))
         {
@@ -115,11 +115,11 @@ public sealed class IndexModel : PageModel
         if (!result.Success)
         {
             Message = result.Error ?? "Discover failed.";
-            return RedirectToPage(new { p, pageSize, q });
+            return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q });
         }
 
         Message = result.Value == 0 ? "No new repositories found." : $"Discovered {result.Value} repository(ies).";
-        return RedirectToPage(new { p, pageSize, q });
+        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q });
     }
 
     public static string FormatUpdatedAgo(DateTimeOffset updatedAt, DateTimeOffset now)
