@@ -65,13 +65,19 @@ public sealed class MultiFilePortalStore : IPortalStore
 
     private PortalState LoadOrCreate()
     {
-        var settings = ReadFileOrDefault(_configPath, static () => new PortalSettings());
+        var settings = ReadFileOrDefault(_configPath, static () => new PortalSettings()) ?? new PortalSettings();
         var repos = ReadFileOrDefault(_reposPath, static () => new List<Repository>());
         var users = ReadFileOrDefault(_usersPath, static () => new List<PortalUser>());
         var groupsBundle = ReadFileOrDefault(_groupsPath, static () => new GroupsBundle());
         var rules = ReadFileOrDefault(_permissionsPath, static () => new List<PermissionRule>());
         var apiTokens = ReadFileOrDefault(_apiTokensPath, static () => new List<ApiToken>());
         var audit = ReadFileOrDefault(_auditPath, static () => new List<AuditEvent>());
+
+        if (settings.RoleSchemaVersion < 1)
+        {
+            users = NormalizeUserRoles(users);
+            settings = settings with { RoleSchemaVersion = 1 };
+        }
 
         return PortalState.Empty() with
         {
@@ -83,7 +89,7 @@ public sealed class MultiFilePortalStore : IPortalStore
             PermissionRules = rules,
             ApiTokens = apiTokens,
             AuditEvents = audit,
-            Settings = settings ?? new PortalSettings(),
+            Settings = settings,
         };
     }
 
@@ -126,6 +132,36 @@ public sealed class MultiFilePortalStore : IPortalStore
     {
         var json = JsonSerializer.Serialize(value, JsonOptions);
         AtomicFileWriter.WriteAllText(path, json);
+    }
+
+    private static List<PortalUser> NormalizeUserRoles(List<PortalUser> users)
+    {
+        if (users.Count == 0)
+        {
+            return users;
+        }
+
+        var normalized = users
+            .Select(u => u with { Roles = u.Roles.NormalizeLegacyRoles() })
+            .ToList();
+
+        if (normalized.Any(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.Owner)))
+        {
+            return normalized;
+        }
+
+        var firstSystemAdmin = normalized.FirstOrDefault(u =>
+            u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminSystem));
+        if (firstSystemAdmin is null)
+        {
+            return normalized;
+        }
+
+        return normalized
+            .Select(u => u.Id == firstSystemAdmin.Id
+                ? u with { Roles = u.Roles | PortalUserRoles.Owner | PortalUserRoles.AdminUsers }
+                : u)
+            .ToList();
     }
 
     private sealed class GroupsBundle

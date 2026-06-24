@@ -37,11 +37,14 @@
                             <a class="nav-link" asp-area="" asp-page="/Repos/Index">Repos</a>
                         </li>
                     }
-                    @if (User?.IsInRole("AdminSystem") ?? false)
+                    @if (User?.IsInRole("AdminUsers") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Users">Users</a>
                         </li>
+                    }
+                    @if (User?.IsInRole("AdminSystem") ?? false)
+                    {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Settings">Settings</a>
                         </li>

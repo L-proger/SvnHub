@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminSystem")]
+[Authorize(Roles = "AdminUsers")]
 public sealed class UserModel : PageModel
 {
     private readonly UserService _users;
@@ -19,6 +19,12 @@ public sealed class UserModel : PageModel
     }
 
     public PortalUser? TargetUser { get; private set; }
+
+    public bool CanAssignRoles { get; private set; }
+
+    public bool CanChangePassword { get; private set; }
+
+    public bool CanDelete { get; private set; }
 
     [TempData]
     public string? Error { get; set; }
@@ -37,30 +43,28 @@ public sealed class UserModel : PageModel
 
     public IActionResult OnGet(Guid userId)
     {
-        var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId);
-        if (user is null)
+        if (!LoadTargetUser(userId))
         {
             return NotFound();
         }
 
-        TargetUser = user;
-        RolesInput.AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo);
-        RolesInput.AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem);
-        RolesInput.AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks);
         return Page();
     }
 
     public async Task<IActionResult> OnPostChangeRolesAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId);
-        if (user is null)
+        if (!LoadTargetUser(userId))
         {
             return NotFound();
         }
 
-        TargetUser = user;
         PasswordInput = new();
         DeleteInput = new();
+
+        if (!CanAssignRoles)
+        {
+            return Forbid();
+        }
 
         ModelState.Clear();
         if (!TryValidateModel(RolesInput, nameof(RolesInput)))
@@ -74,6 +78,8 @@ public sealed class UserModel : PageModel
         }
 
         var newRoles = PortalUserRoles.None;
+        if (RolesInput.Owner) newRoles |= PortalUserRoles.Owner;
+        if (RolesInput.AdminUsers) newRoles |= PortalUserRoles.AdminUsers;
         if (RolesInput.AdminRepo) newRoles |= PortalUserRoles.AdminRepo;
         if (RolesInput.AdminSystem) newRoles |= PortalUserRoles.AdminSystem;
         if (RolesInput.AdminHooks) newRoles |= PortalUserRoles.AdminHooks;
@@ -91,20 +97,17 @@ public sealed class UserModel : PageModel
 
     public async Task<IActionResult> OnPostChangePasswordAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId);
-        if (user is null)
+        if (!LoadTargetUser(userId))
         {
             return NotFound();
         }
 
-        TargetUser = user;
-        RolesInput = new()
-        {
-            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
-            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
-            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
-        };
         DeleteInput = new();
+
+        if (!CanChangePassword)
+        {
+            return Forbid();
+        }
 
         ModelState.Clear();
         if (!TryValidateModel(PasswordInput, nameof(PasswordInput)))
@@ -130,20 +133,17 @@ public sealed class UserModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId);
-        if (user is null)
+        if (!LoadTargetUser(userId))
         {
             return NotFound();
         }
 
-        TargetUser = user;
-        RolesInput = new()
-        {
-            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
-            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
-            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
-        };
         PasswordInput = new();
+
+        if (!CanDelete)
+        {
+            return Forbid();
+        }
 
         ModelState.Clear();
         if (!TryValidateModel(DeleteInput, nameof(DeleteInput)))
@@ -151,7 +151,7 @@ public sealed class UserModel : PageModel
             return Page();
         }
 
-        if (!string.Equals(DeleteInput.ConfirmUserName.Trim(), user.UserName, StringComparison.Ordinal))
+        if (!string.Equals(DeleteInput.ConfirmUserName.Trim(), TargetUser!.UserName, StringComparison.Ordinal))
         {
             ModelState.AddModelError(
                 $"{nameof(DeleteInput)}.{nameof(DeleteInputModel.ConfirmUserName)}",
@@ -171,12 +171,46 @@ public sealed class UserModel : PageModel
             return Page();
         }
 
-        TempData["Success"] = $"User '{user.UserName}' deleted.";
+        TempData["Success"] = $"User '{TargetUser.UserName}' deleted.";
         return RedirectToPage("/Admin/Users");
+    }
+
+    private bool LoadTargetUser(Guid userId)
+    {
+        var users = _users.ListUsers();
+        var user = users.FirstOrDefault(u => u.Id == userId);
+        if (user is null)
+        {
+            return false;
+        }
+
+        TargetUser = user;
+        RolesInput = new()
+        {
+            Owner = user.Roles.HasFlag(PortalUserRoles.Owner),
+            AdminUsers = user.Roles.HasFlag(PortalUserRoles.AdminUsers),
+            AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
+            AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
+            AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
+        };
+
+        var isOwner = User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
+        var isUserAdmin = User?.IsInRole(nameof(PortalUserRoles.AdminUsers)) ?? false;
+
+        CanAssignRoles = isOwner;
+        CanDelete = isOwner;
+        CanChangePassword = isOwner || (isUserAdmin && !user.Roles.HasAnyAdminRole());
+        return true;
     }
 
     public sealed class RolesInputModel
     {
+        [Display(Name = "Owner")]
+        public bool Owner { get; set; }
+
+        [Display(Name = "AdminUsers")]
+        public bool AdminUsers { get; set; }
+
         [Display(Name = "AdminRepo")]
         public bool AdminRepo { get; set; }
 

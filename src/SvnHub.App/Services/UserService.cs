@@ -65,6 +65,17 @@ public sealed class UserService
         }
 
         var state = _store.Read();
+        var actor = GetActiveUser(state, actorUserId);
+        if (actor is null || !actor.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
+        {
+            return OperationResult<PortalUser>.Fail("You don't have permission to create users.");
+        }
+
+        if (roles.HasAnyAdminRole() && !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        {
+            return OperationResult<PortalUser>.Fail("Only an Owner can assign administrator roles.");
+        }
+
         if (state.Users.Any(u => string.Equals(u.UserName, userName, StringComparison.OrdinalIgnoreCase)))
         {
             return OperationResult<PortalUser>.Fail("User already exists.");
@@ -137,10 +148,21 @@ public sealed class UserService
         }
 
         var state = _store.Read();
+        var actor = GetActiveUser(state, actorUserId);
+        if (actor is null || !actor.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
+        {
+            return OperationResult<PortalUser>.Fail("You don't have permission to change user passwords.");
+        }
+
         var user = state.Users.FirstOrDefault(u => u.Id == userId);
         if (user is null)
         {
             return OperationResult<PortalUser>.Fail("User not found.");
+        }
+
+        if (user.Roles.HasAnyAdminRole() && !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        {
+            return OperationResult<PortalUser>.Fail("Only an Owner can change passwords for administrators.");
         }
 
         if (!user.IsActive)
@@ -199,6 +221,86 @@ public sealed class UserService
         return OperationResult<PortalUser>.Ok(updated);
     }
 
+    public async Task<OperationResult<PortalUser>> ChangeOwnPasswordAsync(
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (string.IsNullOrEmpty(currentPassword))
+        {
+            return OperationResult<PortalUser>.Fail("Current password is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+        {
+            return OperationResult<PortalUser>.Fail("Password must be at least 8 characters.");
+        }
+
+        var state = _store.Read();
+        var user = GetActiveUser(state, userId);
+        if (user is null)
+        {
+            return OperationResult<PortalUser>.Fail("User not found.");
+        }
+
+        if (!UiPasswordHasher.Verify(user.UiPasswordHash, currentPassword))
+        {
+            return OperationResult<PortalUser>.Fail("Current password is incorrect.");
+        }
+
+        string bcryptHash;
+        try
+        {
+            bcryptHash = await _htpasswd.CreateBcryptHashAsync(user.UserName, newPassword, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult<PortalUser>.Fail($"Failed to generate SVN password hash via htpasswd: {ex.Message}");
+        }
+
+        var updated = user with
+        {
+            UiPasswordHash = UiPasswordHasher.Hash(newPassword),
+            SvnBcryptHash = bcryptHash,
+        };
+
+        var newState = state with
+        {
+            Users = state.Users.Select(u => u.Id == userId ? updated : u).ToList(),
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: userId,
+                    Action: "user.change_own_password",
+                    Target: user.UserName,
+                    Success: true,
+                    Details: null
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+
+        try
+        {
+            await _authFilesWriter.WriteHtpasswdAsync(newState.Users, cancellationToken);
+            await _authFilesWriter.WriteAuthzAsync(newState, cancellationToken);
+            await _authFilesWriter.ReloadApacheAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult<PortalUser>.Fail(
+                $"Password changed, but failed to update Apache auth files: {ex.Message}");
+        }
+
+        return OperationResult<PortalUser>.Ok(updated);
+    }
+
     public async Task<OperationResult> DeleteUserAsync(
         Guid actorUserId,
         Guid userId,
@@ -206,6 +308,12 @@ public sealed class UserService
     )
     {
         var state = _store.Read();
+        var actor = GetActiveUser(state, actorUserId);
+        if (actor is null || !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        {
+            return OperationResult.Fail("Only an Owner can delete users.");
+        }
+
         var user = state.Users.FirstOrDefault(u => u.Id == userId);
         if (user is null)
         {
@@ -222,12 +330,12 @@ public sealed class UserService
             return OperationResult.Fail("You can't delete yourself.");
         }
 
-        if (user.Roles.HasFlag(PortalUserRoles.AdminSystem))
+        if (user.Roles.HasFlag(PortalUserRoles.Owner))
         {
-            var activeAdminSystemCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminSystem));
-            if (activeAdminSystemCount <= 1)
+            var activeOwnerCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.Owner));
+            if (activeOwnerCount <= 1)
             {
-                return OperationResult.Fail("You can't delete the last active AdminSystem user.");
+                return OperationResult.Fail("You can't delete the last active Owner user.");
             }
         }
 
@@ -279,6 +387,12 @@ public sealed class UserService
     )
     {
         var state = _store.Read();
+        var actor = GetActiveUser(state, actorUserId);
+        if (actor is null || !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        {
+            return OperationResult<PortalUser>.Fail("Only an Owner can change administrator roles.");
+        }
+
         var user = state.Users.FirstOrDefault(u => u.Id == userId);
         if (user is null)
         {
@@ -295,12 +409,12 @@ public sealed class UserService
             return OperationResult<PortalUser>.Ok(user);
         }
 
-        if (user.Roles.HasFlag(PortalUserRoles.AdminSystem) && !newRoles.HasFlag(PortalUserRoles.AdminSystem))
+        if (user.Roles.HasFlag(PortalUserRoles.Owner) && !newRoles.HasFlag(PortalUserRoles.Owner))
         {
-            var activeAdminSystemCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminSystem));
-            if (activeAdminSystemCount <= 1)
+            var activeOwnerCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.Owner));
+            if (activeOwnerCount <= 1)
             {
-                return OperationResult<PortalUser>.Fail("You can't remove AdminSystem from the last active AdminSystem user.");
+                return OperationResult<PortalUser>.Fail("You can't remove Owner from the last active Owner user.");
             }
         }
 
@@ -339,4 +453,7 @@ public sealed class UserService
 
         return OperationResult<PortalUser>.Ok(updated);
     }
+
+    private static PortalUser? GetActiveUser(PortalState state, Guid userId) =>
+        state.Users.FirstOrDefault(u => u.Id == userId && u.IsActive);
 }

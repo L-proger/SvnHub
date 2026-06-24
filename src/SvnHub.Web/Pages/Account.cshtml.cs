@@ -29,6 +29,9 @@ public sealed class AccountModel : PageModel
     [BindProperty]
     public CreateTokenInput TokenInput { get; set; } = new();
 
+    [BindProperty]
+    public ChangePasswordInput PasswordInput { get; set; } = new();
+
     [TempData]
     public string? CreatedToken { get; set; }
 
@@ -55,7 +58,8 @@ public sealed class AccountModel : PageModel
             return Forbid();
         }
 
-        if (!ModelState.IsValid)
+        ModelState.Clear();
+        if (!TryValidateModel(TokenInput, nameof(TokenInput)))
         {
             return Page();
         }
@@ -78,6 +82,44 @@ public sealed class AccountModel : PageModel
 
         CreatedToken = result.Value.PlainTextToken;
         Success = $"Application token '{result.Value.Token.Name}' created.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostChangePasswordAsync(CancellationToken cancellationToken)
+    {
+        if (!LoadAccount(out var userId))
+        {
+            return Forbid();
+        }
+
+        ModelState.Clear();
+        if (!TryValidateModel(PasswordInput, nameof(PasswordInput)))
+        {
+            return Page();
+        }
+
+        if (!string.Equals(PasswordInput.NewPassword, PasswordInput.ConfirmNewPassword, StringComparison.Ordinal))
+        {
+            ModelState.Clear();
+            ModelState.AddModelError(
+                $"{nameof(PasswordInput)}.{nameof(ChangePasswordInput.ConfirmNewPassword)}",
+                "Passwords do not match.");
+            PasswordInput = new();
+            return Page();
+        }
+
+        var result = await _users.ChangeOwnPasswordAsync(
+            userId,
+            PasswordInput.CurrentPassword,
+            PasswordInput.NewPassword,
+            cancellationToken);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to change password.";
+            return RedirectToPage();
+        }
+
+        Success = "Password changed.";
         return RedirectToPage();
     }
 
@@ -152,12 +194,17 @@ public sealed class AccountModel : PageModel
             return "User";
         }
 
-        if (roles.HasFlag(PortalUserRoles.AllAdmin))
+        var names = new List<string>();
+        if (roles.HasFlag(PortalUserRoles.Owner))
         {
-            return "Admin";
+            names.Add("Owner");
         }
 
-        var names = new List<string>();
+        if (roles.HasFlag(PortalUserRoles.AdminUsers))
+        {
+            names.Add("AdminUsers");
+        }
+
         if (roles.HasFlag(PortalUserRoles.AdminRepo))
         {
             names.Add("AdminRepo");
@@ -185,5 +232,22 @@ public sealed class AccountModel : PageModel
 
         [Display(Name = "Expiration")]
         public string ExpiresInDays { get; set; } = "90";
+    }
+
+    public sealed class ChangePasswordInput
+    {
+        [Required]
+        [Display(Name = "Current password")]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required]
+        [MinLength(8)]
+        [Display(Name = "New password")]
+        public string NewPassword { get; set; } = "";
+
+        [Required]
+        [MinLength(8)]
+        [Display(Name = "Confirm new password")]
+        public string ConfirmNewPassword { get; set; } = "";
     }
 }

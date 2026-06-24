@@ -67,6 +67,11 @@ public sealed class RepositoryService
         }
 
         var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
+        }
+
         if (state.Repositories.Any(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return OperationResult<Repository>.Fail("Repository already exists.");
@@ -134,6 +139,11 @@ public sealed class RepositoryService
     )
     {
         var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
+        }
+
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
@@ -202,6 +212,11 @@ public sealed class RepositoryService
         }
 
         var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
+        }
+
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
@@ -282,6 +297,11 @@ public sealed class RepositoryService
     )
     {
         var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repositories.");
+        }
+
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
@@ -354,6 +374,11 @@ public sealed class RepositoryService
     )
     {
         var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return OperationResult<int>.Fail("You don't have permission to manage repositories.");
+        }
+
         var root = _settings.GetEffectiveRepositoriesRootPath(state);
 
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
@@ -481,4 +506,10 @@ public sealed class RepositoryService
             return false;
         }
     }
+
+    private static bool CanManageRepositories(PortalState state, Guid actorUserId) =>
+        state.Users.Any(u =>
+            u.Id == actorUserId &&
+            u.IsActive &&
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
 }

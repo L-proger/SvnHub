@@ -28,7 +28,7 @@ public sealed class AccessService
             return AccessLevel.None;
         }
 
-        if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
+        if (user.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo))
         {
             return AccessLevel.Write;
         }

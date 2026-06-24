@@ -85,6 +85,11 @@ public sealed class GroupService
         }
 
         var state = _store.Read();
+        if (!CanManageRepositoryAccess(state, actorUserId))
+        {
+            return OperationResult<Group>.Fail("You don't have permission to manage repository access.");
+        }
+
         if (state.Groups.Any(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return OperationResult<Group>.Fail("Group already exists.");
@@ -134,6 +139,11 @@ public sealed class GroupService
     )
     {
         var state = _store.Read();
+        if (!CanManageRepositoryAccess(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repository access.");
+        }
+
         var group = state.Groups.FirstOrDefault(g => g.Id == groupId);
         if (group is null)
         {
@@ -202,6 +212,11 @@ public sealed class GroupService
         }
 
         var state = _store.Read();
+        if (!CanManageRepositoryAccess(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repository access.");
+        }
+
         var group = state.Groups.FirstOrDefault(g => g.Id == groupId);
         if (group is null)
         {
@@ -324,4 +339,10 @@ public sealed class GroupService
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private static bool CanManageRepositoryAccess(PortalState state, Guid actorUserId) =>
+        state.Users.Any(u =>
+            u.Id == actorUserId &&
+            u.IsActive &&
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
 }

@@ -81,13 +81,49 @@
 
 <hr class="mt-4" />
 
+<h2>Change Password</h2>
+<form method="post" asp-page-handler="ChangePassword" class="mt-3" autocomplete="off">
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label asp-for="PasswordInput.CurrentPassword" class="form-label"></label>
+            <input asp-for="PasswordInput.CurrentPassword"
+                   type="password"
+                   class="form-control"
+                   autocomplete="current-password" />
+            <span asp-validation-for="PasswordInput.CurrentPassword" class="text-danger"></span>
+        </div>
+        <div class="col-md-3 mb-3">
+            <label asp-for="PasswordInput.NewPassword" class="form-label"></label>
+            <input asp-for="PasswordInput.NewPassword"
+                   type="password"
+                   class="form-control"
+                   autocomplete="new-password" />
+            <span asp-validation-for="PasswordInput.NewPassword" class="text-danger"></span>
+        </div>
+        <div class="col-md-3 mb-3">
+            <label asp-for="PasswordInput.ConfirmNewPassword" class="form-label"></label>
+            <input asp-for="PasswordInput.ConfirmNewPassword"
+                   type="password"
+                   class="form-control"
+                   autocomplete="new-password" />
+            <span asp-validation-for="PasswordInput.ConfirmNewPassword" class="text-danger"></span>
+        </div>
+        <div class="col-md-1 mb-3"></div>
+        <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end">
+            <button class="btn btn-primary w-100" type="submit">Update</button>
+        </div>
+    </div>
+</form>
+
+<hr class="mt-4" />
+
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h2 class="mb-0">Application Tokens</h2>
 </div>
 
 <form method="post" asp-page-handler="CreateToken" class="mt-3" autocomplete="off">
     <div class="row">
-        <div class="col-md-5 mb-3">
+        <div class="col-md-6 mb-3">
             <label asp-for="TokenInput.Name" class="form-label"></label>
             <input asp-for="TokenInput.Name" class="form-control" placeholder="Automation script" />
             <span asp-validation-for="TokenInput.Name" class="text-danger"></span>
@@ -102,7 +138,8 @@
             </select>
             <span asp-validation-for="TokenInput.ExpiresInDays" class="text-danger"></span>
         </div>
-        <div class="col-md-2 mb-3 d-flex align-items-end">
+        <div class="col-md-1 mb-3"></div>
+        <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end">
             <button class="btn btn-primary w-100" type="submit">Create</button>
         </div>
     </div>

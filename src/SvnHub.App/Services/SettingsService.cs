@@ -100,6 +100,23 @@ public sealed class SettingsService
         CancellationToken cancellationToken = default
     )
     {
+        var state = _store.Read();
+        if (!CanManageSystemSettings(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to manage system settings.");
+        }
+
+        if (defaultAuthenticatedAccess is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
+        {
+            return OperationResult.Fail("Invalid default authenticated access.");
+        }
+
+        if (state.Settings.DefaultAuthenticatedAccess != defaultAuthenticatedAccess &&
+            !CanManageRepositoryAccessPolicy(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to change repository access defaults.");
+        }
+
         if (string.IsNullOrWhiteSpace(repositoriesRootPath))
         {
             return OperationResult.Fail("Repositories root path is required.");
@@ -127,7 +144,6 @@ public sealed class SettingsService
             return OperationResult.Fail("Folder does not exist (enable 'Create if missing' or create it manually).");
         }
 
-        var state = _store.Read();
         var normalizedSvnBaseUrl = NormalizeSvnBaseUrl(svnBaseUrl);
         if (normalizedSvnBaseUrl is null)
         {
@@ -214,4 +230,16 @@ public sealed class SettingsService
 
         return trimmed;
     }
+
+    private static bool CanManageSystemSettings(PortalState state, Guid actorUserId) =>
+        state.Users.Any(u =>
+            u.Id == actorUserId &&
+            u.IsActive &&
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminSystem));
+
+    private static bool CanManageRepositoryAccessPolicy(PortalState state, Guid actorUserId) =>
+        state.Users.Any(u =>
+            u.Id == actorUserId &&
+            u.IsActive &&
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
 }

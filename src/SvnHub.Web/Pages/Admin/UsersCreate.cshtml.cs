@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminSystem")]
+[Authorize(Roles = "AdminUsers")]
 public sealed class UsersCreateModel : PageModel
 {
     private readonly UserService _users;
@@ -22,6 +22,8 @@ public sealed class UsersCreateModel : PageModel
     public CreateUserInput Input { get; set; } = new();
 
     public string? Error { get; private set; }
+
+    public bool CanAssignRoles => User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
 
     public IActionResult OnGet()
     {
@@ -41,13 +43,13 @@ public sealed class UsersCreateModel : PageModel
         }
 
         var roles = PortalUserRoles.None;
-        if (Input.AdminRepo) roles |= PortalUserRoles.AdminRepo;
-        if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
-        if (Input.AdminHooks) roles |= PortalUserRoles.AdminHooks;
-
-        if (roles.HasFlag(PortalUserRoles.AdminRepo) || roles.HasFlag(PortalUserRoles.AdminSystem) || roles.HasFlag(PortalUserRoles.AdminHooks))
+        if (CanAssignRoles)
         {
-            // ok
+            if (Input.Owner) roles |= PortalUserRoles.Owner;
+            if (Input.AdminUsers) roles |= PortalUserRoles.AdminUsers;
+            if (Input.AdminRepo) roles |= PortalUserRoles.AdminRepo;
+            if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
+            if (Input.AdminHooks) roles |= PortalUserRoles.AdminHooks;
         }
 
         var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, roles, cancellationToken);
@@ -79,5 +81,11 @@ public sealed class UsersCreateModel : PageModel
 
         [Display(Name = "AdminHooks")]
         public bool AdminHooks { get; set; }
+
+        [Display(Name = "AdminUsers")]
+        public bool AdminUsers { get; set; }
+
+        [Display(Name = "Owner")]
+        public bool Owner { get; set; }
     }
 }

@@ -44,6 +44,11 @@ public sealed class PermissionService
         }
 
         var state = _store.Read();
+        if (!CanManageRepositoryAccess(state, actorUserId))
+        {
+            return OperationResult<PermissionRule>.Fail("You don't have permission to manage repository access.");
+        }
+
         if (state.Repositories.All(r => r.Id != repositoryId))
         {
             return OperationResult<PermissionRule>.Fail("Repository not found.");
@@ -110,6 +115,11 @@ public sealed class PermissionService
     )
     {
         var state = _store.Read();
+        if (!CanManageRepositoryAccess(state, actorUserId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repository access.");
+        }
+
         var existing = state.PermissionRules.FirstOrDefault(r => r.Id == ruleId);
         if (existing is null)
         {
@@ -182,4 +192,10 @@ public sealed class PermissionService
 
         return "/" + string.Join('/', parts);
     }
+
+    private static bool CanManageRepositoryAccess(PortalState state, Guid actorUserId) =>
+        state.Users.Any(u =>
+            u.Id == actorUserId &&
+            u.IsActive &&
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
 }

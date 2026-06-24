@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
@@ -10,6 +11,7 @@ using SvnHub.Infrastructure.Storage;
 using SvnHub.Infrastructure.System;
 using SvnHub.Domain;
 using SvnHub.Web.Mcp;
+using SvnHub.Web.Support;
 using System.Security.Claims;
 using System.Text;
 
@@ -37,6 +39,32 @@ builder.Services
     {
         o.LoginPath = "/Login";
         o.AccessDeniedPath = "/Login";
+        o.Events.OnValidatePrincipal = async context =>
+        {
+            var idStr = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(idStr, out var userId))
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            var users = context.HttpContext.RequestServices.GetRequiredService<UserService>();
+            var user = users.ListUsers().FirstOrDefault(u => u.Id == userId && u.IsActive);
+            if (user is null)
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            var refreshed = SvnHubClaims.CreatePrincipal(user, CookieAuthenticationDefaults.AuthenticationScheme);
+            if (!SvnHubClaims.SameIdentityAndRoles(context.Principal, refreshed))
+            {
+                context.ReplacePrincipal(refreshed);
+                context.ShouldRenew = true;
+            }
+        };
         o.Events.OnRedirectToLogin = context =>
         {
             if (context.Request.Path.StartsWithSegments("/mcp"))
@@ -267,35 +295,9 @@ static bool TryAuthenticateMcpApiToken(HttpContext context, out ClaimsPrincipal 
     var apiTokenUser = apiTokens.AuthenticateBearerToken(token);
     if (apiTokenUser is not null)
     {
-        principal = BuildPrincipal(apiTokenUser);
+        principal = SvnHubClaims.CreatePrincipal(apiTokenUser, "McpApiToken");
         return true;
     }
 
     return false;
-}
-
-static ClaimsPrincipal BuildPrincipal(PortalUser user)
-{
-    var claims = new List<Claim>
-    {
-        new(ClaimTypes.NameIdentifier, user.Id.ToString("D")),
-        new(ClaimTypes.Name, user.UserName),
-    };
-
-    if (user.Roles.HasFlag(PortalUserRoles.AdminRepo))
-    {
-        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminRepo)));
-    }
-
-    if (user.Roles.HasFlag(PortalUserRoles.AdminSystem))
-    {
-        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminSystem)));
-    }
-
-    if (user.Roles.HasFlag(PortalUserRoles.AdminHooks))
-    {
-        claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminHooks)));
-    }
-
-    return new ClaimsPrincipal(new ClaimsIdentity(claims, "McpApiToken"));
 }

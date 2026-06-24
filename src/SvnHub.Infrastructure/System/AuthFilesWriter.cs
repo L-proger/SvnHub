@@ -59,7 +59,7 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
         sb.AppendLine("[groups]");
 
         var admins = state.Users
-            .Where(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.AdminRepo))
+            .Where(u => u.IsActive && u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo))
             .Select(u => u.UserName)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();

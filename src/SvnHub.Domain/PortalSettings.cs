@@ -2,6 +2,8 @@ namespace SvnHub.Domain;
 
 public sealed record PortalSettings
 {
+    public int RoleSchemaVersion { get; init; } = 0;
+
     public string RepositoriesRootPath { get; init; } = "";
 
     /// <summary>
