@@ -78,7 +78,7 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
+        Load(repo, resetRenameInput: false);
 
         // Validate only rename input for this handler.
         ModelState.Clear();
@@ -149,7 +149,7 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
+        Load(repo, resetDefaultAccessInput: false);
 
         // Validate only default access input for this handler.
         ModelState.Clear();
@@ -278,15 +278,25 @@ public sealed class SettingsModel : PageModel
         return RedirectToPage(new { repoName = repo.Name });
     }
 
-    private void Load(Repository repo)
+    private void Load(
+        Repository repo,
+        bool resetRenameInput = true,
+        bool resetDefaultAccessInput = true)
     {
         RepoName = repo.Name;
         RepoId = repo.Id;
         ServerDefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
         RepoAuthenticatedDefaultAccess = repo.AuthenticatedDefaultAccess;
 
-        RenameInput.NewName = repo.Name;
-        DefaultAccessInput.DefaultAuthenticatedAccess = FormatDefaultAccess(repo.AuthenticatedDefaultAccess);
+        if (resetRenameInput)
+        {
+            RenameInput.NewName = repo.Name;
+        }
+
+        if (resetDefaultAccessInput)
+        {
+            DefaultAccessInput.DefaultAuthenticatedAccess = FormatDefaultAccess(repo.AuthenticatedDefaultAccess);
+        }
 
         UserOptions = _users.ListUsers();
         GroupOptions = _groups.ListGroups();
