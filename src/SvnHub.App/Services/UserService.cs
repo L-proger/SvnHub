@@ -160,9 +160,9 @@ public sealed class UserService
             return OperationResult<PortalUser>.Fail("User not found.");
         }
 
-        if (user.Roles.HasAnyAdminRole() && !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        if (user.Roles.HasFlag(PortalUserRoles.Owner) && !actor.Roles.HasFlag(PortalUserRoles.Owner))
         {
-            return OperationResult<PortalUser>.Fail("Only an Owner can change passwords for administrators.");
+            return OperationResult<PortalUser>.Fail("Only an Owner can change passwords for Owner users.");
         }
 
         if (!user.IsActive)
@@ -309,9 +309,9 @@ public sealed class UserService
     {
         var state = _store.Read();
         var actor = GetActiveUser(state, actorUserId);
-        if (actor is null || !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        if (actor is null || !actor.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
         {
-            return OperationResult.Fail("Only an Owner can delete users.");
+            return OperationResult.Fail("You don't have permission to delete users.");
         }
 
         var user = state.Users.FirstOrDefault(u => u.Id == userId);
@@ -332,6 +332,11 @@ public sealed class UserService
 
         if (user.Roles.HasFlag(PortalUserRoles.Owner))
         {
+            if (!actor.Roles.HasFlag(PortalUserRoles.Owner))
+            {
+                return OperationResult.Fail("Only an Owner can delete Owner users.");
+            }
+
             var activeOwnerCount = state.Users.Count(u => u.IsActive && u.Roles.HasFlag(PortalUserRoles.Owner));
             if (activeOwnerCount <= 1)
             {

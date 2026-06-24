@@ -199,10 +199,12 @@ public sealed class UserModel : PageModel
 
         var isOwner = User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
         var isUserAdmin = User?.IsInRole(nameof(PortalUserRoles.AdminUsers)) ?? false;
+        var isSelf = Guid.TryParse(User?.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId) &&
+            actorId == user.Id;
 
         CanAssignRoles = isOwner;
-        CanDelete = isOwner;
-        CanChangePassword = isOwner || (isUserAdmin && !user.Roles.HasAnyAdminRole());
+        CanDelete = !isSelf && (isOwner || (isUserAdmin && !user.Roles.HasFlag(PortalUserRoles.Owner)));
+        CanChangePassword = isOwner || (isUserAdmin && !user.Roles.HasFlag(PortalUserRoles.Owner));
         return true;
     }
 
