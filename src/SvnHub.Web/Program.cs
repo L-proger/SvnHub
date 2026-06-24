@@ -273,15 +273,34 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase))
+    {
+        var branding = context.RequestServices.GetRequiredService<BrandingService>();
+        var favicon = branding.GetCustomFavicon();
+        if (favicon is not null)
+        {
+            context.Response.ContentType = favicon.ContentType;
+            context.Response.Headers.CacheControl = "no-cache";
+            await context.Response.SendFileAsync(favicon.FilePath);
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.MapStaticAssets();
 app.MapMcp("/mcp").RequireAuthorization();
 app.MapRazorPages().WithStaticAssets();
 
-app.MapGet("/branding/favicon", (BrandingService branding, IWebHostEnvironment environment, HttpContext context) =>
+IResult GetFavicon(BrandingService branding, IWebHostEnvironment environment, HttpContext context)
 {
     var favicon = branding.GetCustomFavicon();
     if (favicon is not null)
     {
+        context.Response.Headers.CacheControl = "no-cache";
         return Results.File(favicon.FilePath, favicon.ContentType);
     }
 
@@ -295,7 +314,11 @@ app.MapGet("/branding/favicon", (BrandingService branding, IWebHostEnvironment e
     }
 
     return Results.Redirect(context.Request.PathBase.Add("/favicon.ico").Value ?? "/favicon.ico");
-});
+}
+
+app.MapGet("/branding/favicon", GetFavicon);
+app.MapGet("/branding/favicon/{version}", GetFavicon);
+app.MapGet("/branding/favicon/{version}/{fileName}", GetFavicon);
 
 app.MapGet("/health", () => Results.Ok("ok"));
 

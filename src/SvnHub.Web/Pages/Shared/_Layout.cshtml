@@ -7,8 +7,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - SvnHub</title>
-    <link rel="icon" href="@Url.Content($"~/branding/favicon?v={Branding.GetFaviconVersion()}")" />
-    <link rel="alternate icon" href="~/favicon.ico" />
+    @{
+        var faviconLink = Branding.GetFaviconLink();
+    }
+    <link rel="icon" type="@faviconLink.ContentType" href="@Url.Content(faviconLink.Href)" />
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />

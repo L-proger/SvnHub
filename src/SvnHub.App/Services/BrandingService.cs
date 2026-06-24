@@ -49,6 +49,20 @@ public sealed class BrandingService
         return GetFaviconVersion(state.Settings);
     }
 
+    public BrandingFaviconLink GetFaviconLink()
+    {
+        var state = _store.Read();
+        var fileName = NormalizeStoredFileName(state.Settings.CustomFaviconFileName);
+        if (fileName is null)
+        {
+            return new BrandingFaviconLink("~/favicon.svg", "image/svg+xml");
+        }
+
+        return new BrandingFaviconLink(
+            $"~/branding/favicon/{GetFaviconVersion(state.Settings)}/{fileName}",
+            GetContentType(fileName));
+    }
+
     public async Task<OperationResult> SetFaviconAsync(
         Guid actorUserId,
         string fileName,
@@ -274,3 +288,5 @@ public sealed class BrandingService
 }
 
 public sealed record BrandingFavicon(string FilePath, string ContentType, string Version);
+
+public sealed record BrandingFaviconLink(string Href, string ContentType);

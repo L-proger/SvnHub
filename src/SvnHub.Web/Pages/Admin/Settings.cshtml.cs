@@ -28,6 +28,7 @@ public sealed class SettingsModel : PageModel
     public IFormFile? FaviconFile { get; set; }
 
     public bool HasCustomFavicon { get; private set; }
+    public string FaviconHref { get; private set; } = "~/favicon.svg";
     public string FaviconVersion { get; private set; } = "default";
     public int MaxFaviconKilobytes => (int)(BrandingService.MaxFaviconBytes / 1024);
 
@@ -146,7 +147,9 @@ public sealed class SettingsModel : PageModel
 
     private void LoadBrandingState()
     {
+        var faviconLink = _branding.GetFaviconLink();
         HasCustomFavicon = _branding.GetCustomFavicon() is not null;
+        FaviconHref = faviconLink.Href;
         FaviconVersion = _branding.GetFaviconVersion();
     }
 
