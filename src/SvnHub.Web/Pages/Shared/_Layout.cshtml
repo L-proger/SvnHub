@@ -1,3 +1,5 @@
+@using SvnHub.App.Services
+@inject SettingsService Settings
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 <head>
@@ -17,14 +19,19 @@
 <header>
     <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-dark bg-body-tertiary border-bottom mb-3">
         <div class="container">
-            @if (User?.Identity?.IsAuthenticated ?? false)
-            {
-                <a class="navbar-brand" asp-area="" asp-page="/Repos/Index">SvnHub</a>
+            @{
+                var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
+                var brandPage = isAuthenticated ? "/Repos/Index" : "/Index";
+                var organizationName = Settings.GetOrganizationName();
             }
-            else
-            {
-                <a class="navbar-brand" asp-area="" asp-page="/Index">SvnHub</a>
-            }
+            <a class="navbar-brand d-inline-flex align-items-baseline gap-2" asp-area="" asp-page="@brandPage">
+                <span>SvnHub</span>
+                @if (!string.IsNullOrWhiteSpace(organizationName))
+                {
+                    <span class="navbar-brand-separator" aria-hidden="true">|</span>
+                    <span class="navbar-organization">@organizationName</span>
+                }
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse"
                     aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>

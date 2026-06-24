@@ -4,6 +4,8 @@ public sealed record PortalSettings
 {
     public int RoleSchemaVersion { get; init; } = 0;
 
+    public string OrganizationName { get; init; } = "";
+
     public string RepositoriesRootPath { get; init; } = "";
 
     /// <summary>

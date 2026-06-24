@@ -26,6 +26,7 @@ public sealed class SettingsModel : PageModel
 
     public void OnGet()
     {
+        Input.OrganizationName = _settings.GetOrganizationName();
         Input.RepositoriesRootPath = _settings.GetEffectiveRepositoriesRootPath();
         Input.SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
         Input.MaxUploadMegabytes = (int)Math.Clamp(_settings.GetEffectiveMaxUploadBytes() / (1024 * 1024), 1, int.MaxValue);
@@ -48,6 +49,7 @@ public sealed class SettingsModel : PageModel
             actorId,
             Input.RepositoriesRootPath,
             Input.CreateIfMissing,
+            Input.OrganizationName,
             Input.SvnBaseUrl,
             Input.DefaultAuthenticatedAccess,
             (long)Math.Max(1, Input.MaxUploadMegabytes) * 1024 * 1024,
@@ -65,6 +67,10 @@ public sealed class SettingsModel : PageModel
 
     public sealed class SettingsInput
     {
+        [StringLength(80)]
+        [Display(Name = "Organization")]
+        public string OrganizationName { get; set; } = "";
+
         [Required]
         [Display(Name = "Repositories root path")]
         public string RepositoriesRootPath { get; set; } = "";

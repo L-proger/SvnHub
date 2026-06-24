@@ -18,6 +18,13 @@
 
 <form method="post" class="mt-3" autocomplete="off">
     <div class="mb-3">
+        <label asp-for="Input.OrganizationName" class="form-label"></label>
+        <input asp-for="Input.OrganizationName" class="form-control" maxlength="80" placeholder="Acme Engineering" />
+        <div class="form-text">Shown next to the SvnHub brand in the top navigation.</div>
+        <span asp-validation-for="Input.OrganizationName" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
         <label asp-for="Input.RepositoriesRootPath" class="form-label"></label>
         <input asp-for="Input.RepositoriesRootPath" class="form-control" />
         <div class="form-text">Used when creating new repositories.</div>

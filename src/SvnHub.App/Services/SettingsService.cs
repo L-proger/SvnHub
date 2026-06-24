@@ -25,6 +25,12 @@ public sealed class SettingsService
         return GetEffectiveRepositoriesRootPath(state);
     }
 
+    public string GetOrganizationName()
+    {
+        var state = _store.Read();
+        return state.Settings.OrganizationName;
+    }
+
     public string GetEffectiveRepositoriesRootPath(PortalState state)
     {
         if (!string.IsNullOrWhiteSpace(state.Settings.RepositoriesRootPath))
@@ -94,6 +100,7 @@ public sealed class SettingsService
         Guid actorUserId,
         string repositoriesRootPath,
         bool createIfMissing,
+        string? organizationName,
         string? svnBaseUrl,
         AccessLevel defaultAuthenticatedAccess,
         long maxUploadBytes,
@@ -123,6 +130,12 @@ public sealed class SettingsService
         }
 
         var normalized = repositoriesRootPath.Trim();
+        var normalizedOrganizationName = NormalizeOrganizationName(organizationName);
+        if (normalizedOrganizationName is null)
+        {
+            return OperationResult.Fail("Organization name is too long.");
+        }
+
         if (!Path.IsPathRooted(normalized))
         {
             return OperationResult.Fail("Repositories root path must be an absolute path.");
@@ -162,6 +175,7 @@ public sealed class SettingsService
 
         var newSettings = state.Settings with
         {
+            OrganizationName = normalizedOrganizationName,
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
             DefaultAuthenticatedAccess = defaultAuthenticatedAccess,
@@ -182,6 +196,15 @@ public sealed class SettingsService
                     Target: "repositoriesRootPath",
                     Success: true,
                     Details: normalized
+                ),
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "settings.set_organization",
+                    Target: "organizationName",
+                    Success: true,
+                    Details: normalizedOrganizationName
                 ),
                 new AuditEvent(
                     Id: Guid.NewGuid(),
@@ -229,6 +252,17 @@ public sealed class SettingsService
         }
 
         return trimmed;
+    }
+
+    private static string? NormalizeOrganizationName(string? organizationName)
+    {
+        if (string.IsNullOrWhiteSpace(organizationName))
+        {
+            return "";
+        }
+
+        var trimmed = organizationName.Trim();
+        return trimmed.Length <= 80 ? trimmed : null;
     }
 
     private static bool CanManageSystemSettings(PortalState state, Guid actorUserId) =>

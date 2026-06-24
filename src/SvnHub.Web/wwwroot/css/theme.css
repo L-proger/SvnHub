@@ -32,6 +32,19 @@ body {
   letter-spacing: 0.2px;
 }
 
+.navbar-organization {
+  color: var(--bs-secondary-color);
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.navbar-brand-separator {
+  color: var(--bs-tertiary-color);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
 .container main {
   min-height: calc(100vh - 160px);
 }
