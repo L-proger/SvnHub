@@ -61,6 +61,8 @@ public static class RepositoryFileClassifier
             "hpp" => "cpp",
             "hh" => "cpp",
             "hxx" => "cpp",
+            "s" => "armasm",
+            "asm" => "armasm",
             "cmake" => "cmake",
             "mk" => "makefile",
             "mak" => "makefile",
@@ -207,6 +209,7 @@ public static class RepositoryFileClassifier
             ".json" or ".xml" or ".html" or ".htm" or ".css" or ".scss" or ".less" or
             ".js" or ".mjs" or ".cjs" or ".ts" or
             ".c" or ".h" or ".cc" or ".cpp" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
+            ".s" or ".asm" or
             ".cmake" or ".mk" or ".mak" or ".dockerfile" or
             ".v" or ".vh" or ".sv" or ".svh" or
             ".ps1" or ".psm1" or ".psd1" or ".sh" or ".bash" or ".zsh" or ".bat" or ".cmd" or
