@@ -33,6 +33,7 @@ SVNHUB_REPOS=/mnt/raid/svn_repositories
 SVNHUB_UID=1001
 SVNHUB_GID=1001
 SVNHUB_FIX_OWNERSHIP=0
+SVNHUB_MAX_PREVIEW_BYTES=52428800
 ```
 
 For existing repositories, set `SVNHUB_UID` and `SVNHUB_GID` to the numeric
@@ -54,6 +55,10 @@ If `docker compose version` fails, install the Compose plugin
 from `deploy/docker`.
 
 Read the full Docker guide in `deploy/docker/README.md`.
+
+`SVNHUB_MAX_PREVIEW_BYTES` limits how much SvnHub will read into the web UI for
+file preview, raw, and download responses. Larger files remain available through
+normal SVN checkout/update.
 
 ## Runtime Data
 

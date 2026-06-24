@@ -22,6 +22,7 @@ server.
 - `SVNHUB_REPOS=/srv/svnhub/repos`
 - `SVNHUB_UID=10001`
 - `SVNHUB_GID=10001`
+- `SVNHUB_MAX_PREVIEW_BYTES=52428800`
 
 3) Create the directories on the host:
 - `sudo mkdir -p /srv/svnhub/data /srv/svnhub/repos`
@@ -121,6 +122,13 @@ docker-compose up -d --build
 ```
 
 The container binds to `127.0.0.1:8080` by default.
+
+## Browser preview limit
+
+`SVNHUB_MAX_PREVIEW_BYTES` controls the largest file SvnHub will read into the
+web UI for preview, raw, and download responses. The default is 50 MB
+(`52428800`). Larger files are not loaded by the UI process; use SVN checkout or
+the repository SVN URL for them.
 
 ## Update
 

@@ -2,6 +2,9 @@ namespace SvnHub.App.Configuration;
 
 public sealed class SvnHubOptions
 {
+    public const long DefaultMaxPreviewBytes = 50L * 1024 * 1024;
+    public const long MaxAllowedPreviewBytes = 2L * 1024 * 1024 * 1024;
+
     public string DataDirectory { get; set; } = "data";
 
     public string RepositoriesRootPath { get; set; } = "/srv/svn/repos";
@@ -21,4 +24,21 @@ public sealed class SvnHubOptions
     public string ApacheReloadProgram { get; set; } = "systemctl";
 
     public string ApacheReloadArguments { get; set; } = "reload apache2";
+
+    public long MaxPreviewBytes { get; set; } = DefaultMaxPreviewBytes;
+
+    public long GetEffectiveMaxPreviewBytes()
+    {
+        if (MaxPreviewBytes <= 0)
+        {
+            return DefaultMaxPreviewBytes;
+        }
+
+        if (MaxPreviewBytes > MaxAllowedPreviewBytes)
+        {
+            return MaxAllowedPreviewBytes;
+        }
+
+        return MaxPreviewBytes;
+    }
 }

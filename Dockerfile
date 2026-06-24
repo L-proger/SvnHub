@@ -44,6 +44,7 @@ ENV SvnHub__DataDirectory=/var/lib/svnhub/data \
     SvnHub__RepositoriesRootPath=/var/lib/svnhub/repos \
     SvnHub__ApacheReloadProgram= \
     SvnHub__ApacheReloadArguments= \
+    SvnHub__MaxPreviewBytes=52428800 \
     ASPNETCORE_URLS=http://127.0.0.1:5000 \
     SVNHUB_UID=10001 \
     SVNHUB_GID=10001 \

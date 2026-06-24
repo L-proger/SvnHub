@@ -140,15 +140,25 @@ public sealed class TreeModel : PageModel
 
             if (readme is not null)
             {
-                var readmeText = await _svnlook.CatAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
-                if (readmeText.Length > 200_000)
+                var maxPreviewBytes = _options.GetEffectiveMaxPreviewBytes();
+                var readmeSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
+                if (readmeSize <= maxPreviewBytes && RepositoryFileClassifier.LooksTextByFileName(readme.Path))
                 {
-                    readmeText = readmeText[..200_000];
+                    var readmeBytes = await _svnlook.CatBytesAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
+                    if (!RepositoryFileClassifier.LooksBinary(readmeBytes))
+                    {
+                        var readmeText = RepositoryFileClassifier.DecodeUtf8(readmeBytes);
+                        if (readmeText.Length > 200_000)
+                        {
+                            readmeText = readmeText[..200_000];
+                        }
+
+                        ReadmeHtml = MarkdownRenderer.Render(readmeText, repoName, readme.Path, rev);
+                        ReadmePath = readme.Path;
+                        HasReadme = true;
+                        CanEditReadme = CanWriteActions && _access.GetAccess(userId.Value, repo.Id, readme.Path) >= AccessLevel.Write;
+                    }
                 }
-                ReadmeHtml = MarkdownRenderer.Render(readmeText, repoName, readme.Path, rev);
-                ReadmePath = readme.Path;
-                HasReadme = true;
-                CanEditReadme = CanWriteActions && _access.GetAccess(userId.Value, repo.Id, readme.Path) >= AccessLevel.Write;
             }
         }
         catch (Exception ex)

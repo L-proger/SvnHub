@@ -81,20 +81,23 @@ else
                        asp-route-repoName="@Model.RepoName"
                        asp-route-path="@Model.Path">Edit</a>
                 }
-                <a class="btn btn-sm btn-outline-secondary"
-                   target="_blank"
-                   rel="noopener"
-                   asp-page="/Repos/File"
-                   asp-page-handler="Raw"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@Model.Path"
-                   asp-route-rev="@Model.ViewRevision">Raw</a>
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/File"
-                   asp-page-handler="Download"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@Model.Path"
-                   asp-route-rev="@Model.ViewRevision">Download</a>
+                @if (Model.CanServeFile)
+                {
+                    <a class="btn btn-sm btn-outline-secondary"
+                       target="_blank"
+                       rel="noopener"
+                       asp-page="/Repos/File"
+                       asp-page-handler="Raw"
+                       asp-route-repoName="@Model.RepoName"
+                       asp-route-path="@Model.Path"
+                       asp-route-rev="@Model.ViewRevision">Raw</a>
+                    <a class="btn btn-sm btn-outline-secondary"
+                       asp-page="/Repos/File"
+                       asp-page-handler="Download"
+                       asp-route-repoName="@Model.RepoName"
+                       asp-route-path="@Model.Path"
+                       asp-route-rev="@Model.ViewRevision">Download</a>
+                }
                 <a class="btn btn-sm btn-outline-secondary"
                    asp-page="/Repos/History"
                    asp-route-repoName="@Model.RepoName"
@@ -108,7 +111,7 @@ else
                         Copy SVN URL
                     </button>
                 }
-                @if (!Model.IsImage)
+                @if (Model.CanCopyContent)
                 {
                     <button type="button"
                             class="btn btn-sm btn-outline-secondary"
@@ -132,7 +135,11 @@ else
             </div>
         </div>
         <div class="card-body">
-            @if (Model.IsImage)
+            @if (!string.IsNullOrWhiteSpace(Model.PreviewUnavailableMessage))
+            {
+                <div class="alert alert-secondary mb-0">@Model.PreviewUnavailableMessage</div>
+            }
+            else if (Model.IsImage)
             {
                 <div class="text-center">
                     <img class="img-fluid border rounded d-inline-block"
@@ -162,7 +169,7 @@ else
     }
 }
 
-@if (!Model.IsImage)
+@if (Model.CanCopyContent)
 {
     <textarea id="copySrc" style="position:fixed; left:-10000px; top:-10000px;">@Model.Contents</textarea>
 }

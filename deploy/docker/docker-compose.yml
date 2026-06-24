@@ -9,6 +9,7 @@ services:
       SVNHUB_UID: ${SVNHUB_UID:-10001}
       SVNHUB_GID: ${SVNHUB_GID:-10001}
       SVNHUB_FIX_OWNERSHIP: ${SVNHUB_FIX_OWNERSHIP:-0}
+      SvnHub__MaxPreviewBytes: ${SVNHUB_MAX_PREVIEW_BYTES:-52428800}
       SvnHub__ApacheReloadProgram: ""
       SvnHub__ApacheReloadArguments: ""
     volumes:

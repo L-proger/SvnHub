@@ -1,13 +1,12 @@
-using System.Text;
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.StaticFiles;
+using SvnHub.App.Configuration;
 using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
 using SvnHub.Web.Support;
-using System.Globalization;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -15,27 +14,28 @@ namespace SvnHub.Web.Pages.Repos;
 public sealed class FileModel : PageModel
 {
     private const int MaxChars = 1_000_000;
-    private const int MaxDownloadBytes = 25_000_000;
-    private static readonly FileExtensionContentTypeProvider ContentTypeProvider = new();
 
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly ISvnRepositoryWriter _svnWriter;
     private readonly SettingsService _settings;
+    private readonly SvnHubOptions _options;
 
     public FileModel(
         RepositoryService repos,
         AccessService access,
         ISvnLookClient svnlook,
         ISvnRepositoryWriter svnWriter,
-        SettingsService settings)
+        SettingsService settings,
+        SvnHubOptions options)
     {
         _repos = repos;
         _access = access;
         _svnlook = svnlook;
         _svnWriter = svnWriter;
         _settings = settings;
+        _options = options;
     }
 
     [TempData]
@@ -66,6 +66,14 @@ public sealed class FileModel : PageModel
     public bool CanWrite { get; private set; }
     public string? CheckoutUrl { get; private set; }
     public bool CanEdit { get; private set; }
+    public bool CanServeFile { get; private set; }
+    public string MaxPreviewSizeLabel { get; private set; } = "";
+    public string? PreviewUnavailableMessage { get; private set; }
+    public bool CanCopyContent =>
+        Error is null &&
+        PreviewUnavailableMessage is null &&
+        !IsImage &&
+        (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
     {
@@ -78,10 +86,10 @@ public sealed class FileModel : PageModel
         Path = Normalize(path);
         ParentPath = GetParent(Path);
         CheckoutUrl = SvnCheckoutUrl.Build(_settings.GetEffectiveSvnBaseUrl(), repoName, Path);
-        var language = GuessLanguage(Path);
+        var language = RepositoryFileClassifier.GuessLanguage(Path);
         Language = language;
-        IsImage = IsImagePath(Path);
-        ImageContentType = GetContentTypeOrDefault(Path);
+        IsImage = RepositoryFileClassifier.IsImagePath(Path);
+        ImageContentType = RepositoryFileClassifier.GetContentTypeOrDefault(Path);
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -108,15 +116,28 @@ public sealed class FileModel : PageModel
             HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
             Revision = ResolveRevision(rev, HeadRevision);
             CanEdit = CanWrite && rev is null;
+            var maxPreviewBytes = _options.GetEffectiveMaxPreviewBytes();
+            MaxPreviewSizeLabel = FormatByteSize(maxPreviewBytes);
             try
             {
                 FileSizeBytes = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
                 FileSizeLabel = FormatByteSize(FileSizeBytes);
+                CanServeFile = FileSizeBytes <= maxPreviewBytes;
             }
-            catch
+            catch (Exception ex)
             {
                 FileSizeBytes = 0;
                 FileSizeLabel = "";
+                CanServeFile = false;
+                PreviewUnavailableMessage = $"Preview is disabled because file size could not be determined: {ex.Message}";
+                return Page();
+            }
+
+            if (!CanServeFile)
+            {
+                PreviewUnavailableMessage =
+                    $"Preview is disabled for files larger than {MaxPreviewSizeLabel}. This file is {FileSizeLabel}.";
+                return Page();
             }
 
             if (IsImage)
@@ -131,7 +152,20 @@ public sealed class FileModel : PageModel
                 return Page();
             }
 
-            var content = await _svnlook.CatAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            if (!RepositoryFileClassifier.LooksTextByFileName(Path))
+            {
+                PreviewUnavailableMessage = "No preview is available because this file is binary or not recognized as text.";
+                return Page();
+            }
+
+            var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            if (RepositoryFileClassifier.LooksBinary(bytes))
+            {
+                PreviewUnavailableMessage = "No preview is available because this file appears to be binary.";
+                return Page();
+            }
+
+            var content = RepositoryFileClassifier.DecodeUtf8(bytes);
             if (content.Length > MaxChars)
             {
                 Contents = content[..MaxChars];
@@ -158,11 +192,6 @@ public sealed class FileModel : PageModel
                 LineNumbers = LineNumberHelper.Build(Contents);
                 LineCount = LineNumberHelper.CountLines(Contents);
                 MarkdownHtml = "";
-            }
-            if (string.IsNullOrWhiteSpace(FileSizeLabel))
-            {
-                FileSizeBytes = Encoding.UTF8.GetByteCount(Contents);
-                FileSizeLabel = FormatByteSize(FileSizeBytes);
             }
         }
         catch (Exception ex)
@@ -275,16 +304,20 @@ public sealed class FileModel : PageModel
         {
             HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
             effectiveRev = ResolveRevision(rev, HeadRevision);
+            var maxServeBytes = _options.GetEffectiveMaxPreviewBytes();
+            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            if (fileSize > maxServeBytes)
+            {
+                return StatusCode(
+                    StatusCodes.Status413PayloadTooLarge,
+                    BuildFileTooLargeMessage(fileSize, maxServeBytes));
+            }
+
             content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
         }
         catch (Exception ex)
         {
             return BadRequest(ex.Message);
-        }
-
-        if (content.Length > MaxDownloadBytes)
-        {
-            content = content[..MaxDownloadBytes];
         }
 
         var fileName = System.IO.Path.GetFileName(Path);
@@ -293,7 +326,7 @@ public sealed class FileModel : PageModel
             fileName = "download";
         }
 
-        var contentType = GetContentTypeOrDefault(fileName);
+        var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
 
         Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType, fileName);
@@ -332,6 +365,15 @@ public sealed class FileModel : PageModel
         {
             HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
             effectiveRev = ResolveRevision(rev, HeadRevision);
+            var maxServeBytes = _options.GetEffectiveMaxPreviewBytes();
+            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            if (fileSize > maxServeBytes)
+            {
+                return StatusCode(
+                    StatusCodes.Status413PayloadTooLarge,
+                    BuildFileTooLargeMessage(fileSize, maxServeBytes));
+            }
+
             content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
         }
         catch (Exception ex)
@@ -339,18 +381,17 @@ public sealed class FileModel : PageModel
             return BadRequest(ex.Message);
         }
 
-        if (content.Length > MaxDownloadBytes)
-        {
-            content = content[..MaxDownloadBytes];
-        }
-
         var fileName = System.IO.Path.GetFileName(Path);
-        var contentType = GetContentTypeOrDefault(fileName);
-        contentType = NormalizeRawTextContentType(fileName, contentType);
+        var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
+        contentType = RepositoryFileClassifier.NormalizeRawTextContentType(fileName, contentType);
 
         Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType);
     }
+
+    private static string BuildFileTooLargeMessage(long fileSize, long maxServeBytes) =>
+        $"File is too large to serve through the SvnHub browser ({FormatByteSize(fileSize)} > {FormatByteSize(maxServeBytes)}). " +
+        "Use SVN checkout or the repository SVN URL instead.";
 
     private static long ResolveRevision(long? requested, long head)
     {
@@ -365,95 +406,6 @@ public sealed class FileModel : PageModel
         }
 
         return requested.Value;
-    }
-
-    private static string GuessLanguage(string path)
-    {
-        var ext = System.IO.Path.GetExtension(path);
-        if (string.IsNullOrWhiteSpace(ext))
-        {
-            return "plaintext";
-        }
-
-        ext = ext.TrimStart('.').ToLowerInvariant();
-        return ext switch
-        {
-            "md" => "markdown",
-            "cs" => "csharp",
-            "c" => "c",
-            "h" => "c",
-            "cc" => "cpp",
-            "cpp" => "cpp",
-            "cxx" => "cpp",
-            "hpp" => "cpp",
-            "hh" => "cpp",
-            "hxx" => "cpp",
-            "v" => "verilog",
-            "vh" => "verilog",
-            "sv" => "verilog",
-            "svh" => "verilog",
-            _ => "plaintext",
-        };
-    }
-
-    private static bool IsImagePath(string path)
-    {
-        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
-        return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp";
-    }
-
-    private static string GetContentTypeOrDefault(string fileName)
-    {
-        if (ContentTypeProvider.TryGetContentType(fileName, out var contentType))
-        {
-            return contentType;
-        }
-
-        return "application/octet-stream";
-    }
-
-    private static string NormalizeRawTextContentType(string fileName, string contentType)
-    {
-        // RAW view should display text correctly (UTF-8) without altering the bytes.
-        // Browsers may otherwise assume a legacy encoding for text/* without charset.
-        if (IsMarkdownFileName(fileName))
-        {
-            return "text/plain; charset=utf-8";
-        }
-
-        if (contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
-        {
-            return contentType.Contains("charset=", StringComparison.OrdinalIgnoreCase)
-                ? contentType
-                : contentType + "; charset=utf-8";
-        }
-
-        if (IsProbablyTextExtension(fileName))
-        {
-            return "text/plain; charset=utf-8";
-        }
-
-        return contentType;
-    }
-
-    private static bool IsMarkdownFileName(string fileName) =>
-        string.Equals(System.IO.Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsProbablyTextExtension(string fileName)
-    {
-        var ext = System.IO.Path.GetExtension(fileName);
-        if (string.IsNullOrWhiteSpace(ext))
-        {
-            return false;
-        }
-
-        ext = ext.ToLowerInvariant();
-        return ext is
-            ".txt" or ".log" or ".ini" or ".cfg" or ".conf" or
-            ".json" or ".xml" or ".yml" or ".yaml" or
-            ".cs" or ".csx" or ".c" or ".h" or ".cpp" or ".cc" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
-            ".v" or ".vh" or ".sv" or ".svh" or
-            ".ps1" or ".psm1" or ".sh" or ".bat" or ".cmd";
     }
 
     private static string Normalize(string? path)

@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.StaticFiles;
 using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
@@ -16,7 +15,6 @@ namespace SvnHub.Web.Pages.Repos;
 public sealed class EditModel : PageModel
 {
     private const int MaxEditBytes = 1_000_000;
-    private static readonly FileExtensionContentTypeProvider ContentTypeProvider = new();
 
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
@@ -178,10 +176,10 @@ public sealed class EditModel : PageModel
             }
 
             // File: allow content editing only when it looks like text (by filename + binary sniff + size).
-            if (LooksTextByFileName(Path))
+            if (RepositoryFileClassifier.LooksTextByFileName(Path))
             {
-                var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
-                if (bytes.Length > MaxEditBytes)
+                var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+                if (fileSize > MaxEditBytes)
                 {
                     CanEditContents = false;
                     IsBinary = true;
@@ -190,7 +188,8 @@ public sealed class EditModel : PageModel
                     return Page();
                 }
 
-                if (LooksBinary(bytes))
+                var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
+                if (RepositoryFileClassifier.LooksBinary(bytes))
                 {
                     CanEditContents = false;
                     IsBinary = true;
@@ -201,7 +200,7 @@ public sealed class EditModel : PageModel
 
                 CanEditContents = true;
                 IsBinary = false;
-                Input.Contents = DecodeUtf8(bytes);
+                Input.Contents = RepositoryFileClassifier.DecodeUtf8(bytes);
                 Input.CanEditContents = true;
                 EditorLineNumbers = LineNumberHelper.Build(Input.Contents);
                 return Page();
@@ -629,67 +628,6 @@ public sealed class EditModel : PageModel
         }
 
         return fileName.Trim().Length != 0;
-    }
-
-    private static bool LooksBinary(byte[] bytes)
-    {
-        // Quick heuristic: NUL byte is a strong indicator of binary content.
-        var len = Math.Min(bytes.Length, 8192);
-        for (var i = 0; i < len; i++)
-        {
-            if (bytes[i] == 0)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string DecodeUtf8(byte[] bytes)
-    {
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-        {
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
-        }
-
-        return Encoding.UTF8.GetString(bytes);
-    }
-
-    private static bool LooksTextByFileName(string path)
-    {
-        var fileName = System.IO.Path.GetFileName(path);
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            return false;
-        }
-
-        // Treat common text media types as editable; everything else is "binary/unsupported".
-        if (ContentTypeProvider.TryGetContentType(fileName, out var contentType))
-        {
-            if (contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (string.Equals(contentType, "application/json", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(contentType, "application/xml", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(contentType, "application/xhtml+xml", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(contentType, "application/javascript", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(contentType, "application/x-javascript", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(contentType, "application/x-sh", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        // Extra extensions that are typically plain text but not always mapped by FileExtensionContentTypeProvider.
-        var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
-        return ext is
-            ".md" or ".txt" or ".log" or ".ini" or ".cfg" or ".config" or ".yml" or ".yaml" or
-            ".cs" or ".csproj" or ".sln" or ".props" or ".targets" or ".json" or ".xml" or ".html" or ".htm" or ".css" or ".js" or
-            ".c" or ".h" or ".cc" or ".cpp" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
-            ".v" or ".vh" or ".sv" or ".svh";
     }
 
     private static string GetBaseName(string path)
