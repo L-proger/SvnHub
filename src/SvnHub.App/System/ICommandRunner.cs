@@ -13,4 +13,11 @@ public interface ICommandRunner
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default
     );
+
+    Task<CommandBinaryResult> RunBinaryPrefixAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        int maxBytes,
+        CancellationToken cancellationToken = default
+    );
 }

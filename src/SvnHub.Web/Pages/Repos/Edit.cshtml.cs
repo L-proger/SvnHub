@@ -175,43 +175,43 @@ public sealed class EditModel : PageModel
                 return Page();
             }
 
-            // File: allow content editing only when it looks like text (by filename + binary sniff + size).
-            if (RepositoryFileClassifier.LooksTextByFileName(Path))
+            // File: allow content editing only when it is small enough and content-sniffs as text.
+            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            if (fileSize > MaxEditBytes)
             {
-                var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, Revision, cancellationToken);
-                if (fileSize > MaxEditBytes)
-                {
-                    CanEditContents = false;
-                    IsBinary = true;
-                    Input.Contents = "";
-                    Input.CanEditContents = false;
-                    return Page();
-                }
-
-                var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
-                if (RepositoryFileClassifier.LooksBinary(bytes))
-                {
-                    CanEditContents = false;
-                    IsBinary = true;
-                    Input.Contents = "";
-                    Input.CanEditContents = false;
-                    return Page();
-                }
-
-                CanEditContents = true;
-                IsBinary = false;
-                Input.Contents = RepositoryFileClassifier.DecodeUtf8(bytes);
-                Input.CanEditContents = true;
-                EditorLineNumbers = LineNumberHelper.Build(Input.Contents);
+                CanEditContents = false;
+                IsBinary = true;
+                Input.Contents = "";
+                Input.CanEditContents = false;
                 return Page();
             }
 
-            // Binary/unrecognized file: rename-only.
-            CanEditContents = false;
-            IsBinary = true;
-            EditorLineNumbers = "";
-            Input.Contents = "";
-            Input.CanEditContents = false;
+            var sniffBytes = await _svnlook.CatPrefixBytesAsync(
+                repo.LocalPath,
+                Path,
+                Revision,
+                RepositoryFileClassifier.SniffByteCount,
+                cancellationToken);
+
+            if (RepositoryFileClassifier.LooksBinary(sniffBytes))
+            {
+                CanEditContents = false;
+                IsBinary = true;
+                EditorLineNumbers = "";
+                Input.Contents = "";
+                Input.CanEditContents = false;
+                return Page();
+            }
+
+            var bytes = fileSize <= sniffBytes.Length
+                ? sniffBytes
+                : await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
+
+            CanEditContents = true;
+            IsBinary = false;
+            Input.Contents = RepositoryFileClassifier.DecodeText(bytes);
+            Input.CanEditContents = true;
+            EditorLineNumbers = LineNumberHelper.Build(Input.Contents);
             return Page();
         }
         catch (Exception ex)

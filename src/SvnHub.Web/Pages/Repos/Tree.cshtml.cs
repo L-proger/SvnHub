@@ -142,12 +142,22 @@ public sealed class TreeModel : PageModel
             {
                 var maxPreviewBytes = _options.GetEffectiveMaxPreviewBytes();
                 var readmeSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
-                if (readmeSize <= maxPreviewBytes && RepositoryFileClassifier.LooksTextByFileName(readme.Path))
+                if (readmeSize <= maxPreviewBytes)
                 {
-                    var readmeBytes = await _svnlook.CatBytesAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
-                    if (!RepositoryFileClassifier.LooksBinary(readmeBytes))
+                    var readmeSniffBytes = await _svnlook.CatPrefixBytesAsync(
+                        repo.LocalPath,
+                        readme.Path,
+                        Revision,
+                        RepositoryFileClassifier.SniffByteCount,
+                        cancellationToken);
+
+                    if (!RepositoryFileClassifier.LooksBinary(readmeSniffBytes))
                     {
-                        var readmeText = RepositoryFileClassifier.DecodeUtf8(readmeBytes);
+                        var readmeBytes = readmeSize <= readmeSniffBytes.Length
+                            ? readmeSniffBytes
+                            : await _svnlook.CatBytesAsync(repo.LocalPath, readme.Path, Revision, cancellationToken);
+
+                        var readmeText = RepositoryFileClassifier.DecodeText(readmeBytes);
                         if (readmeText.Length > 200_000)
                         {
                             readmeText = readmeText[..200_000];

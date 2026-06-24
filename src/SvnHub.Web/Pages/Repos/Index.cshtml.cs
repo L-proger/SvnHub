@@ -33,6 +33,8 @@ public sealed class IndexModel : PageModel
 
     public int PageSize { get; set; } = 10;
 
+    public IReadOnlyList<int> PageSizeOptions => PaginationOptions.PageSizes;
+
     public int TotalCount { get; private set; }
     public int TotalPages { get; private set; }
     public int FromIndex { get; private set; }
@@ -57,7 +59,7 @@ public sealed class IndexModel : PageModel
         }
 
         SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
-        PageSize = NormalizePageSize(pageSize);
+        PageSize = PaginationOptions.NormalizePageSize(pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);
 
@@ -160,17 +162,6 @@ public sealed class IndexModel : PageModel
         var years = (int)Math.Floor(days / 365d);
         return years == 1 ? "1 year ago" : $"{years} years ago";
     }
-
-    private static int NormalizePageSize(int pageSize) =>
-        pageSize switch
-        {
-            10 => 10,
-            15 => 15,
-            25 => 25,
-            50 => 50,
-            100 => 100,
-            _ => 10,
-        };
 
     private static string? NormalizeSearchQuery(string? q)
     {

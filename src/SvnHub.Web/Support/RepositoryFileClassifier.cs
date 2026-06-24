@@ -5,7 +5,10 @@ namespace SvnHub.Web.Support;
 
 public static class RepositoryFileClassifier
 {
+    public const int SniffByteCount = 8192;
+
     private static readonly FileExtensionContentTypeProvider ContentTypeProvider = new();
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     public static string GuessLanguage(string path)
     {
@@ -52,7 +55,7 @@ public static class RepositoryFileClassifier
         return "application/octet-stream";
     }
 
-    public static string NormalizeRawTextContentType(string fileName, string contentType)
+    public static string NormalizeRawTextContentType(string fileName, string contentType, ReadOnlySpan<byte> bytes = default)
     {
         if (IsMarkdownFileName(fileName))
         {
@@ -67,6 +70,11 @@ public static class RepositoryFileClassifier
         }
 
         if (LooksTextByFileName(fileName))
+        {
+            return "text/plain; charset=utf-8";
+        }
+
+        if (!bytes.IsEmpty && LooksTextContent(bytes))
         {
             return "text/plain; charset=utf-8";
         }
@@ -110,6 +118,7 @@ public static class RepositoryFileClassifier
             ".md" or ".markdown" or ".mkd" or ".rst" or ".adoc" or ".asciidoc" or
             ".txt" or ".log" or ".ini" or ".cfg" or ".conf" or ".config" or
             ".yml" or ".yaml" or
+            ".pro" or ".pri" or ".qrc" or
             ".cs" or ".csx" or ".csproj" or ".sln" or ".props" or ".targets" or
             ".json" or ".xml" or ".html" or ".htm" or ".css" or ".js" or
             ".c" or ".h" or ".cc" or ".cpp" or ".cxx" or ".hpp" or ".hh" or ".hxx" or
@@ -117,29 +126,65 @@ public static class RepositoryFileClassifier
             ".ps1" or ".psm1" or ".sh" or ".bat" or ".cmd";
     }
 
+    public static bool LooksTextContent(ReadOnlySpan<byte> bytes) => !LooksBinary(bytes);
+
     public static bool LooksBinary(ReadOnlySpan<byte> bytes)
     {
-        var len = Math.Min(bytes.Length, 8192);
+        var len = Math.Min(bytes.Length, SniffByteCount);
+        if (len == 0)
+        {
+            return false;
+        }
+
+        var suspiciousControlBytes = 0;
         for (var i = 0; i < len; i++)
         {
-            if (bytes[i] == 0)
+            var b = bytes[i];
+            if (b == 0)
             {
                 return true;
             }
+
+            if ((b < 0x20 && b is not (0x08 or 0x09 or 0x0A or 0x0C or 0x0D or 0x1B)) || b == 0x7F)
+            {
+                suspiciousControlBytes++;
+            }
         }
 
-        return false;
+        return suspiciousControlBytes > Math.Max(8, len / 20);
     }
 
-    public static string DecodeUtf8(byte[] bytes)
+    public static string DecodeText(byte[] bytes)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
             return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
         }
 
-        return Encoding.UTF8.GetString(bytes);
+        if (bytes.Length >= 2)
+        {
+            if (bytes[0] == 0xFF && bytes[1] == 0xFE)
+            {
+                return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+
+            if (bytes[0] == 0xFE && bytes[1] == 0xFF)
+            {
+                return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+        }
+
+        try
+        {
+            return StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
     }
+
+    public static string DecodeUtf8(byte[] bytes) => DecodeText(bytes);
 
     private static bool IsMarkdownFileName(string fileName) =>
         string.Equals(Path.GetExtension(fileName), ".md", StringComparison.OrdinalIgnoreCase);

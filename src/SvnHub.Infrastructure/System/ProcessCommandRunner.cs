@@ -112,6 +112,97 @@ public sealed class ProcessCommandRunner : ICommandRunner
         return new CommandBinaryResult(process.ExitCode, ms.ToArray(), stderr);
     }
 
+    public async Task<CommandBinaryResult> RunBinaryPrefixAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        int maxBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        if (maxBytes <= 0)
+        {
+            return new CommandBinaryResult(0, [], "");
+        }
+
+        var attemptedResolutions = new List<string>();
+        var resolvedFileName = TryResolveExecutable(fileName, attemptedResolutions) ?? fileName;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = resolvedFileName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (var arg in arguments)
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        using var process = new Process { StartInfo = psi };
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception ex)
+        {
+            var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            throw new InvalidOperationException(
+                $"Failed to start process '{fileName}' (resolved as '{resolvedFileName}'). " +
+                $"WorkingDirectory='{psi.WorkingDirectory}'. " +
+                $"PATH='{path}'. " +
+                $"Tried=[{string.Join("; ", attemptedResolutions.Distinct(StringComparer.OrdinalIgnoreCase))}]. " +
+                $"Win32Error={ex.NativeErrorCode}: {ex.Message}",
+                ex);
+        }
+
+        await using var ms = new MemoryStream(Math.Min(maxBytes, 8192));
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var buffer = new byte[Math.Min(maxBytes, 8192)];
+        var limitReached = false;
+
+        try
+        {
+            while (ms.Length < maxBytes)
+            {
+                var readSize = (int)Math.Min(buffer.Length, maxBytes - ms.Length);
+                var read = await process.StandardOutput.BaseStream.ReadAsync(
+                    buffer.AsMemory(0, readSize),
+                    cancellationToken);
+
+                if (read == 0)
+                {
+                    break;
+                }
+
+                await ms.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+
+            if (ms.Length >= maxBytes && !process.HasExited)
+            {
+                limitReached = true;
+                process.Kill(entireProcessTree: true);
+            }
+
+            await process.WaitForExitAsync(cancellationToken);
+            var stderr = await stderrTask;
+            var exitCode = limitReached ? 0 : process.ExitCode;
+            return new CommandBinaryResult(exitCode, ms.ToArray(), stderr);
+        }
+        catch
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+
+            throw;
+        }
+    }
+
     private static string? TryResolveExecutable(string fileName, List<string> attemptedResolutions)
     {
         if (string.IsNullOrWhiteSpace(fileName))

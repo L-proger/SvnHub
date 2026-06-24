@@ -11,10 +11,10 @@
             <label class="text-muted small" for="pageSize">Per page</label>
             <select id="pageSize" name="pageSize" class="form-select form-select-sm" style="width: auto"
                     onchange="this.form.p.value = 1; this.form.submit();">
-                @if (Model.PageSize == 10) { <option value="10" selected>10</option> } else { <option value="10">10</option> }
-                @if (Model.PageSize == 25) { <option value="25" selected>25</option> } else { <option value="25">25</option> }
-                @if (Model.PageSize == 50) { <option value="50" selected>50</option> } else { <option value="50">50</option> }
-                @if (Model.PageSize == 100) { <option value="100" selected>100</option> } else { <option value="100">100</option> }
+                @foreach (var pageSize in Model.PageSizeOptions)
+                {
+                    <option value="@pageSize" selected="@(Model.PageSize == pageSize)">@pageSize</option>
+                }
             </select>
             <input type="hidden" name="p" value="@Model.PageNumber" />
         </form>

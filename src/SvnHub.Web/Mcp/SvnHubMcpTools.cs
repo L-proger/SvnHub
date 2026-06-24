@@ -120,19 +120,14 @@ public sealed class SvnHubMcpTools
                 $"File is larger than MaxPreviewBytes ({fileSize} > {maxPreviewBytes}).");
         }
 
-        if (!RepositoryFileClassifier.LooksTextByFileName(normalizedPath))
-        {
-            return McpFileReadResult.NoPreview(
-                repo.Name,
-                normalizedPath,
-                effectiveRevision,
-                fileSize,
-                language,
-                "File is binary or not recognized as text.");
-        }
+        var sniffBytes = await svnlook.CatPrefixBytesAsync(
+            repo.LocalPath,
+            normalizedPath,
+            effectiveRevision,
+            RepositoryFileClassifier.SniffByteCount,
+            cancellationToken);
 
-        var bytes = await svnlook.CatBytesAsync(repo.LocalPath, normalizedPath, effectiveRevision, cancellationToken);
-        if (RepositoryFileClassifier.LooksBinary(bytes))
+        if (RepositoryFileClassifier.LooksBinary(sniffBytes))
         {
             return McpFileReadResult.NoPreview(
                 repo.Name,
@@ -143,7 +138,11 @@ public sealed class SvnHubMcpTools
                 "File appears to be binary.");
         }
 
-        var content = RepositoryFileClassifier.DecodeUtf8(bytes);
+        var bytes = fileSize <= sniffBytes.Length
+            ? sniffBytes
+            : await svnlook.CatBytesAsync(repo.LocalPath, normalizedPath, effectiveRevision, cancellationToken);
+
+        var content = RepositoryFileClassifier.DecodeText(bytes);
         var charLimit = Math.Clamp(maxChars ?? DefaultMaxFileChars, 1, MaxFileChars);
         var truncated = content.Length > charLimit;
         if (truncated)

@@ -61,6 +61,14 @@ public interface ISvnLookClient
         CancellationToken cancellationToken = default
     );
 
+    Task<byte[]> CatPrefixBytesAsync(
+        string repoLocalPath,
+        string filePath,
+        long revision,
+        int maxBytes,
+        CancellationToken cancellationToken = default
+    );
+
     Task<IReadOnlyList<SvnProperty>> GetPropertiesAsync(
         string repoLocalPath,
         string path,

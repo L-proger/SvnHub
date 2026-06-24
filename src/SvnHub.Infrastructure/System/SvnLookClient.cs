@@ -656,6 +656,35 @@ public sealed class SvnLookClient : ISvnLookClient
         return result.StandardOutput;
     }
 
+    public async Task<byte[]> CatPrefixBytesAsync(
+        string repoLocalPath,
+        string filePath,
+        long revision,
+        int maxBytes,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var repoRelPath = ToRepoRelativePath(filePath);
+        if (string.IsNullOrWhiteSpace(repoRelPath))
+        {
+            throw new ArgumentException("File path is required.", nameof(filePath));
+        }
+
+        var result = await _runner.RunBinaryPrefixAsync(
+            _options.SvnlookCommand,
+            ["cat", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath, repoRelPath],
+            maxBytes,
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return result.StandardOutput;
+    }
+
     public async Task<IReadOnlyList<SvnProperty>> GetPropertiesAsync(
         string repoLocalPath,
         string path,

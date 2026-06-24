@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.Domain;
+using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages.Admin;
 
@@ -26,6 +27,7 @@ public sealed class UsersModel : PageModel
 
     public int PageNumber { get; private set; } = 1;
     public int PageSize { get; private set; } = 10;
+    public IReadOnlyList<int> PageSizeOptions => PaginationOptions.PageSizes;
     public int TotalCount { get; private set; }
     public int TotalPages { get; private set; }
     public int FromIndex { get; private set; }
@@ -33,7 +35,7 @@ public sealed class UsersModel : PageModel
 
     public void OnGet(int p = 1, int pageSize = 10)
     {
-        PageSize = NormalizePageSize(pageSize);
+        PageSize = PaginationOptions.NormalizePageSize(pageSize);
         PageNumber = Math.Max(1, p);
 
         var all = _users.ListUsers();
@@ -76,13 +78,4 @@ public sealed class UsersModel : PageModel
         return string.Join(", ", parts);
     }
 
-    private static int NormalizePageSize(int pageSize) =>
-        pageSize switch
-        {
-            10 => 10,
-            25 => 25,
-            50 => 50,
-            100 => 100,
-            _ => 10,
-        };
 }

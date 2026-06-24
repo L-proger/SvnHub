@@ -152,20 +152,24 @@ public sealed class FileModel : PageModel
                 return Page();
             }
 
-            if (!RepositoryFileClassifier.LooksTextByFileName(Path))
-            {
-                PreviewUnavailableMessage = "No preview is available because this file is binary or not recognized as text.";
-                return Page();
-            }
+            var sniffBytes = await _svnlook.CatPrefixBytesAsync(
+                repo.LocalPath,
+                Path,
+                Revision,
+                RepositoryFileClassifier.SniffByteCount,
+                cancellationToken);
 
-            var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
-            if (RepositoryFileClassifier.LooksBinary(bytes))
+            if (RepositoryFileClassifier.LooksBinary(sniffBytes))
             {
                 PreviewUnavailableMessage = "No preview is available because this file appears to be binary.";
                 return Page();
             }
 
-            var content = RepositoryFileClassifier.DecodeUtf8(bytes);
+            var bytes = FileSizeBytes <= sniffBytes.Length
+                ? sniffBytes
+                : await _svnlook.CatBytesAsync(repo.LocalPath, Path, Revision, cancellationToken);
+
+            var content = RepositoryFileClassifier.DecodeText(bytes);
             if (content.Length > MaxChars)
             {
                 Contents = content[..MaxChars];
@@ -383,7 +387,7 @@ public sealed class FileModel : PageModel
 
         var fileName = System.IO.Path.GetFileName(Path);
         var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
-        contentType = RepositoryFileClassifier.NormalizeRawTextContentType(fileName, contentType);
+        contentType = RepositoryFileClassifier.NormalizeRawTextContentType(fileName, contentType, content);
 
         Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType);
