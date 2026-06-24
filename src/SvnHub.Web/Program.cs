@@ -125,6 +125,7 @@ builder.Services.AddSingleton<GroupService>();
 builder.Services.AddSingleton<PermissionService>();
 builder.Services.AddSingleton<AccessService>();
 builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
 
 var app = builder.Build();
@@ -162,7 +163,9 @@ app.Use(async (context, next) =>
         || p.StartsWithSegments("/css")
         || p.StartsWithSegments("/js")
         || p.StartsWithSegments("/lib")
-        || p.Equals("/favicon.ico"))
+        || p.StartsWithSegments("/branding")
+        || p.Equals("/favicon.ico")
+        || p.Equals("/favicon.svg"))
     {
         await next();
         return;
@@ -273,6 +276,26 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapMcp("/mcp").RequireAuthorization();
 app.MapRazorPages().WithStaticAssets();
+
+app.MapGet("/branding/favicon", (BrandingService branding, IWebHostEnvironment environment, HttpContext context) =>
+{
+    var favicon = branding.GetCustomFavicon();
+    if (favicon is not null)
+    {
+        return Results.File(favicon.FilePath, favicon.ContentType);
+    }
+
+    if (!string.IsNullOrWhiteSpace(environment.WebRootPath)) 
+    {
+        var defaultFaviconPath = Path.Combine(environment.WebRootPath, "favicon.svg");
+        if (File.Exists(defaultFaviconPath))
+        {
+            return Results.File(defaultFaviconPath, "image/svg+xml");
+        }
+    }
+
+    return Results.Redirect(context.Request.PathBase.Add("/favicon.ico").Value ?? "/favicon.ico");
+});
 
 app.MapGet("/health", () => Results.Ok("ok"));
 

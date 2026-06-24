@@ -6,6 +6,10 @@ public sealed record PortalSettings
 
     public string OrganizationName { get; init; } = "";
 
+    public string CustomFaviconFileName { get; init; } = "";
+
+    public long CustomFaviconVersion { get; init; } = 0;
+
     public string RepositoriesRootPath { get; init; } = "";
 
     /// <summary>
