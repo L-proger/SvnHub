@@ -6,8 +6,8 @@
   --bs-secondary-color: rgba(208, 215, 222, 0.78);
   --bs-tertiary-color: rgba(208, 215, 222, 0.6);
   --bs-border-color: #2f3640;
-  --bs-link-color: #539bf5;
-  --bs-link-hover-color: #6cb6ff;
+  --bs-link-color: #4183c4;
+  --bs-link-hover-color: #5c9bd6;
 
   --bs-secondary-bg: #1f242b;
   --bs-tertiary-bg: #1f242b;
@@ -167,8 +167,14 @@ body {
 }
 
 .repo-name {
+  color: #4183c4 !important;
   font-size: 1.05rem;
   font-weight: 600;
+}
+
+.repo-name:hover,
+.repo-name:focus {
+  color: #5c9bd6 !important;
 }
 
 .repo-updated {
@@ -176,7 +182,13 @@ body {
 }
 
 .sp-entry-name {
+  color: #4183c4 !important;
   font-weight: 500;
+}
+
+.sp-entry-name:hover,
+.sp-entry-name:focus {
+  color: #5c9bd6 !important;
 }
 
 .sp-entry-meta {
