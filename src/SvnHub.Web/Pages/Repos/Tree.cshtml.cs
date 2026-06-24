@@ -83,7 +83,12 @@ public sealed class TreeModel : PageModel
     [TempData]
     public string? FlashError { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(
+        string repoName,
+        string? path,
+        long? rev,
+        bool defaultPath = false,
+        CancellationToken cancellationToken = default)
     {
         RepoName = repoName;
         Path = Normalize(path);
@@ -111,11 +116,25 @@ public sealed class TreeModel : PageModel
         CanWriteHere = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         CanWriteActions = CanWriteHere && rev is null;
 
+        IReadOnlyList<SvnTreeEntry>? preloadedEntries = null;
+
         try
         {
             HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
             Revision = ResolveRevision(rev, HeadRevision);
-            Entries = await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            if (defaultPath && Path == "/")
+            {
+                preloadedEntries = await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
+                var trunkPath = GetDefaultTrunkPath(preloadedEntries);
+                if (trunkPath is not null && _access.GetAccess(userId.Value, repo.Id, trunkPath) >= AccessLevel.Read)
+                {
+                    return rev is null
+                        ? RedirectToPage(new { repoName, path = trunkPath })
+                        : RedirectToPage(new { repoName, path = trunkPath, rev });
+                }
+            }
+
+            Entries = preloadedEntries ?? await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
             DirectoryCount = Entries.Count(e => e.IsDirectory);
             FileCount = Entries.Count(e => !e.IsDirectory);
             Rows = await LoadRowsAsync(repo.LocalPath, Entries, Revision, cancellationToken);
@@ -200,6 +219,35 @@ public sealed class TreeModel : PageModel
         }
 
         return 2;
+    }
+
+    private static string? GetDefaultTrunkPath(IReadOnlyList<SvnTreeEntry> entries)
+    {
+        if (entries.Count == 0 || entries.Any(e => !e.IsDirectory))
+        {
+            return null;
+        }
+
+        var allowedRootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "trunk",
+            "branches",
+            "tags",
+        };
+
+        if (entries.Any(e => !allowedRootNames.Contains(e.Name)))
+        {
+            return null;
+        }
+
+        var trunk = entries.FirstOrDefault(e => string.Equals(e.Name, "trunk", StringComparison.OrdinalIgnoreCase));
+        if (trunk is null)
+        {
+            return null;
+        }
+
+        var normalizedPath = Normalize(trunk.Path);
+        return normalizedPath == "/" ? "/trunk" : normalizedPath;
     }
 
     private async Task<IReadOnlyList<TreeRow>> LoadRowsAsync(
