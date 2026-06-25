@@ -73,12 +73,11 @@ public static class UiPasswordHasher
 
     private static byte[] Pbkdf2(string password, byte[] salt, int iterations, int keySize)
     {
-        using var deriveBytes = new Rfc2898DeriveBytes(
-            password: Encoding.UTF8.GetBytes(password),
-            salt: salt,
-            iterations: iterations,
-            hashAlgorithm: HashAlgorithmName.SHA256
-        );
-        return deriveBytes.GetBytes(keySize);
+        return Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(password),
+            salt,
+            iterations,
+            HashAlgorithmName.SHA256,
+            keySize);
     }
 }

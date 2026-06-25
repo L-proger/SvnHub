@@ -1,10 +1,10 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY . .
 RUN dotnet publish ./src/SvnHub.Web/SvnHub.Web.csproj -c Release -o /out --no-self-contained
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update \
