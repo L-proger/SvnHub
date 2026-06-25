@@ -375,7 +375,9 @@ public sealed class RepositoryIndexService
             return false;
         }
 
-        return state.HeadTreeRevision != targetRevision || state.ExternalsRevision != targetRevision;
+        return state.HeadTreeRevision != targetRevision ||
+               state.PropertiesRevision != targetRevision ||
+               state.ExternalsRevision != targetRevision;
     }
 
     private static IReadOnlyList<RepositoryIndexExternalDefinition> ParseExternalDefinitions(

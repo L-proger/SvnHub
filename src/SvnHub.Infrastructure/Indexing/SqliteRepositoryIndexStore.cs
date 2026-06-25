@@ -43,6 +43,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    ir.youngest_revision,
                    ir.indexed_revision,
                    ir.head_tree_revision,
+                   ir.properties_revision,
                    ir.externals_revision,
                    ir.last_success_at,
                    ir.last_error,
@@ -67,12 +68,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 reader.GetInt64(3),
                 reader.GetInt64(4),
                 reader.GetInt64(5),
-                ReadOptionalDate(reader, 6),
-                reader.IsDBNull(7) ? null : reader.GetString(7),
-                reader.GetInt64(8) != 0,
-                reader.IsDBNull(9) ? null : reader.GetString(9),
-                ReadOptionalDate(reader, 10),
-                reader.IsDBNull(11) ? null : reader.GetString(11)));
+                reader.GetInt64(6),
+                ReadOptionalDate(reader, 7),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.GetInt64(9) != 0,
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                ReadOptionalDate(reader, 11),
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return rows;
@@ -232,7 +234,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    ir.repository_name,
                    ir.youngest_revision,
                    ir.indexed_revision,
-                   ir.externals_revision,
+                   ir.properties_revision,
                    hp.path,
                    hp.node_kind,
                    hp.property_name,
@@ -353,6 +355,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                        youngest_revision,
                        indexed_revision,
                        head_tree_revision,
+                       properties_revision,
                        externals_revision,
                        last_scan_started_at,
                        last_scan_completed_at,
@@ -404,6 +407,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    youngest_revision,
                    indexed_revision,
                    head_tree_revision,
+                   properties_revision,
                    externals_revision,
                    last_scan_started_at,
                    last_scan_completed_at,
@@ -757,6 +761,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             """
             update index_repositories
                set head_tree_revision = $revision,
+                   properties_revision = $revision,
                    externals_revision = $revision,
                    updated_at = $now
              where repository_id = $repositoryId;
@@ -867,6 +872,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     youngest_revision integer not null default 0,
                     indexed_revision integer not null default 0,
                     head_tree_revision integer not null default 0,
+                    properties_revision integer not null default 0,
                     externals_revision integer not null default 0,
                     last_scan_started_at text null,
                     last_scan_completed_at text null,
@@ -963,6 +969,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 "index_repositories",
                 "externals_revision",
                 "externals_revision integer not null default 0",
+                cancellationToken);
+
+            await EnsureColumnAsync(
+                connection,
+                "index_repositories",
+                "properties_revision",
+                "properties_revision integer not null default 0",
                 cancellationToken);
 
             await EnsureColumnAsync(
@@ -1103,12 +1116,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             reader.GetInt64(4),
             reader.GetInt64(5),
             reader.GetInt64(6),
-            ReadOptionalDate(reader, 7),
+            reader.GetInt64(7),
             ReadOptionalDate(reader, 8),
             ReadOptionalDate(reader, 9),
-            reader.IsDBNull(10) ? null : reader.GetString(10),
-            reader.GetInt64(11) != 0,
-            ReadRequiredDate(reader, 12));
+            ReadOptionalDate(reader, 10),
+            reader.IsDBNull(11) ? null : reader.GetString(11),
+            reader.GetInt64(12) != 0,
+            ReadRequiredDate(reader, 13));
 
     private static string ResolveDatabasePath(SvnHubOptions options)
     {

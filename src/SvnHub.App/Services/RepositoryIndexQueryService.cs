@@ -154,6 +154,7 @@ public sealed class RepositoryIndexQueryService
                 head.YoungestRevision,
                 head.IndexedRevision,
                 head.HeadTreeRevision,
+                head.PropertiesRevision,
                 head.ExternalsRevision,
                 head.LastSuccessAt,
                 head.LastError,
@@ -198,6 +199,7 @@ public sealed class RepositoryIndexQueryService
                 commit.IndexedRevision,
                 0,
                 0,
+                0,
                 lastSuccessAt: null,
                 lastError: null,
                 isMissing: false);
@@ -234,6 +236,7 @@ public sealed class RepositoryIndexQueryService
                 _access.GetAccess(userId, repo.Id, "/"),
                 change.YoungestRevision,
                 change.IndexedRevision,
+                0,
                 0,
                 0,
                 lastSuccessAt: null,
@@ -275,6 +278,7 @@ public sealed class RepositoryIndexQueryService
                 entry.IndexedRevision,
                 entry.HeadTreeRevision,
                 0,
+                0,
                 lastSuccessAt: null,
                 lastError: null,
                 isMissing: false);
@@ -315,6 +319,7 @@ public sealed class RepositoryIndexQueryService
                 _access.GetAccess(userId, repo.Id, "/"),
                 external.YoungestRevision,
                 external.IndexedRevision,
+                0,
                 0,
                 external.ExternalsRevision,
                 lastSuccessAt: null,
@@ -362,6 +367,7 @@ public sealed class RepositoryIndexQueryService
                 property.IndexedRevision,
                 0,
                 property.PropertiesRevision,
+                0,
                 lastSuccessAt: null,
                 lastError: null,
                 isMissing: false);
@@ -390,7 +396,7 @@ public sealed class RepositoryIndexQueryService
         var staleSnapshotRepositories = from switch
         {
             "tree" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.HeadTreeRevision != r.IndexedRevision),
-            "properties" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.ExternalsRevision != r.IndexedRevision),
+            "properties" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.PropertiesRevision != r.IndexedRevision),
             "externals" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.ExternalsRevision != r.IndexedRevision),
             _ => 0,
         };
@@ -410,6 +416,7 @@ public sealed class RepositoryIndexQueryService
         long youngestRevision,
         long indexedRevision,
         long headTreeRevision,
+        long propertiesRevision,
         long externalsRevision,
         DateTimeOffset? lastSuccessAt,
         string? lastError,
@@ -425,6 +432,7 @@ public sealed class RepositoryIndexQueryService
             ["indexed.headRevision"] = youngestRevision,
             ["indexed.revision"] = indexedRevision,
             ["indexed.headTreeRevision"] = headTreeRevision,
+            ["indexed.propertiesRevision"] = propertiesRevision,
             ["indexed.externalsRevision"] = externalsRevision,
             ["indexed.remainingRevisions"] = remaining,
             ["indexed.complete"] = !isMissing && remaining == 0,
@@ -544,6 +552,7 @@ public sealed class RepositoryIndexQueryService
                 "headrevision" => "indexed.headRevision",
                 "indexedrevision" => "indexed.revision",
                 "headtreerevision" => "indexed.headTreeRevision",
+                "propertiesrevision" => "indexed.propertiesRevision",
                 "externalsrevision" => "indexed.externalsRevision",
                 "remainingrevisions" => "indexed.remainingRevisions",
                 "complete" => "indexed.complete",
@@ -591,6 +600,7 @@ public sealed class RepositoryIndexQueryService
                 "headrevision" => "indexed.headRevision",
                 "indexedrevision" => "indexed.revision",
                 "headtreerevision" => "indexed.headTreeRevision",
+                "propertiesrevision" => "indexed.propertiesRevision",
                 "remainingrevisions" => "indexed.remainingRevisions",
                 "complete" => "indexed.complete",
                 _ => normalized,
@@ -628,7 +638,8 @@ public sealed class RepositoryIndexQueryService
                 "name" or "propertyname" => "property.name",
                 "value" or "propertyvalue" => "property.value",
                 "indexedrevision" => "indexed.revision",
-                "propertiesrevision" or "externalsrevision" => "indexed.externalsRevision",
+                "propertiesrevision" => "indexed.propertiesRevision",
+                "externalsrevision" => "indexed.externalsRevision",
                 "remainingrevisions" => "indexed.remainingRevisions",
                 "complete" => "indexed.complete",
                 _ => normalized,
@@ -996,7 +1007,7 @@ public sealed class RepositoryIndexQueryService
     private static bool IsAllowedField(string from, string field)
     {
         if (field is "repository.name" or "repository.createdat" or "repository.rootaccess" or "repository.authenticateddefaultaccess" or
-            "indexed.headrevision" or "indexed.revision" or "indexed.headtreerevision" or "indexed.externalsrevision" or
+            "indexed.headrevision" or "indexed.revision" or "indexed.headtreerevision" or "indexed.propertiesrevision" or "indexed.externalsrevision" or
             "indexed.remainingrevisions" or "indexed.complete" or
             "indexed.lastsuccessat" or "indexed.lasterror" or "indexed.ismissing")
         {

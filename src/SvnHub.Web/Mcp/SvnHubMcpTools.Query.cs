@@ -37,7 +37,7 @@ public sealed partial class SvnHubMcpTools
     public static async Task<RepositoryIndexQueryResult> IndexQueryAsync(
         [Description(
             "Index query object. Sources: repositories, commits, changedPaths, tree, properties, externals. " +
-            "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
+            "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
@@ -78,6 +78,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -100,6 +101,7 @@ public sealed partial class SvnHubMcpTools
                         ["headRevision"] = "indexed.headRevision",
                         ["indexedRevision"] = "indexed.revision",
                         ["headTreeRevision"] = "indexed.headTreeRevision",
+                        ["propertiesRevision"] = "indexed.propertiesRevision",
                         ["externalsRevision"] = "indexed.externalsRevision",
                         ["remainingRevisions"] = "indexed.remainingRevisions",
                         ["complete"] = "indexed.complete",
@@ -116,6 +118,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -149,6 +152,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -182,6 +186,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -201,6 +206,7 @@ public sealed partial class SvnHubMcpTools
                         ["extension"] = "tree.extension",
                         ["isDirectory"] = "tree.isDirectory",
                         ["headTreeRevision"] = "indexed.headTreeRevision",
+                        ["propertiesRevision"] = "indexed.propertiesRevision",
                         ["remainingRevisions"] = "indexed.remainingRevisions",
                         ["complete"] = "indexed.complete",
                     }),
@@ -216,6 +222,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -259,6 +266,7 @@ public sealed partial class SvnHubMcpTools
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
+                        "indexed.propertiesRevision",
                         "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
@@ -278,7 +286,7 @@ public sealed partial class SvnHubMcpTools
                         ["propertyName"] = "property.name",
                         ["value"] = "property.value",
                         ["propertyValue"] = "property.value",
-                        ["propertiesRevision"] = "indexed.externalsRevision",
+                        ["propertiesRevision"] = "indexed.propertiesRevision",
                         ["remainingRevisions"] = "indexed.remainingRevisions",
                         ["complete"] = "indexed.complete",
                     }),
@@ -380,3 +388,4 @@ public sealed record McpIndexQuerySourceSchema(
 public sealed record McpIndexQueryExample(
     string Description,
     RepositoryIndexQueryRequest Query);
+
