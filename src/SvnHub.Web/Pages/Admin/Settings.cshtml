@@ -65,8 +65,145 @@
         <label asp-for="Input.CreateIfMissing" class="form-check-label"></label>
     </div>
 
+    <h2 class="h5 mt-4 mb-3">Repository index</h2>
+
+    <div class="form-check mb-3">
+        <input asp-for="Input.IndexingEnabled" class="form-check-input" />
+        <label asp-for="Input.IndexingEnabled" class="form-check-label"></label>
+        <div class="form-text">Periodically updates the SQLite index. Manual Scan now and index-backed search can still use the index when this is off.</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label asp-for="Input.IndexingScanIntervalSeconds" class="form-label"></label>
+            <input asp-for="Input.IndexingScanIntervalSeconds" type="number" min="30" max="86400" class="form-control" />
+            <div class="form-text">How often the background worker checks repositories.</div>
+            <span asp-validation-for="Input.IndexingScanIntervalSeconds" class="text-danger"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" class="form-label"></label>
+            <input asp-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" type="number" min="1" max="10000" class="form-control" />
+            <div class="form-text">Limits each pass so old repositories are indexed gradually.</div>
+            <span asp-validation-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" class="text-danger"></span>
+        </div>
+    </div>
+
     <button class="btn btn-primary" type="submit">Save</button>
 </form>
+
+<hr class="my-4" />
+
+<section aria-labelledby="index-status-heading">
+    <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+        <div>
+            <h2 id="index-status-heading" class="h5 mb-1">Index status</h2>
+            <div class="text-muted small">@Model.IndexStatus?.Store.DatabasePath</div>
+        </div>
+        <form method="post" asp-page-handler="ScanIndexNow">
+            <button class="btn btn-outline-primary" type="submit" disabled="@(Model.IndexStatus?.IsRunning == true)">Scan now</button>
+        </form>
+    </div>
+
+    @if (Model.IndexStatus is not null)
+    {
+        <dl class="row small mb-3">
+            <dt class="col-sm-3">Background worker</dt>
+            <dd class="col-sm-9">
+                @if (Model.IndexStatus.IsRunning)
+                {
+                    <span>Running</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.IndexStatus.CurrentRepository))
+                    {
+                        <span class="text-muted">(@Model.IndexStatus.CurrentRepository)</span>
+                    }
+                }
+                else
+                {
+                    <span>@(Model.IndexStatus.Settings.Enabled ? "Automatic scan enabled" : "Manual only")</span>
+                }
+            </dd>
+
+            <dt class="col-sm-3">Last run</dt>
+            <dd class="col-sm-9">@SettingsModel.FormatDate(Model.IndexStatus.LastRunCompletedAt)</dd>
+
+            <dt class="col-sm-3">Summary</dt>
+            <dd class="col-sm-9">@(Model.IndexStatus.LastRunSummary ?? "-")</dd>
+
+            <dt class="col-sm-3">Indexed data</dt>
+            <dd class="col-sm-9">
+                @Model.IndexStatus.Store.RepositoryCount repositories,
+                @Model.IndexStatus.Store.RevisionCount revisions,
+                @Model.IndexStatus.Store.ChangedPathCount changed paths
+            </dd>
+
+            <dt class="col-sm-3">Remaining</dt>
+            <dd class="col-sm-9">
+                @Model.IndexRemainingRevisions revisions
+                @if (Model.IndexPendingRepositoryCount > 0)
+                {
+                    <span class="text-muted">in @Model.IndexPendingRepositoryCount repositories</span>
+                }
+            </dd>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(Model.IndexStatus.LastRunError))
+        {
+            <div class="alert alert-warning small">@Model.IndexStatus.LastRunError</div>
+        }
+
+        @if (Model.IndexRepositoryRows.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                    <tr>
+                        <th>Repository</th>
+                        <th>Indexed</th>
+                        <th>Head</th>
+                        <th>Remaining</th>
+                        <th>Last success</th>
+                        <th>Status</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.IndexRepositoryRows)
+                    {
+                        <tr>
+                            <td>@row.RepositoryName</td>
+                            <td>r@(row.IndexedRevision)</td>
+                            <td>r@(row.YoungestRevision)</td>
+                            <td>@SettingsModel.GetRemainingRevisions(row)</td>
+                            <td>@SettingsModel.FormatDate(row.LastSuccessAt)</td>
+                            <td>
+                                @if (row.IsMissing)
+                                {
+                                    <span class="badge text-bg-secondary">Missing</span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(row.LastError))
+                                {
+                                    <span class="badge text-bg-warning">Error</span>
+                                }
+                                else if (row.IndexedRevision < row.YoungestRevision)
+                                {
+                                    <span class="badge text-bg-info">Pending</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-success">Current</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            @if (Model.IndexHiddenRepositoryCount > 0)
+            {
+                <div class="text-muted small">Showing repositories needing attention first; @Model.IndexHiddenRepositoryCount more are hidden.</div>
+            }
+        }
+    }
+</section>
 
 <hr class="my-4" />
 

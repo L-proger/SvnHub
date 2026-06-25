@@ -51,12 +51,20 @@ public sealed class ProcessCommandRunner : ICommandRunner
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
 
-        return new CommandResult(process.ExitCode, stdout, stderr);
+            return new CommandResult(process.ExitCode, stdout, stderr);
+        }
+        catch
+        {
+            KillIfRunning(process);
+            throw;
+        }
     }
 
     public async Task<CommandBinaryResult> RunBinaryAsync(
@@ -105,11 +113,19 @@ public sealed class ProcessCommandRunner : ICommandRunner
         var stdoutTask = process.StandardOutput.BaseStream.CopyToAsync(ms, cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        await process.WaitForExitAsync(cancellationToken);
-        await stdoutTask;
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+            await stdoutTask;
 
-        var stderr = await stderrTask;
-        return new CommandBinaryResult(process.ExitCode, ms.ToArray(), stderr);
+            var stderr = await stderrTask;
+            return new CommandBinaryResult(process.ExitCode, ms.ToArray(), stderr);
+        }
+        catch
+        {
+            KillIfRunning(process);
+            throw;
+        }
     }
 
     public async Task<CommandBinaryResult> RunBinaryPrefixAsync(
@@ -184,7 +200,7 @@ public sealed class ProcessCommandRunner : ICommandRunner
             if (ms.Length >= maxBytes && !process.HasExited)
             {
                 limitReached = true;
-                process.Kill(entireProcessTree: true);
+                KillIfRunning(process);
             }
 
             await process.WaitForExitAsync(cancellationToken);
@@ -196,10 +212,25 @@ public sealed class ProcessCommandRunner : ICommandRunner
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                KillIfRunning(process);
             }
 
             throw;
+        }
+    }
+
+    private static void KillIfRunning(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup on cancellation or partial process startup.
         }
     }
 

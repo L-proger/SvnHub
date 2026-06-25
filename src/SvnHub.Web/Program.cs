@@ -7,9 +7,12 @@ using SvnHub.App.Configuration;
 using SvnHub.App.Services;
 using SvnHub.App.Storage;
 using SvnHub.App.System;
+using SvnHub.App.Indexing;
 using SvnHub.Infrastructure.Storage;
 using SvnHub.Infrastructure.System;
+using SvnHub.Infrastructure.Indexing;
 using SvnHub.Domain;
+using SvnHub.Web.Indexing;
 using SvnHub.Web.Mcp;
 using SvnHub.Web.Support;
 using System.Security.Claims;
@@ -128,6 +131,9 @@ builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
 builder.Services.AddSingleton<MaterialFileIconService>();
+builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
+builder.Services.AddSingleton<RepositoryIndexService>();
+builder.Services.AddHostedService<RepositoryIndexHostedService>();
 
 var app = builder.Build();
 

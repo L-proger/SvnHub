@@ -29,4 +29,10 @@ public sealed record PortalSettings
     /// This is enforced by the server and by request body limits.
     /// </summary>
     public long MaxUploadBytes { get; init; } = 0;
+
+    public bool IndexingEnabled { get; init; } = false;
+
+    public int IndexingScanIntervalSeconds { get; init; } = 300;
+
+    public int IndexingMaxRevisionsPerRepositoryPerScan { get; init; } = 200;
 }

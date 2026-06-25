@@ -9,6 +9,12 @@ public sealed class SettingsService
 {
     public const long DefaultMaxUploadBytes = 100L * 1024 * 1024;
     public const long MaxAllowedUploadBytes = 2L * 1024 * 1024 * 1024;
+    public const int DefaultIndexingScanIntervalSeconds = 300;
+    public const int MinIndexingScanIntervalSeconds = 30;
+    public const int MaxIndexingScanIntervalSeconds = 86_400;
+    public const int DefaultIndexingMaxRevisionsPerRepositoryPerScan = 200;
+    public const int MinIndexingMaxRevisionsPerRepositoryPerScan = 1;
+    public const int MaxIndexingMaxRevisionsPerRepositoryPerScan = 10_000;
 
     private readonly IPortalStore _store;
     private readonly SvnHubOptions _options;
@@ -96,6 +102,42 @@ public sealed class SettingsService
         return v;
     }
 
+    public RepositoryIndexingSettings GetEffectiveIndexingSettings()
+    {
+        var state = _store.Read();
+        return GetEffectiveIndexingSettings(state);
+    }
+
+    public static RepositoryIndexingSettings GetEffectiveIndexingSettings(PortalState state)
+    {
+        var scanIntervalSeconds = state.Settings.IndexingScanIntervalSeconds;
+        if (scanIntervalSeconds <= 0)
+        {
+            scanIntervalSeconds = DefaultIndexingScanIntervalSeconds;
+        }
+
+        scanIntervalSeconds = Math.Clamp(
+            scanIntervalSeconds,
+            MinIndexingScanIntervalSeconds,
+            MaxIndexingScanIntervalSeconds);
+
+        var maxRevisionsPerRepositoryPerScan = state.Settings.IndexingMaxRevisionsPerRepositoryPerScan;
+        if (maxRevisionsPerRepositoryPerScan <= 0)
+        {
+            maxRevisionsPerRepositoryPerScan = DefaultIndexingMaxRevisionsPerRepositoryPerScan;
+        }
+
+        maxRevisionsPerRepositoryPerScan = Math.Clamp(
+            maxRevisionsPerRepositoryPerScan,
+            MinIndexingMaxRevisionsPerRepositoryPerScan,
+            MaxIndexingMaxRevisionsPerRepositoryPerScan);
+
+        return new RepositoryIndexingSettings(
+            state.Settings.IndexingEnabled,
+            scanIntervalSeconds,
+            maxRevisionsPerRepositoryPerScan);
+    }
+
     public async Task<OperationResult> SetRepositoriesRootPathAsync(
         Guid actorUserId,
         string repositoriesRootPath,
@@ -104,6 +146,9 @@ public sealed class SettingsService
         string? svnBaseUrl,
         AccessLevel defaultAuthenticatedAccess,
         long maxUploadBytes,
+        bool indexingEnabled,
+        int indexingScanIntervalSeconds,
+        int indexingMaxRevisionsPerRepositoryPerScan,
         CancellationToken cancellationToken = default
     )
     {
@@ -173,6 +218,20 @@ public sealed class SettingsService
             return OperationResult.Fail($"Max upload size is too large (>{MaxAllowedUploadBytes} bytes).");
         }
 
+        if (indexingScanIntervalSeconds < MinIndexingScanIntervalSeconds ||
+            indexingScanIntervalSeconds > MaxIndexingScanIntervalSeconds)
+        {
+            return OperationResult.Fail(
+                $"Index scan interval must be between {MinIndexingScanIntervalSeconds} and {MaxIndexingScanIntervalSeconds} seconds.");
+        }
+
+        if (indexingMaxRevisionsPerRepositoryPerScan < MinIndexingMaxRevisionsPerRepositoryPerScan ||
+            indexingMaxRevisionsPerRepositoryPerScan > MaxIndexingMaxRevisionsPerRepositoryPerScan)
+        {
+            return OperationResult.Fail(
+                $"Index batch size must be between {MinIndexingMaxRevisionsPerRepositoryPerScan} and {MaxIndexingMaxRevisionsPerRepositoryPerScan} revisions.");
+        }
+
         var newSettings = state.Settings with
         {
             OrganizationName = normalizedOrganizationName,
@@ -180,6 +239,9 @@ public sealed class SettingsService
             SvnBaseUrl = normalizedSvnBaseUrl,
             DefaultAuthenticatedAccess = defaultAuthenticatedAccess,
             MaxUploadBytes = maxUploadBytes,
+            IndexingEnabled = indexingEnabled,
+            IndexingScanIntervalSeconds = indexingScanIntervalSeconds,
+            IndexingMaxRevisionsPerRepositoryPerScan = indexingMaxRevisionsPerRepositoryPerScan,
         };
 
         var newState = state with
@@ -223,6 +285,15 @@ public sealed class SettingsService
                     Target: "maxUploadBytes",
                     Success: true,
                     Details: maxUploadBytes.ToString()
+                ),
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "settings.set_indexing",
+                    Target: "repositoryIndex",
+                    Success: true,
+                    Details: $"enabled={indexingEnabled}; interval={indexingScanIntervalSeconds}; batch={indexingMaxRevisionsPerRepositoryPerScan}"
                 ),
             ],
         };
