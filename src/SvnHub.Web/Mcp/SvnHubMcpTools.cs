@@ -270,9 +270,10 @@ public sealed class SvnHubMcpTools
         "Use from=repositories for one row per repository and HEAD/last-commit fields: repository.name, head.revision, head.author, head.date, head.message. " +
         "Use from=commits for recent history fields: repository.name, commit.revision, commit.author, commit.date, commit.message, commit.path; set scan.historyLimitPerRepository. " +
         "Use from=tree for one-level directory scans: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory; set scan.path. " +
-        "Aliases are accepted: repositoryName/name, revision, author, date, message, path. " +
+        "Aliases are accepted as separate field names: repositoryName, name, revision, author, date, message, path. Do not combine aliases with slash characters. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Examples: last commit by user -> from=repositories where author eq user; user participated -> from=commits where author eq user groupBy repositoryName. " +
+        "Example last commit by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\"]}. " +
+        "Example user participated: {\"from\":\"commits\",\"scan\":{\"historyLimitPerRepository\":100},\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\"]}. " +
         "Call svnhub_query_schema for the full schema and examples.")]
     public static async Task<McpQueryResult> QueryAsync(
         [Description(
@@ -282,7 +283,7 @@ public sealed class SvnHubMcpTools
             "repositories fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, head.revision, head.author, head.date, head.message. " +
             "commits fields: repository.name, repository.createdAt, repository.rootAccess, commit.revision, commit.author, commit.date, commit.message, commit.path. " +
             "tree fields: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory. " +
-            "Common aliases: repositoryName/name, revision, author, date, message, path.")]
+            "Common aliases, each used as its own field string: repositoryName, name, revision, author, date, message, path. Never send repositoryName/name.")]
         McpQueryRequest query,
         RepositoryService repositories,
         AccessService access,
