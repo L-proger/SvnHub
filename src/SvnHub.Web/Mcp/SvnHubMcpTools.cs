@@ -268,11 +268,12 @@ public sealed class SvnHubMcpTools
     [Description(
         "Run a safe declarative query over visible SVN data. " +
         "Use from=repositories for one row per repository and HEAD/last-commit fields: repository.name, head.revision, head.author, head.date, head.message. " +
-        "Use from=commits for recent history fields: repository.name, commit.revision, commit.author, commit.date, commit.message, commit.path; set scan.historyLimitPerRepository. " +
+        "Optional changed-path fields are available when selected: head.changedPaths, head.changedPathCount. " +
+        "Use from=commits for recent history fields: repository.name, commit.revision, commit.author, commit.date, commit.message, commit.path. Optional changed-path fields: commit.changedPaths, commit.changedPathCount; set scan.historyLimitPerRepository. " +
         "Use from=tree for one-level directory scans: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory; set scan.path. " +
         "Aliases are accepted as separate field names: repositoryName, name, revision, author, date, message, path. Do not combine aliases with slash characters. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Example last commit by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\"]}. " +
+        "Example last commit by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"changedPaths\"]}. " +
         "Example user participated: {\"from\":\"commits\",\"scan\":{\"historyLimitPerRepository\":100},\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\"]}. " +
         "Call svnhub_query_schema for the full schema and examples.")]
     public static async Task<McpQueryResult> QueryAsync(
@@ -281,7 +282,8 @@ public sealed class SvnHubMcpTools
             "where item: { field, op, value } or { field, op:'in', values:[...] }. " +
             "orderBy item: { field, direction:'asc'|'desc' }. " +
             "repositories fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, head.revision, head.author, head.date, head.message. " +
-            "commits fields: repository.name, repository.createdAt, repository.rootAccess, commit.revision, commit.author, commit.date, commit.message, commit.path. " +
+            "repositories optional changed-path fields: head.changedPaths, head.changedPathCount. " +
+            "commits fields: repository.name, repository.createdAt, repository.rootAccess, commit.revision, commit.author, commit.date, commit.message, commit.path, commit.changedPaths, commit.changedPathCount. " +
             "tree fields: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory. " +
             "Common aliases, each used as its own field string: repositoryName, name, revision, author, date, message, path. Never send repositoryName/name.")]
         McpQueryRequest query,
@@ -383,6 +385,8 @@ public sealed class SvnHubMcpTools
                         "head.author",
                         "head.date",
                         "head.message",
+                        "head.changedPaths",
+                        "head.changedPathCount",
                     ],
                     Aliases: new Dictionary<string, string>
                     {
@@ -392,6 +396,8 @@ public sealed class SvnHubMcpTools
                         ["author"] = "head.author",
                         ["date"] = "head.date",
                         ["message"] = "head.message",
+                        ["changedPaths"] = "head.changedPaths",
+                        ["changedPathCount"] = "head.changedPathCount",
                     }),
                 new McpQuerySourceSchema(
                     "commits",
@@ -407,6 +413,8 @@ public sealed class SvnHubMcpTools
                         "commit.date",
                         "commit.message",
                         "commit.path",
+                        "commit.changedPaths",
+                        "commit.changedPathCount",
                     ],
                     Aliases: new Dictionary<string, string>
                     {
@@ -417,6 +425,8 @@ public sealed class SvnHubMcpTools
                         ["date"] = "commit.date",
                         ["message"] = "commit.message",
                         ["path"] = "commit.path",
+                        ["changedPaths"] = "commit.changedPaths",
+                        ["changedPathCount"] = "commit.changedPathCount",
                     }),
                 new McpQuerySourceSchema(
                     "tree",
@@ -452,7 +462,7 @@ public sealed class SvnHubMcpTools
                     {
                         From = "repositories",
                         Where = [new McpQueryCondition { Field = "author", Op = "eq", Value = "sergey.serb" }],
-                        Select = ["repositoryName", "revision", "author", "date", "message"],
+                        Select = ["repositoryName", "revision", "author", "date", "message", "changedPaths"],
                     }),
                 new McpQueryExample(
                     "Repositories where sergey.serb appears in recent history",
@@ -599,6 +609,7 @@ public sealed class SvnHubMcpTools
         CancellationToken cancellationToken)
     {
         var includeHead = QueryReferencesPrefix(query, "head.");
+        var includeHeadChangedPaths = QueryReferencesPrefix(query, "head.changedpath");
         var rows = new List<Dictionary<string, object?>>(repositories.Count);
 
         foreach (var repo in repositories)
@@ -612,6 +623,11 @@ public sealed class SvnHubMcpTools
                 {
                     var head = await LoadRevisionInfoAsync(repo.LocalPath, null, svnlook, cancellationToken);
                     AddHeadFields(row, head);
+                    if (includeHeadChangedPaths)
+                    {
+                        var changedPaths = await svnlook.GetChangedPathsAsync(repo.LocalPath, head.Revision, cancellationToken);
+                        AddChangedPathFields(row, "head", changedPaths);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -635,6 +651,7 @@ public sealed class SvnHubMcpTools
         CancellationToken cancellationToken)
     {
         var path = NormalizePath(query.Scan?.Path);
+        var includeCommitChangedPaths = QueryReferencesPrefix(query, "commit.changedpath");
         var take = Math.Clamp(
             query.Scan?.HistoryLimitPerRepository ?? DefaultQueryHistoryLimitPerRepository,
             1,
@@ -670,6 +687,11 @@ public sealed class SvnHubMcpTools
                     row["commit.date"] = info.Date;
                     row["commit.message"] = info.Message;
                     row["commit.path"] = entry.Path;
+                    if (includeCommitChangedPaths)
+                    {
+                        var changedPaths = await svnlook.GetChangedPathsAsync(repo.LocalPath, entry.Revision, cancellationToken);
+                        AddChangedPathFields(row, "commit", changedPaths);
+                    }
                     rows.Add(row);
 
                     if (mayStopEarly && rows.Count >= earlyLimit)
@@ -753,6 +775,8 @@ public sealed class SvnHubMcpTools
                 "author" or "headauthor" => "head.author",
                 "date" or "headdate" => "head.date",
                 "message" or "headmessage" => "head.message",
+                "changedpaths" or "headchangedpaths" => "head.changedPaths",
+                "changedpathcount" or "headchangedpathcount" => "head.changedPathCount",
                 _ => normalized,
             },
             "commits" => normalized switch
@@ -766,6 +790,8 @@ public sealed class SvnHubMcpTools
                 "date" or "commitdate" => "commit.date",
                 "message" or "commitmessage" => "commit.message",
                 "path" or "commitpath" => "commit.path",
+                "changedpaths" or "commitchangedpaths" => "commit.changedPaths",
+                "changedpathcount" or "commitchangedpathcount" => "commit.changedPathCount",
                 _ => normalized,
             },
             "tree" => normalized switch
@@ -888,6 +914,17 @@ public sealed class SvnHubMcpTools
         row["head.author"] = info.Author;
         row["head.date"] = info.Date;
         row["head.message"] = info.Message;
+    }
+
+    private static void AddChangedPathFields(
+        Dictionary<string, object?> row,
+        string prefix,
+        IReadOnlyList<SvnChangedPath> changedPaths)
+    {
+        row[$"{prefix}.changedPathCount"] = changedPaths.Count;
+        row[$"{prefix}.changedPaths"] = changedPaths
+            .Select(p => new McpChangedPath(p.Action, p.Path))
+            .ToArray();
     }
 
     private static bool MatchesAllConditions(
@@ -1192,8 +1229,8 @@ public sealed class SvnHubMcpTools
 
         return from switch
         {
-            "repositories" => field is "head.revision" or "head.author" or "head.date" or "head.message",
-            "commits" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "commit.path",
+            "repositories" => field is "head.revision" or "head.author" or "head.date" or "head.message" or "head.changedpaths" or "head.changedpathcount",
+            "commits" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "commit.path" or "commit.changedpaths" or "commit.changedpathcount",
             "tree" => field is "tree.revision" or "entry.name" or "entry.path" or "entry.extension" or "entry.isdirectory",
             _ => false,
         };
@@ -1356,6 +1393,8 @@ public sealed record McpQueryResult(
     bool Truncated,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<Dictionary<string, object?>> Rows);
+
+public sealed record McpChangedPath(string Action, string Path);
 
 public sealed record McpQuerySchemaResult(
     IReadOnlyList<McpQuerySourceSchema> Sources,

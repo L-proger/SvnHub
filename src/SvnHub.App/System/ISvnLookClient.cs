@@ -90,4 +90,10 @@ public interface ISvnLookClient
         long revision,
         CancellationToken cancellationToken = default
     );
+
+    Task<IReadOnlyList<SvnChangedPath>> GetChangedPathsAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
 }

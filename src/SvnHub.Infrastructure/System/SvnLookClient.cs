@@ -283,6 +283,52 @@ public sealed class SvnLookClient : ISvnLookClient
         return diff;
     }
 
+    public async Task<IReadOnlyList<SvnChangedPath>> GetChangedPathsAsync(
+        string repoLocalPath,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["changed", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook changed failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var text = DecodeSvnText(result.StandardOutput);
+        var rows = new List<SvnChangedPath>();
+
+        foreach (var rawLine in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.TrimEnd();
+            if (line.Length < 2)
+            {
+                continue;
+            }
+
+            var splitAt = line.IndexOf(' ');
+            if (splitAt <= 0 || splitAt >= line.Length - 1)
+            {
+                continue;
+            }
+
+            var action = line[..splitAt].Trim();
+            var path = line[splitAt..].Trim();
+            if (action.Length == 0 || path.Length == 0)
+            {
+                continue;
+            }
+
+            rows.Add(new SvnChangedPath(action, NormalizePath(path)));
+        }
+
+        return rows;
+    }
+
     public async Task<DateTimeOffset> GetRevisionDateAsync(
         string repoLocalPath,
         long revision,
