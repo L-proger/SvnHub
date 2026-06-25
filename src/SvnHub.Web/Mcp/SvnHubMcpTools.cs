@@ -265,9 +265,24 @@ public sealed class SvnHubMcpTools
         ReadOnly = true,
         Destructive = false,
         OpenWorld = false)]
-    [Description("Run a safe declarative query over repositories, recent commits, or directory trees visible to the authenticated SvnHub user.")]
+    [Description(
+        "Run a safe declarative query over visible SVN data. " +
+        "Use from=repositories for one row per repository and HEAD/last-commit fields: repository.name, head.revision, head.author, head.date, head.message. " +
+        "Use from=commits for recent history fields: repository.name, commit.revision, commit.author, commit.date, commit.message, commit.path; set scan.historyLimitPerRepository. " +
+        "Use from=tree for one-level directory scans: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory; set scan.path. " +
+        "Aliases are accepted: repositoryName/name, revision, author, date, message, path. " +
+        "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
+        "Examples: last commit by user -> from=repositories where author eq user; user participated -> from=commits where author eq user groupBy repositoryName. " +
+        "Call svnhub_query_schema for the full schema and examples.")]
     public static async Task<McpQueryResult> QueryAsync(
-        [Description("Query object. from: repositories|commits|tree. where uses allow-listed fields and operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists.")]
+        [Description(
+            "Query object. Shape: { from, scan?, where?, select?, groupBy?, orderBy?, limit? }. " +
+            "where item: { field, op, value } or { field, op:'in', values:[...] }. " +
+            "orderBy item: { field, direction:'asc'|'desc' }. " +
+            "repositories fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, head.revision, head.author, head.date, head.message. " +
+            "commits fields: repository.name, repository.createdAt, repository.rootAccess, commit.revision, commit.author, commit.date, commit.message, commit.path. " +
+            "tree fields: repository.name, tree.revision, entry.name, entry.path, entry.extension, entry.isDirectory. " +
+            "Common aliases: repositoryName/name, revision, author, date, message, path.")]
         McpQueryRequest query,
         RepositoryService repositories,
         AccessService access,
@@ -280,15 +295,24 @@ public sealed class SvnHubMcpTools
             throw new InvalidOperationException("Query is required.");
         }
 
-        NormalizeQuery(query);
-
-        var from = NormalizeQueryToken(query.From);
-        if (from is not ("repositories" or "commits" or "tree"))
+        string from;
+        try
         {
-            throw new InvalidOperationException("Query from must be one of: repositories, commits, tree.");
-        }
+            NormalizeQuery(query);
 
-        ValidateQuery(from, query);
+            from = NormalizeQueryToken(query.From);
+            if (from is not ("repositories" or "commits" or "tree"))
+            {
+                return QueryError(from, $"Query from must be one of: repositories, commits, tree. Received: '{query.From}'.");
+            }
+
+            NormalizeQueryFields(from, query);
+            ValidateQuery(from, query);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return QueryError(query.From, ex.Message);
+        }
 
         var userId = GetCurrentUserId(httpContextAccessor);
         var warnings = new List<string>();
@@ -332,6 +356,123 @@ public sealed class SvnHubMcpTools
             truncated,
             warnings,
             selectedRows);
+    }
+
+    [McpServerTool(
+        Name = "svnhub_query_schema",
+        ReadOnly = true,
+        Destructive = false,
+        OpenWorld = false)]
+    [Description("Return the svnhub_query schema, supported fields, aliases, operators, and example queries.")]
+    public static McpQuerySchemaResult GetQuerySchema()
+    {
+        return new McpQuerySchemaResult(
+            Sources:
+            [
+                new McpQuerySourceSchema(
+                    "repositories",
+                    "One row per visible repository. Use this for HEAD/last-commit questions.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "head.revision",
+                        "head.author",
+                        "head.date",
+                        "head.message",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["name"] = "repository.name",
+                        ["repositoryName"] = "repository.name",
+                        ["revision"] = "head.revision",
+                        ["author"] = "head.author",
+                        ["date"] = "head.date",
+                        ["message"] = "head.message",
+                    }),
+                new McpQuerySourceSchema(
+                    "commits",
+                    "Recent history rows per visible repository. This can be expensive; use scan.historyLimitPerRepository.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "commit.revision",
+                        "commit.author",
+                        "commit.date",
+                        "commit.message",
+                        "commit.path",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["name"] = "repository.name",
+                        ["repositoryName"] = "repository.name",
+                        ["revision"] = "commit.revision",
+                        ["author"] = "commit.author",
+                        ["date"] = "commit.date",
+                        ["message"] = "commit.message",
+                        ["path"] = "commit.path",
+                    }),
+                new McpQuerySourceSchema(
+                    "tree",
+                    "One directory level per visible repository. Use scan.path, default is /.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "tree.revision",
+                        "entry.name",
+                        "entry.path",
+                        "entry.extension",
+                        "entry.isDirectory",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["repositoryName"] = "repository.name",
+                        ["revision"] = "tree.revision",
+                        ["name"] = "entry.name",
+                        ["path"] = "entry.path",
+                        ["extension"] = "entry.extension",
+                        ["isDirectory"] = "entry.isDirectory",
+                    }),
+            ],
+            Operators: ["eq", "neq", "contains", "startsWith", "endsWith", "gt", "gte", "lt", "lte", "in", "exists"],
+            Examples:
+            [
+                new McpQueryExample(
+                    "Repositories where the last commit is by sergey.serb",
+                    new McpQueryRequest
+                    {
+                        From = "repositories",
+                        Where = [new McpQueryCondition { Field = "author", Op = "eq", Value = "sergey.serb" }],
+                        Select = ["repositoryName", "revision", "author", "date", "message"],
+                    }),
+                new McpQueryExample(
+                    "Repositories where sergey.serb appears in recent history",
+                    new McpQueryRequest
+                    {
+                        From = "commits",
+                        Scan = new McpQueryScan { HistoryLimitPerRepository = 100 },
+                        Where = [new McpQueryCondition { Field = "author", Op = "eq", Value = "sergey.serb" }],
+                        GroupBy = ["repositoryName"],
+                        Select = ["repositoryName", "count", "latest.commit.revision", "latest.commit.date", "latest.commit.message"],
+                    }),
+                new McpQueryExample(
+                    "Repositories with CMakeLists.txt directly under /trunk",
+                    new McpQueryRequest
+                    {
+                        From = "tree",
+                        Scan = new McpQueryScan { Path = "/trunk" },
+                        Where = [new McpQueryCondition { Field = "name", Op = "eq", Value = "CMakeLists.txt" }],
+                        Select = ["repositoryName", "path"],
+                    }),
+            ]);
     }
 
     private static Guid GetCurrentUserId(IHttpContextAccessor httpContextAccessor)
@@ -499,6 +640,8 @@ public sealed class SvnHubMcpTools
             MaxQueryHistoryLimitPerRepository);
 
         var rows = new List<Dictionary<string, object?>>();
+        var mayStopEarly = CanStopBuildingRowsEarly(query);
+        var earlyLimit = Math.Clamp(query.Limit ?? DefaultQueryLimit, 1, MaxQueryLimit);
 
         foreach (var repo in repositories)
         {
@@ -527,6 +670,11 @@ public sealed class SvnHubMcpTools
                     row["commit.message"] = info.Message;
                     row["commit.path"] = entry.Path;
                     rows.Add(row);
+
+                    if (mayStopEarly && rows.Count >= earlyLimit)
+                    {
+                        return rows;
+                    }
                 }
             }
             catch (Exception ex)
@@ -537,6 +685,11 @@ public sealed class SvnHubMcpTools
 
         return rows;
     }
+
+    private static bool CanStopBuildingRowsEarly(McpQueryRequest query) =>
+        query.Where.Count == 0 &&
+        query.GroupBy.Count == 0 &&
+        query.OrderBy.Count == 0;
 
     private static void NormalizeQuery(McpQueryRequest query)
     {
@@ -553,6 +706,97 @@ public sealed class SvnHubMcpTools
             condition.Values ??= [];
         }
     }
+
+    private static void NormalizeQueryFields(string from, McpQueryRequest query)
+    {
+        foreach (var condition in query.Where)
+        {
+            condition.Field = ResolveFieldAlias(from, condition.Field, allowAggregateFields: false);
+        }
+
+        for (var i = 0; i < query.GroupBy.Count; i++)
+        {
+            query.GroupBy[i] = ResolveFieldAlias(from, query.GroupBy[i], allowAggregateFields: false);
+        }
+
+        for (var i = 0; i < query.Select.Count; i++)
+        {
+            query.Select[i] = ResolveFieldAlias(from, query.Select[i], allowAggregateFields: query.GroupBy.Count > 0);
+        }
+
+        foreach (var order in query.OrderBy)
+        {
+            order.Field = ResolveFieldAlias(from, order.Field, allowAggregateFields: query.GroupBy.Count > 0);
+        }
+    }
+
+    private static string ResolveFieldAlias(string from, string? field, bool allowAggregateFields)
+    {
+        var normalized = NormalizeField(field);
+        if (normalized == "*" ||
+            (allowAggregateFields && (normalized == "count" || normalized.StartsWith("latest.", StringComparison.OrdinalIgnoreCase))) ||
+            IsAllowedField(from, normalized))
+        {
+            return normalized;
+        }
+
+        return from switch
+        {
+            "repositories" => normalized switch
+            {
+                "name" or "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "revision" or "headrevision" => "head.revision",
+                "author" or "headauthor" => "head.author",
+                "date" or "headdate" => "head.date",
+                "message" or "headmessage" => "head.message",
+                _ => normalized,
+            },
+            "commits" => normalized switch
+            {
+                "name" or "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "revision" or "commitrevision" => "commit.revision",
+                "author" or "commitauthor" => "commit.author",
+                "date" or "commitdate" => "commit.date",
+                "message" or "commitmessage" => "commit.message",
+                "path" or "commitpath" => "commit.path",
+                _ => normalized,
+            },
+            "tree" => normalized switch
+            {
+                "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "revision" or "treerevision" => "tree.revision",
+                "name" or "entryname" => "entry.name",
+                "path" or "entrypath" => "entry.path",
+                "extension" or "ext" => "entry.extension",
+                "isdirectory" or "directory" => "entry.isDirectory",
+                _ => normalized,
+            },
+            _ => normalized,
+        };
+    }
+
+    private static McpQueryResult QueryError(string? from, string message) =>
+        new(
+            string.IsNullOrWhiteSpace(from) ? "invalid" : from.Trim(),
+            ScannedRepositories: 0,
+            ScannedRows: 0,
+            MatchedRows: 0,
+            Truncated: false,
+            Warnings:
+            [
+                message,
+                "Call svnhub_query_schema for supported fields, aliases, operators, and examples.",
+            ],
+            Rows: []);
 
     private static async Task<List<Dictionary<string, object?>>> BuildTreeQueryRowsAsync(
         IReadOnlyList<Repository> repositories,
@@ -1111,3 +1355,18 @@ public sealed record McpQueryResult(
     bool Truncated,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<Dictionary<string, object?>> Rows);
+
+public sealed record McpQuerySchemaResult(
+    IReadOnlyList<McpQuerySourceSchema> Sources,
+    IReadOnlyList<string> Operators,
+    IReadOnlyList<McpQueryExample> Examples);
+
+public sealed record McpQuerySourceSchema(
+    string From,
+    string Description,
+    IReadOnlyList<string> Fields,
+    IReadOnlyDictionary<string, string> Aliases);
+
+public sealed record McpQueryExample(
+    string Description,
+    McpQueryRequest Query);
