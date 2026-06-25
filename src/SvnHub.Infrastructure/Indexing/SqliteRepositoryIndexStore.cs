@@ -947,7 +947,6 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 create index if not exists ix_head_externals_target_path on head_externals(target_path);
                 create index if not exists ix_head_externals_resolved_path on head_externals(resolved_path);
                 create index if not exists ix_head_externals_url on head_externals(url);
-                create index if not exists ix_head_externals_is_pinned on head_externals(is_pinned);
                 """,
                 [],
                 cancellationToken);
@@ -971,6 +970,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 "head_externals",
                 "is_pinned",
                 "is_pinned integer not null default 0",
+                cancellationToken);
+
+            await ExecuteNonQueryAsync(
+                connection,
+                null,
+                "create index if not exists ix_head_externals_is_pinned on head_externals(is_pinned);",
+                [],
                 cancellationToken);
 
             _initialized = true;
