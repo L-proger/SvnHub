@@ -16,6 +16,8 @@ public sealed class RepositoryIndexService
     private bool _isRunning;
     private DateTimeOffset? _currentRunStartedAt;
     private string? _currentRepository;
+    private int _currentRunTotalRepositories;
+    private int _currentRunProcessedRepositories;
     private DateTimeOffset? _lastRunStartedAt;
     private DateTimeOffset? _lastRunCompletedAt;
     private string? _lastRunSummary;
@@ -43,6 +45,9 @@ public sealed class RepositoryIndexService
             runtime.IsRunning,
             runtime.CurrentRunStartedAt,
             runtime.CurrentRepository,
+            runtime.CurrentRunTotalRepositories,
+            runtime.CurrentRunProcessedRepositories,
+            Math.Max(0, runtime.CurrentRunTotalRepositories - runtime.CurrentRunProcessedRepositories),
             runtime.LastRunStartedAt,
             runtime.LastRunCompletedAt,
             runtime.LastRunSummary,
@@ -116,6 +121,9 @@ public sealed class RepositoryIndexService
         try
         {
             var repositories = _repositories.List();
+            var processedRepositories = 0;
+            SetRepositoryProgress(repositories.Count, processedRepositories, null);
+
             await _store.MarkActiveRepositoriesAsync(
                 repositories.Select(r => r.Id).ToArray(),
                 startedAt,
@@ -124,7 +132,7 @@ public sealed class RepositoryIndexService
             foreach (var repository in repositories)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                SetCurrentRepository(repository.Name);
+                SetRepositoryProgress(repositories.Count, processedRepositories, repository.Name);
 
                 try
                 {
@@ -150,6 +158,9 @@ public sealed class RepositoryIndexService
                         DateTimeOffset.UtcNow,
                         cancellationToken);
                 }
+
+                processedRepositories++;
+                SetRepositoryProgress(repositories.Count, processedRepositories, null);
             }
 
             var completedAt = DateTimeOffset.UtcNow;
@@ -181,7 +192,7 @@ public sealed class RepositoryIndexService
         }
         finally
         {
-            SetCurrentRepository(null);
+            SetRepositoryProgress(0, 0, null);
             _scanGate.Release();
         }
     }
@@ -263,6 +274,8 @@ public sealed class RepositoryIndexService
                 _isRunning,
                 _currentRunStartedAt,
                 _currentRepository,
+                _currentRunTotalRepositories,
+                _currentRunProcessedRepositories,
                 _lastRunStartedAt,
                 _lastRunCompletedAt,
                 _lastRunSummary,
@@ -277,6 +290,8 @@ public sealed class RepositoryIndexService
             _isRunning = true;
             _currentRunStartedAt = startedAt;
             _currentRepository = null;
+            _currentRunTotalRepositories = 0;
+            _currentRunProcessedRepositories = 0;
             _lastRunStartedAt = startedAt;
             _lastRunCompletedAt = null;
             _lastRunSummary = "Indexing is running.";
@@ -284,10 +299,15 @@ public sealed class RepositoryIndexService
         }
     }
 
-    private void SetCurrentRepository(string? repositoryName)
+    private void SetRepositoryProgress(int totalRepositories, int processedRepositories, string? repositoryName)
     {
         lock (_statusGate)
         {
+            _currentRunTotalRepositories = Math.Max(0, totalRepositories);
+            _currentRunProcessedRepositories = Math.Clamp(
+                processedRepositories,
+                0,
+                _currentRunTotalRepositories);
             _currentRepository = repositoryName;
         }
     }
@@ -299,6 +319,8 @@ public sealed class RepositoryIndexService
             _isRunning = false;
             _currentRunStartedAt = null;
             _currentRepository = null;
+            _currentRunTotalRepositories = 0;
+            _currentRunProcessedRepositories = 0;
             _lastRunCompletedAt = completedAt;
             _lastRunSummary = summary;
             _lastRunError = error;
@@ -325,6 +347,8 @@ public sealed class RepositoryIndexService
         bool IsRunning,
         DateTimeOffset? CurrentRunStartedAt,
         string? CurrentRepository,
+        int CurrentRunTotalRepositories,
+        int CurrentRunProcessedRepositories,
         DateTimeOffset? LastRunStartedAt,
         DateTimeOffset? LastRunCompletedAt,
         string? LastRunSummary,
@@ -336,6 +360,9 @@ public sealed record RepositoryIndexStatus(
     bool IsRunning,
     DateTimeOffset? CurrentRunStartedAt,
     string? CurrentRepository,
+    int CurrentRunTotalRepositories,
+    int CurrentRunProcessedRepositories,
+    int CurrentRunRemainingRepositories,
     DateTimeOffset? LastRunStartedAt,
     DateTimeOffset? LastRunCompletedAt,
     string? LastRunSummary,

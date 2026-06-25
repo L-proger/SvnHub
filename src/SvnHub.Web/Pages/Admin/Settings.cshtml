@@ -123,6 +123,29 @@
                 }
             </dd>
 
+            @if (Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRunTotalRepositories > 0)
+            {
+                <dt class="col-sm-3">Run progress</dt>
+                <dd class="col-sm-9">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span>
+                            @Model.IndexStatus.CurrentRunProcessedRepositories / @Model.IndexStatus.CurrentRunTotalRepositories repositories
+                        </span>
+                        <span class="text-muted">
+                            @Model.IndexStatus.CurrentRunRemainingRepositories remaining
+                        </span>
+                    </div>
+                    <div class="progress mt-1" style="height: 6px;">
+                        <div class="progress-bar"
+                             role="progressbar"
+                             style="width: @(Model.CurrentRunProgressPercent)%"
+                             aria-valuenow="@Model.CurrentRunProgressPercent"
+                             aria-valuemin="0"
+                             aria-valuemax="100"></div>
+                    </div>
+                </dd>
+            }
+
             <dt class="col-sm-3">Last run</dt>
             <dd class="col-sm-9">@SettingsModel.FormatDate(Model.IndexStatus.LastRunCompletedAt)</dd>
 

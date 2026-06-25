@@ -57,6 +57,21 @@ public sealed class SettingsModel : PageModel
             .ToArray() ?? [];
     public int IndexHiddenRepositoryCount =>
         Math.Max(0, (IndexStatus?.Store.Repositories.Count ?? 0) - IndexRepositoryRows.Count);
+    public int CurrentRunProgressPercent
+    {
+        get
+        {
+            if (IndexStatus is null || IndexStatus.CurrentRunTotalRepositories <= 0)
+            {
+                return 0;
+            }
+
+            return (int)Math.Clamp(
+                Math.Round(IndexStatus.CurrentRunProcessedRepositories * 100.0 / IndexStatus.CurrentRunTotalRepositories),
+                0,
+                100);
+        }
+    }
 
     [TempData]
     public string? Error { get; set; }
