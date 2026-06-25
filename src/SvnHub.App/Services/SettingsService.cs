@@ -13,7 +13,7 @@ public sealed class SettingsService
     public const int MinIndexingScanIntervalSeconds = 30;
     public const int MaxIndexingScanIntervalSeconds = 86_400;
     public const int DefaultIndexingMaxRevisionsPerRepositoryPerScan = 200;
-    public const int MinIndexingMaxRevisionsPerRepositoryPerScan = 1;
+    public const int MinIndexingMaxRevisionsPerRepositoryPerScan = 0;
     public const int MaxIndexingMaxRevisionsPerRepositoryPerScan = 10_000;
 
     private readonly IPortalStore _store;
@@ -122,7 +122,7 @@ public sealed class SettingsService
             MaxIndexingScanIntervalSeconds);
 
         var maxRevisionsPerRepositoryPerScan = state.Settings.IndexingMaxRevisionsPerRepositoryPerScan;
-        if (maxRevisionsPerRepositoryPerScan <= 0)
+        if (maxRevisionsPerRepositoryPerScan < 0)
         {
             maxRevisionsPerRepositoryPerScan = DefaultIndexingMaxRevisionsPerRepositoryPerScan;
         }
@@ -229,7 +229,7 @@ public sealed class SettingsService
             indexingMaxRevisionsPerRepositoryPerScan > MaxIndexingMaxRevisionsPerRepositoryPerScan)
         {
             return OperationResult.Fail(
-                $"Index batch size must be between {MinIndexingMaxRevisionsPerRepositoryPerScan} and {MaxIndexingMaxRevisionsPerRepositoryPerScan} revisions.");
+                $"Index batch size must be between {MinIndexingMaxRevisionsPerRepositoryPerScan} and {MaxIndexingMaxRevisionsPerRepositoryPerScan} revisions (0 means unlimited).");
         }
 
         var newSettings = state.Settings with

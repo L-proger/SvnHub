@@ -82,8 +82,8 @@
         </div>
         <div class="col-md-6">
             <label asp-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" class="form-label"></label>
-            <input asp-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" type="number" min="1" max="10000" class="form-control" />
-            <div class="form-text">Limits each pass so old repositories are indexed gradually.</div>
+            <input asp-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" type="number" min="0" max="10000" class="form-control" />
+            <div class="form-text">One pass indexes at most this many revisions per repository. Use 0 for unlimited.</div>
             <span asp-validation-for="Input.IndexingMaxRevisionsPerRepositoryPerScan" class="text-danger"></span>
         </div>
     </div>
@@ -93,14 +93,19 @@
 
 <hr class="my-4" />
 
-<section aria-labelledby="index-status-heading">
+<section id="index-status"
+         data-status-url="@Url.Page("/Admin/Settings", "IndexStatus")"
+         aria-labelledby="index-status-heading">
     <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
         <div>
             <h2 id="index-status-heading" class="h5 mb-1">Index status</h2>
-            <div class="text-muted small">@Model.IndexStatus?.Store.DatabasePath</div>
+            <div id="index-database-path" class="text-muted small">@Model.IndexStatus?.Store.DatabasePath</div>
         </div>
         <form method="post" asp-page-handler="ScanIndexNow">
-            <button class="btn btn-outline-primary" type="submit" disabled="@(Model.IndexStatus?.IsRunning == true)">Scan now</button>
+            <button id="index-scan-button"
+                    class="btn btn-outline-primary"
+                    type="submit"
+                    disabled="@(Model.IndexStatus?.IsRunning == true)">Scan now</button>
         </form>
     </div>
 
@@ -108,59 +113,27 @@
     {
         <dl class="row small mb-3">
             <dt class="col-sm-3">Background worker</dt>
-            <dd class="col-sm-9">
-                @if (Model.IndexStatus.IsRunning)
-                {
-                    <span>Running</span>
-                    @if (!string.IsNullOrWhiteSpace(Model.IndexStatus.CurrentRepository))
-                    {
-                        <span class="text-muted">(@Model.IndexStatus.CurrentRepository)</span>
-                    }
-                }
-                else
-                {
-                    <span>@(Model.IndexStatus.Settings.Enabled ? "Automatic scan enabled" : "Manual only")</span>
-                }
+            <dd id="index-worker-state" class="col-sm-9">
+                @(Model.IndexStatus.IsRunning
+                    ? (string.IsNullOrWhiteSpace(Model.IndexStatus.CurrentRepository) ? "Running" : $"Running ({Model.IndexStatus.CurrentRepository})")
+                    : (Model.IndexStatus.Settings.Enabled ? "Automatic scan enabled" : "Manual only"))
             </dd>
 
-            @if (Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRunTotalRepositories > 0)
-            {
-                <dt class="col-sm-3">Run progress</dt>
-                <dd class="col-sm-9">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span>
-                            @Model.IndexStatus.CurrentRunProcessedRepositories / @Model.IndexStatus.CurrentRunTotalRepositories repositories
-                        </span>
-                        <span class="text-muted">
-                            @Model.IndexStatus.CurrentRunRemainingRepositories remaining
-                        </span>
-                    </div>
-                    <div class="progress mt-1" style="height: 6px;">
-                        <div class="progress-bar"
-                             role="progressbar"
-                             style="width: @(Model.CurrentRunProgressPercent)%"
-                             aria-valuenow="@Model.CurrentRunProgressPercent"
-                             aria-valuemin="0"
-                             aria-valuemax="100"></div>
-                    </div>
-                </dd>
-            }
-
             <dt class="col-sm-3">Last run</dt>
-            <dd class="col-sm-9">@SettingsModel.FormatDate(Model.IndexStatus.LastRunCompletedAt)</dd>
+            <dd id="index-last-run" class="col-sm-9">@SettingsModel.FormatDate(Model.IndexStatus.LastRunCompletedAt)</dd>
 
             <dt class="col-sm-3">Summary</dt>
-            <dd class="col-sm-9">@(Model.IndexStatus.LastRunSummary ?? "-")</dd>
+            <dd id="index-summary" class="col-sm-9">@(Model.IndexStatus.LastRunSummary ?? "-")</dd>
 
             <dt class="col-sm-3">Indexed data</dt>
-            <dd class="col-sm-9">
+            <dd id="index-indexed-data" class="col-sm-9">
                 @Model.IndexStatus.Store.RepositoryCount repositories,
                 @Model.IndexStatus.Store.RevisionCount revisions,
                 @Model.IndexStatus.Store.ChangedPathCount changed paths
             </dd>
 
             <dt class="col-sm-3">Remaining</dt>
-            <dd class="col-sm-9">
+            <dd id="index-remaining" class="col-sm-9">
                 @Model.IndexRemainingRevisions revisions
                 @if (Model.IndexPendingRepositoryCount > 0)
                 {
@@ -169,14 +142,12 @@
             </dd>
         </dl>
 
-        @if (!string.IsNullOrWhiteSpace(Model.IndexStatus.LastRunError))
-        {
-            <div class="alert alert-warning small">@Model.IndexStatus.LastRunError</div>
-        }
+        <div id="index-last-error"
+             class="alert alert-warning small @(string.IsNullOrWhiteSpace(Model.IndexStatus.LastRunError) ? "d-none" : "")">
+            @Model.IndexStatus.LastRunError
+        </div>
 
-        @if (Model.IndexRepositoryRows.Count > 0)
-        {
-            <div class="table-responsive">
+        <div id="index-repository-table" class="table-responsive @(Model.IndexRepositoryRows.Count == 0 ? "d-none" : "")">
                 <table class="table table-sm align-middle">
                     <thead>
                     <tr>
@@ -188,7 +159,7 @@
                         <th>Status</th>
                     </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="index-repository-rows">
                     @foreach (var row in Model.IndexRepositoryRows)
                     {
                         <tr>
@@ -198,33 +169,17 @@
                             <td>@SettingsModel.GetRemainingRevisions(row)</td>
                             <td>@SettingsModel.FormatDate(row.LastSuccessAt)</td>
                             <td>
-                                @if (row.IsMissing)
-                                {
-                                    <span class="badge text-bg-secondary">Missing</span>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(row.LastError))
-                                {
-                                    <span class="badge text-bg-warning">Error</span>
-                                }
-                                else if (row.IndexedRevision < row.YoungestRevision)
-                                {
-                                    <span class="badge text-bg-info">Pending</span>
-                                }
-                                else
-                                {
-                                    <span class="badge text-bg-success">Current</span>
-                                }
+                                <span class="badge @SettingsModel.GetIndexRowBadgeClass(row)">@SettingsModel.GetIndexRowStatus(row)</span>
                             </td>
                         </tr>
                     }
                     </tbody>
                 </table>
             </div>
-            @if (Model.IndexHiddenRepositoryCount > 0)
-            {
-                <div class="text-muted small">Showing repositories needing attention first; @Model.IndexHiddenRepositoryCount more are hidden.</div>
-            }
-        }
+        <div id="index-hidden-repositories"
+             class="text-muted small @(Model.IndexHiddenRepositoryCount == 0 ? "d-none" : "")">
+            Showing repositories needing attention first; <span id="index-hidden-count">@Model.IndexHiddenRepositoryCount</span> more are hidden.
+        </div>
     }
 </section>
 
@@ -268,4 +223,119 @@
 @section Scripts
 {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (() => {
+            const root = document.getElementById('index-status');
+            if (!root) return;
+
+            const statusUrl = root.dataset.statusUrl;
+            const scanButton = document.getElementById('index-scan-button');
+            const rowsBody = document.getElementById('index-repository-rows');
+            const table = document.getElementById('index-repository-table');
+            const hiddenNote = document.getElementById('index-hidden-repositories');
+            const hiddenCount = document.getElementById('index-hidden-count');
+            let timerId = 0;
+            let inFlight = false;
+
+            const setText = (id, value) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = value ?? '';
+            };
+
+            const setHidden = (element, hidden) => {
+                if (!element) return;
+                element.classList.toggle('d-none', hidden);
+            };
+
+            const appendCell = (row, value) => {
+                const cell = document.createElement('td');
+                cell.textContent = value ?? '';
+                row.appendChild(cell);
+            };
+
+            const renderRows = rows => {
+                if (!rowsBody || !table) return;
+                rowsBody.replaceChildren();
+
+                for (const item of rows ?? []) {
+                    const row = document.createElement('tr');
+                    appendCell(row, item.repositoryName);
+                    appendCell(row, `r${item.indexedRevision}`);
+                    appendCell(row, `r${item.youngestRevision}`);
+                    appendCell(row, item.remaining);
+                    appendCell(row, item.lastSuccess);
+
+                    const statusCell = document.createElement('td');
+                    const badge = document.createElement('span');
+                    badge.className = `badge ${item.statusClass || 'text-bg-secondary'}`;
+                    badge.textContent = item.status || '';
+                    statusCell.appendChild(badge);
+                    row.appendChild(statusCell);
+
+                    rowsBody.appendChild(row);
+                }
+
+                setHidden(table, rowsBody.children.length === 0);
+            };
+
+            const applyStatus = data => {
+                if (!data?.available) return;
+
+                setText('index-worker-state', data.workerState);
+                setText('index-last-run', data.lastRun);
+                setText('index-summary', data.summary);
+                setText('index-indexed-data', data.indexedData);
+                setText('index-remaining', data.remaining);
+
+                if (scanButton) scanButton.disabled = data.isRunning === true;
+
+                const error = document.getElementById('index-last-error');
+                if (error) {
+                    error.textContent = data.lastRunError || '';
+                    setHidden(error, !data.lastRunError);
+                }
+
+                renderRows(data.rows);
+
+                if (hiddenCount) hiddenCount.textContent = data.hiddenRepositoryCount ?? 0;
+                setHidden(hiddenNote, !data.hiddenRepositoryCount);
+            };
+
+            const schedule = isRunning => {
+                window.clearTimeout(timerId);
+                timerId = window.setTimeout(refresh, isRunning ? 2000 : 15000);
+            };
+
+            const refresh = async () => {
+                if (document.hidden) {
+                    schedule(false);
+                    return;
+                }
+
+                if (inFlight) return;
+                inFlight = true;
+                try {
+                    const response = await fetch(statusUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        cache: 'no-store',
+                    });
+                    if (!response.ok) return;
+
+                    const data = await response.json();
+                    applyStatus(data);
+                    schedule(data.isRunning === true);
+                } catch {
+                    schedule(false);
+                } finally {
+                    inFlight = false;
+                }
+            };
+
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) refresh();
+            });
+
+            schedule(@((Model.IndexStatus?.IsRunning == true).ToString().ToLowerInvariant()));
+        })();
+    </script>
 }

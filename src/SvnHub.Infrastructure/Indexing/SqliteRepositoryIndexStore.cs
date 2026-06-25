@@ -26,6 +26,149 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
 
     public string DatabasePath => _databasePath;
 
+    public async Task<IReadOnlyList<RepositoryIndexRepositoryHead>> ListRepositoryHeadsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexRepositoryHead>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   ir.last_success_at,
+                   ir.last_error,
+                   ir.is_missing,
+                   r.author,
+                   r.date,
+                   r.message
+              from index_repositories ir
+              left join revisions r
+                on r.repository_id = ir.repository_id
+               and r.revision = ir.indexed_revision
+             order by lower(ir.repository_name) asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexRepositoryHead(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                ReadOptionalDate(reader, 4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.GetInt64(6) != 0,
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                ReadOptionalDate(reader, 8),
+                reader.IsDBNull(9) ? null : reader.GetString(9)));
+        }
+
+        return rows;
+    }
+
+    public async Task<IReadOnlyList<RepositoryIndexCommit>> ListCommitsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var changedPaths = await ReadChangedPathsByRevisionAsync(connection, cancellationToken);
+        var rows = new List<RepositoryIndexCommit>();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   r.revision,
+                   r.author,
+                   r.date,
+                   r.message
+              from revisions r
+              join index_repositories ir on ir.repository_id = r.repository_id
+             order by lower(ir.repository_name) asc, r.revision desc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var repositoryId = ParseGuid(reader.GetString(0));
+            var revision = reader.GetInt64(4);
+            changedPaths.TryGetValue((repositoryId, revision), out var revisionChangedPaths);
+
+            rows.Add(new RepositoryIndexCommit(
+                repositoryId,
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                revision,
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                ReadRequiredDate(reader, 6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                revisionChangedPaths ?? []));
+        }
+
+        return rows;
+    }
+
+    public async Task<IReadOnlyList<RepositoryIndexChangedPath>> ListChangedPathsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexChangedPath>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   r.revision,
+                   r.author,
+                   r.date,
+                   r.message,
+                   cp.action,
+                   cp.path
+              from changed_paths cp
+              join revisions r
+                on r.repository_id = cp.repository_id
+               and r.revision = cp.revision
+              join index_repositories ir on ir.repository_id = cp.repository_id
+             order by lower(ir.repository_name) asc, r.revision desc, cp.ordinal asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexChangedPath(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt64(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                ReadRequiredDate(reader, 6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetString(8),
+                reader.GetString(9)));
+        }
+
+        return rows;
+    }
+
     public async Task<RepositoryIndexStoreStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -444,6 +587,34 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             Cache = SqliteCacheMode.Shared,
         };
         return new SqliteConnection(builder.ToString());
+    }
+
+    private static async Task<Dictionary<(Guid RepositoryId, long Revision), List<SvnChangedPath>>> ReadChangedPathsByRevisionAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<(Guid RepositoryId, long Revision), List<SvnChangedPath>>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select repository_id, revision, action, path
+              from changed_paths
+             order by repository_id asc, revision desc, ordinal asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var key = (ParseGuid(reader.GetString(0)), reader.GetInt64(1));
+            if (!result.TryGetValue(key, out var rows))
+            {
+                rows = [];
+                result[key] = rows;
+            }
+
+            rows.Add(new SvnChangedPath(reader.GetString(2), reader.GetString(3)));
+        }
+
+        return result;
     }
 
     private static async Task ExecuteNonQueryAsync(

@@ -57,21 +57,6 @@ public sealed class SettingsModel : PageModel
             .ToArray() ?? [];
     public int IndexHiddenRepositoryCount =>
         Math.Max(0, (IndexStatus?.Store.Repositories.Count ?? 0) - IndexRepositoryRows.Count);
-    public int CurrentRunProgressPercent
-    {
-        get
-        {
-            if (IndexStatus is null || IndexStatus.CurrentRunTotalRepositories <= 0)
-            {
-                return 0;
-            }
-
-            return (int)Math.Clamp(
-                Math.Round(IndexStatus.CurrentRunProcessedRepositories * 100.0 / IndexStatus.CurrentRunTotalRepositories),
-                0,
-                100);
-        }
-    }
 
     [TempData]
     public string? Error { get; set; }
@@ -83,6 +68,44 @@ public sealed class SettingsModel : PageModel
     {
         LoadSettingsInput();
         await LoadNonSettingsStateAsync(cancellationToken);
+    }
+
+    public async Task<IActionResult> OnGetIndexStatusAsync(CancellationToken cancellationToken)
+    {
+        await LoadIndexStatusAsync(cancellationToken);
+
+        if (IndexStatus is null)
+        {
+            return new JsonResult(new { available = false });
+        }
+
+        return new JsonResult(new
+        {
+            available = true,
+            isRunning = IndexStatus.IsRunning,
+            workerState = GetWorkerStateLabel(IndexStatus),
+            lastRun = FormatDate(IndexStatus.LastRunCompletedAt),
+            summary = IndexStatus.LastRunSummary ?? "-",
+            indexedData =
+                $"{IndexStatus.Store.RepositoryCount} repositories, " +
+                $"{IndexStatus.Store.RevisionCount} revisions, " +
+                $"{IndexStatus.Store.ChangedPathCount} changed paths",
+            remainingRevisions = IndexRemainingRevisions,
+            pendingRepositoryCount = IndexPendingRepositoryCount,
+            remaining = FormatRemaining(IndexRemainingRevisions, IndexPendingRepositoryCount),
+            lastRunError = IndexStatus.LastRunError,
+            hiddenRepositoryCount = IndexHiddenRepositoryCount,
+            rows = IndexRepositoryRows.Select(row => new
+            {
+                repositoryName = row.RepositoryName,
+                indexedRevision = row.IndexedRevision,
+                youngestRevision = row.YoungestRevision,
+                remaining = GetRemainingRevisions(row),
+                lastSuccess = FormatDate(row.LastSuccessAt),
+                status = GetIndexRowStatus(row),
+                statusClass = GetIndexRowBadgeClass(row),
+            }),
+        });
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
@@ -222,6 +245,11 @@ public sealed class SettingsModel : PageModel
         HasCustomFavicon = _branding.GetCustomFavicon() is not null;
         FaviconHref = faviconLink.Href;
         FaviconVersion = _branding.GetFaviconVersion();
+        await LoadIndexStatusAsync(cancellationToken);
+    }
+
+    private async Task LoadIndexStatusAsync(CancellationToken cancellationToken)
+    {
         IndexStatus = await _index.GetStatusAsync(cancellationToken);
     }
 
@@ -230,6 +258,52 @@ public sealed class SettingsModel : PageModel
 
     public static long GetRemainingRevisions(RepositoryIndexRepositoryState state) =>
         Math.Max(0, state.YoungestRevision - state.IndexedRevision);
+
+    public static string GetIndexRowStatus(RepositoryIndexRepositoryState state)
+    {
+        if (state.IsMissing)
+        {
+            return "Missing";
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.LastError))
+        {
+            return "Error";
+        }
+
+        return state.IndexedRevision < state.YoungestRevision ? "Pending" : "Current";
+    }
+
+    public static string GetIndexRowBadgeClass(RepositoryIndexRepositoryState state) =>
+        GetIndexRowStatus(state) switch
+        {
+            "Missing" => "text-bg-secondary",
+            "Error" => "text-bg-warning",
+            "Pending" => "text-bg-info",
+            _ => "text-bg-success",
+        };
+
+    private static string GetWorkerStateLabel(RepositoryIndexStatus status)
+    {
+        if (status.IsRunning)
+        {
+            return string.IsNullOrWhiteSpace(status.CurrentRepository)
+                ? "Running"
+                : $"Running ({status.CurrentRepository})";
+        }
+
+        return status.Settings.Enabled ? "Automatic scan enabled" : "Manual only";
+    }
+
+    private static string FormatRemaining(long remainingRevisions, int pendingRepositoryCount)
+    {
+        if (pendingRepositoryCount <= 0)
+        {
+            return $"{remainingRevisions} revisions";
+        }
+
+        return $"{remainingRevisions} revisions in {pendingRepositoryCount} repositories";
+    }
 
     public sealed class SettingsInput
     {

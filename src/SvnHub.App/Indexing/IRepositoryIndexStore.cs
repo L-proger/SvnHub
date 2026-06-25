@@ -8,6 +8,15 @@ public interface IRepositoryIndexStore
 
     Task<RepositoryIndexStoreStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<RepositoryIndexRepositoryHead>> ListRepositoryHeadsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<RepositoryIndexCommit>> ListCommitsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<RepositoryIndexChangedPath>> ListChangedPathsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<RepositoryIndexRepositoryState?> GetRepositoryAsync(
         Guid repositoryId,
         CancellationToken cancellationToken = default);
@@ -69,3 +78,38 @@ public sealed record RepositoryIndexStoreStatus(
     long ChangedPathCount,
     DateTimeOffset? LastSuccessAt,
     IReadOnlyList<RepositoryIndexRepositoryState> Repositories);
+
+public sealed record RepositoryIndexRepositoryHead(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    DateTimeOffset? LastSuccessAt,
+    string? LastError,
+    bool IsMissing,
+    string? Author,
+    DateTimeOffset? Date,
+    string? Message);
+
+public sealed record RepositoryIndexCommit(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    long Revision,
+    string? Author,
+    DateTimeOffset Date,
+    string? Message,
+    IReadOnlyList<SvnChangedPath> ChangedPaths);
+
+public sealed record RepositoryIndexChangedPath(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    long Revision,
+    string? Author,
+    DateTimeOffset Date,
+    string? Message,
+    string Action,
+    string Path);

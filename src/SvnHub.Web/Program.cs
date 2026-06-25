@@ -133,6 +133,7 @@ builder.Services.AddSingleton<ApiTokenService>();
 builder.Services.AddSingleton<MaterialFileIconService>();
 builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
 builder.Services.AddSingleton<RepositoryIndexService>();
+builder.Services.AddSingleton<RepositoryIndexQueryService>();
 builder.Services.AddHostedService<RepositoryIndexHostedService>();
 
 var app = builder.Build();
