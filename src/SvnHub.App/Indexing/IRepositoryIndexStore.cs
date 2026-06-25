@@ -1,3 +1,4 @@
+using SvnHub.App.System;
 using SvnHub.Domain;
 
 namespace SvnHub.App.Indexing;
@@ -15,6 +16,12 @@ public interface IRepositoryIndexStore
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<RepositoryIndexChangedPath>> ListChangedPathsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<RepositoryIndexTreeEntry>> ListHeadTreeEntriesAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsAsync(
         CancellationToken cancellationToken = default);
 
     Task<RepositoryIndexRepositoryState?> GetRepositoryAsync(
@@ -36,6 +43,13 @@ public interface IRepositoryIndexStore
         Guid repositoryId,
         RepositoryIndexedRevision revision,
         IReadOnlyList<SvnChangedPath> changedPaths,
+        CancellationToken cancellationToken = default);
+
+    Task SaveHeadSnapshotAsync(
+        Guid repositoryId,
+        long revision,
+        IReadOnlyList<SvnTreeEntry> treeEntries,
+        IReadOnlyList<RepositoryIndexExternalDefinition> externals,
         CancellationToken cancellationToken = default);
 
     Task MarkScanSucceededAsync(
@@ -64,6 +78,8 @@ public sealed record RepositoryIndexRepositoryState(
     string LocalPath,
     long YoungestRevision,
     long IndexedRevision,
+    long HeadTreeRevision,
+    long ExternalsRevision,
     DateTimeOffset? LastScanStartedAt,
     DateTimeOffset? LastScanCompletedAt,
     DateTimeOffset? LastSuccessAt,
@@ -76,6 +92,8 @@ public sealed record RepositoryIndexStoreStatus(
     int RepositoryCount,
     long RevisionCount,
     long ChangedPathCount,
+    long HeadTreeEntryCount,
+    long HeadExternalCount,
     DateTimeOffset? LastSuccessAt,
     IReadOnlyList<RepositoryIndexRepositoryState> Repositories);
 
@@ -84,6 +102,8 @@ public sealed record RepositoryIndexRepositoryHead(
     string RepositoryName,
     long YoungestRevision,
     long IndexedRevision,
+    long HeadTreeRevision,
+    long ExternalsRevision,
     DateTimeOffset? LastSuccessAt,
     string? LastError,
     bool IsMissing,
@@ -113,3 +133,37 @@ public sealed record RepositoryIndexChangedPath(
     string? Message,
     string Action,
     string Path);
+
+public sealed record RepositoryIndexTreeEntry(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    long HeadTreeRevision,
+    string Path,
+    string Name,
+    string? Extension,
+    bool IsDirectory);
+
+public sealed record RepositoryIndexExternalDefinition(
+    string ParentPath,
+    string? TargetPath,
+    string? ResolvedPath,
+    string? Url,
+    string? Revision,
+    string? PegRevision,
+    string RawDefinition);
+
+public sealed record RepositoryIndexExternal(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    long ExternalsRevision,
+    string ParentPath,
+    string? TargetPath,
+    string? ResolvedPath,
+    string? Url,
+    string? Revision,
+    string? PegRevision,
+    string RawDefinition);

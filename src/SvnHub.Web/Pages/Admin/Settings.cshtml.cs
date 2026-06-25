@@ -45,6 +45,8 @@ public sealed class SettingsModel : PageModel
         IndexStatus?.Store.Repositories
             .Where(r => !r.IsMissing)
             .Sum(GetRemainingRevisions) ?? 0;
+    public long LiveIndexRemainingRevisions =>
+        Math.Max(0, IndexRemainingRevisions - (IndexStatus?.CurrentRepositoryProcessedRevisions ?? 0));
     public int IndexPendingRepositoryCount =>
         IndexStatus?.Store.Repositories.Count(r => !r.IsMissing && GetRemainingRevisions(r) > 0) ?? 0;
     public IReadOnlyList<RepositoryIndexRepositoryState> IndexRepositoryRows =>
@@ -57,6 +59,10 @@ public sealed class SettingsModel : PageModel
             .ToArray() ?? [];
     public int IndexHiddenRepositoryCount =>
         Math.Max(0, (IndexStatus?.Store.Repositories.Count ?? 0) - IndexRepositoryRows.Count);
+    public int RunRepositoryProgressPercent =>
+        Percent(IndexStatus?.CurrentRunProcessedRepositories ?? 0, IndexStatus?.CurrentRunTotalRepositories ?? 0);
+    public int CurrentRepositoryProgressPercent =>
+        Percent(IndexStatus?.CurrentRepositoryProcessedRevisions ?? 0, IndexStatus?.CurrentRepositoryTotalRevisions ?? 0);
 
     [TempData]
     public string? Error { get; set; }
@@ -89,10 +95,22 @@ public sealed class SettingsModel : PageModel
             indexedData =
                 $"{IndexStatus.Store.RepositoryCount} repositories, " +
                 $"{IndexStatus.Store.RevisionCount} revisions, " +
-                $"{IndexStatus.Store.ChangedPathCount} changed paths",
-            remainingRevisions = IndexRemainingRevisions,
+                $"{IndexStatus.Store.ChangedPathCount} changed paths, " +
+                $"{IndexStatus.Store.HeadTreeEntryCount} head tree entries, " +
+                $"{IndexStatus.Store.HeadExternalCount} externals",
+            remainingRevisions = LiveIndexRemainingRevisions,
             pendingRepositoryCount = IndexPendingRepositoryCount,
-            remaining = FormatRemaining(IndexRemainingRevisions, IndexPendingRepositoryCount),
+            remaining = FormatRemaining(LiveIndexRemainingRevisions, IndexPendingRepositoryCount),
+            runProgressVisible = IndexStatus.IsRunning && IndexStatus.CurrentRunTotalRepositories > 0,
+            runProgressText = $"{IndexStatus.CurrentRunProcessedRepositories} / {IndexStatus.CurrentRunTotalRepositories} repositories",
+            runProgressRemaining = $"{IndexStatus.CurrentRunRemainingRepositories} remaining",
+            runProgressPercent = RunRepositoryProgressPercent,
+            currentRepositoryProgressVisible = IndexStatus.IsRunning && IndexStatus.CurrentRepositoryTotalRevisions > 0,
+            currentRepositoryProgressText =
+                $"{IndexStatus.CurrentRepositoryProcessedRevisions} / {IndexStatus.CurrentRepositoryTotalRevisions} revisions",
+            currentRepositoryProgressDetail =
+                $"r{IndexStatus.CurrentRepositoryCurrentRevision} of r{IndexStatus.CurrentRepositoryTargetRevision}",
+            currentRepositoryProgressPercent = CurrentRepositoryProgressPercent,
             lastRunError = IndexStatus.LastRunError,
             hiddenRepositoryCount = IndexHiddenRepositoryCount,
             rows = IndexRepositoryRows.Select(row => new
@@ -303,6 +321,16 @@ public sealed class SettingsModel : PageModel
         }
 
         return $"{remainingRevisions} revisions in {pendingRepositoryCount} repositories";
+    }
+
+    private static int Percent(long value, long total)
+    {
+        if (total <= 0)
+        {
+            return 0;
+        }
+
+        return (int)Math.Clamp(Math.Round(value * 100.0 / total), 0, 100);
     }
 
     public sealed class SettingsInput

@@ -39,9 +39,9 @@ public sealed class RepositoryIndexQueryService
             NormalizeQuery(query);
 
             from = NormalizeSource(query.From);
-            if (from is not ("repositories" or "commits" or "changedpaths"))
+            if (from is not ("repositories" or "commits" or "changedpaths" or "tree" or "externals"))
             {
-                return QueryError(from, $"Query from must be one of: repositories, commits, changedPaths. Received: '{query.From}'.");
+                return QueryError(from, $"Query from must be one of: repositories, commits, changedPaths, tree, externals. Received: '{query.From}'.");
             }
 
             NormalizeQueryFields(from, query);
@@ -62,7 +62,7 @@ public sealed class RepositoryIndexQueryService
         var visibleRepositoryIds = repositoryById.Keys.ToHashSet();
 
         var status = await _store.GetStatusAsync(cancellationToken);
-        var indexInfo = BuildIndexInfo(status, visibleRepositoryIds);
+        var indexInfo = BuildIndexInfo(status, visibleRepositoryIds, from);
         var warnings = new List<string>();
         if (!indexInfo.Complete)
         {
@@ -79,6 +79,11 @@ public sealed class RepositoryIndexQueryService
                     $"({indexInfo.RemainingRevisions} revisions remaining)");
             }
 
+            if (indexInfo.StaleSnapshotRepositories > 0)
+            {
+                parts.Add($"HEAD snapshot is stale or missing for {indexInfo.StaleSnapshotRepositories} visible repositories");
+            }
+
             warnings.Add($"Index is incomplete: {string.Join("; ", parts)}. Results can be incomplete.");
         }
 
@@ -92,6 +97,8 @@ public sealed class RepositoryIndexQueryService
             "repositories" => await BuildRepositoryRowsAsync(repositoryById, userId, cancellationToken),
             "commits" => await BuildCommitRowsAsync(repositoryById, userId, cancellationToken),
             "changedpaths" => await BuildChangedPathRowsAsync(repositoryById, userId, cancellationToken),
+            "tree" => await BuildTreeRowsAsync(repositoryById, userId, cancellationToken),
+            "externals" => await BuildExternalRowsAsync(repositoryById, userId, cancellationToken),
             _ => throw new InvalidOperationException("Unsupported query source."),
         };
 
@@ -145,6 +152,8 @@ public sealed class RepositoryIndexQueryService
                 _access.GetAccess(userId, repo.Id, "/"),
                 head.YoungestRevision,
                 head.IndexedRevision,
+                head.HeadTreeRevision,
+                head.ExternalsRevision,
                 head.LastSuccessAt,
                 head.LastError,
                 head.IsMissing);
@@ -186,6 +195,8 @@ public sealed class RepositoryIndexQueryService
                 _access.GetAccess(userId, repo.Id, "/"),
                 commit.YoungestRevision,
                 commit.IndexedRevision,
+                0,
+                0,
                 lastSuccessAt: null,
                 lastError: null,
                 isMissing: false);
@@ -222,6 +233,8 @@ public sealed class RepositoryIndexQueryService
                 _access.GetAccess(userId, repo.Id, "/"),
                 change.YoungestRevision,
                 change.IndexedRevision,
+                0,
+                0,
                 lastSuccessAt: null,
                 lastError: null,
                 isMissing: false);
@@ -234,9 +247,96 @@ public sealed class RepositoryIndexQueryService
         return rows;
     }
 
+    private async Task<List<Dictionary<string, object?>>> BuildTreeRowsAsync(
+        IReadOnlyDictionary<Guid, Repository> visibleRepositories,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var entries = await _store.ListHeadTreeEntriesAsync(cancellationToken);
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var entry in entries)
+        {
+            if (!visibleRepositories.TryGetValue(entry.RepositoryId, out var repo))
+            {
+                continue;
+            }
+
+            if (_access.GetAccess(userId, repo.Id, entry.Path) < AccessLevel.Read)
+            {
+                continue;
+            }
+
+            var row = CreateBaseRow(
+                repo,
+                _access.GetAccess(userId, repo.Id, "/"),
+                entry.YoungestRevision,
+                entry.IndexedRevision,
+                entry.HeadTreeRevision,
+                0,
+                lastSuccessAt: null,
+                lastError: null,
+                isMissing: false);
+            row["tree.revision"] = entry.HeadTreeRevision;
+            row["tree.path"] = entry.Path;
+            row["tree.name"] = entry.Name;
+            row["tree.extension"] = entry.Extension;
+            row["tree.isDirectory"] = entry.IsDirectory;
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    private async Task<List<Dictionary<string, object?>>> BuildExternalRowsAsync(
+        IReadOnlyDictionary<Guid, Repository> visibleRepositories,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var externals = await _store.ListHeadExternalsAsync(cancellationToken);
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var external in externals)
+        {
+            if (!visibleRepositories.TryGetValue(external.RepositoryId, out var repo))
+            {
+                continue;
+            }
+
+            var accessPath = external.ResolvedPath ?? external.ParentPath;
+            if (_access.GetAccess(userId, repo.Id, accessPath) < AccessLevel.Read)
+            {
+                continue;
+            }
+
+            var row = CreateBaseRow(
+                repo,
+                _access.GetAccess(userId, repo.Id, "/"),
+                external.YoungestRevision,
+                external.IndexedRevision,
+                0,
+                external.ExternalsRevision,
+                lastSuccessAt: null,
+                lastError: null,
+                isMissing: false);
+            row["external.snapshotRevision"] = external.ExternalsRevision;
+            row["external.parentPath"] = external.ParentPath;
+            row["external.targetPath"] = external.TargetPath;
+            row["external.resolvedPath"] = external.ResolvedPath;
+            row["external.url"] = external.Url;
+            row["external.revision"] = external.Revision;
+            row["external.pegRevision"] = external.PegRevision;
+            row["external.raw"] = external.RawDefinition;
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
     private static RepositoryIndexQueryIndexInfo BuildIndexInfo(
         RepositoryIndexStoreStatus status,
-        IReadOnlySet<Guid> visibleRepositoryIds)
+        IReadOnlySet<Guid> visibleRepositoryIds,
+        string from)
     {
         var visibleRows = status.Repositories
             .Where(r => visibleRepositoryIds.Contains(r.RepositoryId) && !r.IsMissing)
@@ -244,13 +344,20 @@ public sealed class RepositoryIndexQueryService
         var missingRepositories = Math.Max(0, visibleRepositoryIds.Count - visibleRows.Length);
         var behindRepositories = visibleRows.Count(r => r.IndexedRevision < r.YoungestRevision);
         var remainingRevisions = visibleRows.Sum(r => Math.Max(0, r.YoungestRevision - r.IndexedRevision));
+        var staleSnapshotRepositories = from switch
+        {
+            "tree" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.HeadTreeRevision != r.IndexedRevision),
+            "externals" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.ExternalsRevision != r.IndexedRevision),
+            _ => 0,
+        };
 
         return new RepositoryIndexQueryIndexInfo(
-            Complete: missingRepositories == 0 && behindRepositories == 0,
+            Complete: missingRepositories == 0 && behindRepositories == 0 && staleSnapshotRepositories == 0,
             MissingRepositories: missingRepositories,
             BehindRepositories: behindRepositories,
             RemainingRevisions: remainingRevisions,
-            LastSuccessAt: status.LastSuccessAt);
+            LastSuccessAt: status.LastSuccessAt,
+            StaleSnapshotRepositories: staleSnapshotRepositories);
     }
 
     private Dictionary<string, object?> CreateBaseRow(
@@ -258,6 +365,8 @@ public sealed class RepositoryIndexQueryService
         AccessLevel rootAccess,
         long youngestRevision,
         long indexedRevision,
+        long headTreeRevision,
+        long externalsRevision,
         DateTimeOffset? lastSuccessAt,
         string? lastError,
         bool isMissing)
@@ -271,6 +380,8 @@ public sealed class RepositoryIndexQueryService
             ["repository.authenticatedDefaultAccess"] = repo.AuthenticatedDefaultAccess?.ToString(),
             ["indexed.headRevision"] = youngestRevision,
             ["indexed.revision"] = indexedRevision,
+            ["indexed.headTreeRevision"] = headTreeRevision,
+            ["indexed.externalsRevision"] = externalsRevision,
             ["indexed.remainingRevisions"] = remaining,
             ["indexed.complete"] = !isMissing && remaining == 0,
             ["indexed.lastSuccessAt"] = lastSuccessAt,
@@ -387,6 +498,8 @@ public sealed class RepositoryIndexQueryService
                 "message" or "latestmessage" => "latest.message",
                 "headrevision" => "indexed.headRevision",
                 "indexedrevision" => "indexed.revision",
+                "headtreerevision" => "indexed.headTreeRevision",
+                "externalsrevision" => "indexed.externalsRevision",
                 "remainingrevisions" => "indexed.remainingRevisions",
                 "complete" => "indexed.complete",
                 _ => normalized,
@@ -417,6 +530,44 @@ public sealed class RepositoryIndexQueryService
                 "message" or "commitmessage" => "commit.message",
                 "path" or "changepath" => "change.path",
                 "action" or "changeaction" => "change.action",
+                _ => normalized,
+            },
+            "tree" => normalized switch
+            {
+                "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "revision" or "snapshotrevision" or "treerevision" => "tree.revision",
+                "path" or "treepath" => "tree.path",
+                "name" or "filename" or "entryname" or "treename" => "tree.name",
+                "extension" or "ext" => "tree.extension",
+                "isdirectory" or "directory" or "isdir" => "tree.isDirectory",
+                "headrevision" => "indexed.headRevision",
+                "indexedrevision" => "indexed.revision",
+                "headtreerevision" => "indexed.headTreeRevision",
+                "remainingrevisions" => "indexed.remainingRevisions",
+                "complete" => "indexed.complete",
+                _ => normalized,
+            },
+            "externals" => normalized switch
+            {
+                "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "snapshotrevision" or "headrevision" => "external.snapshotRevision",
+                "parent" or "parentpath" => "external.parentPath",
+                "name" or "target" or "targetpath" or "externalname" => "external.targetPath",
+                "path" or "resolvedpath" or "externalpath" => "external.resolvedPath",
+                "url" or "externalurl" => "external.url",
+                "revision" or "externalrevision" => "external.revision",
+                "pegrevision" => "external.pegRevision",
+                "raw" or "definition" or "rawdefinition" => "external.raw",
+                "indexedrevision" => "indexed.revision",
+                "externalsrevision" => "indexed.externalsRevision",
+                "remainingrevisions" => "indexed.remainingRevisions",
+                "complete" => "indexed.complete",
                 _ => normalized,
             },
             _ => normalized,
@@ -555,6 +706,8 @@ public sealed class RepositoryIndexQueryService
 
             CopyLatestFields(latest, grouped, "commit.");
             CopyLatestFields(latest, grouped, "change.");
+            CopyLatestFields(latest, grouped, "tree.");
+            CopyLatestFields(latest, grouped, "external.");
             CopyLatestFields(latest, grouped, "latest.");
             result.Add(grouped);
         }
@@ -634,6 +787,8 @@ public sealed class RepositoryIndexQueryService
         {
             "commits" => ["repository.name", "commit.revision", "commit.author", "commit.date", "commit.message", "commit.changedPathCount"],
             "changedpaths" => ["repository.name", "commit.revision", "commit.author", "commit.date", "change.action", "change.path"],
+            "tree" => ["repository.name", "tree.path", "tree.name", "tree.extension", "tree.isDirectory", "tree.revision"],
+            "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.revision"],
             _ => ["repository.name", "latest.revision", "latest.author", "latest.date", "latest.message", "indexed.remainingRevisions"],
         };
     }
@@ -666,6 +821,16 @@ public sealed class RepositoryIndexQueryService
         if (row.TryGetValue("latest.revision", out var latestRevision) && latestRevision is long l)
         {
             return l;
+        }
+
+        if (row.TryGetValue("tree.revision", out var treeRevision) && treeRevision is long t)
+        {
+            return t;
+        }
+
+        if (row.TryGetValue("external.snapshotRevision", out var externalSnapshotRevision) && externalSnapshotRevision is long e)
+        {
+            return e;
         }
 
         return 0;
@@ -728,7 +893,8 @@ public sealed class RepositoryIndexQueryService
     private static bool IsAllowedField(string from, string field)
     {
         if (field is "repository.name" or "repository.createdat" or "repository.rootaccess" or "repository.authenticateddefaultaccess" or
-            "indexed.headrevision" or "indexed.revision" or "indexed.remainingrevisions" or "indexed.complete" or
+            "indexed.headrevision" or "indexed.revision" or "indexed.headtreerevision" or "indexed.externalsrevision" or
+            "indexed.remainingrevisions" or "indexed.complete" or
             "indexed.lastsuccessat" or "indexed.lasterror" or "indexed.ismissing")
         {
             return true;
@@ -739,6 +905,9 @@ public sealed class RepositoryIndexQueryService
             "repositories" => field is "latest.revision" or "latest.author" or "latest.date" or "latest.message",
             "commits" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "commit.changedpaths" or "commit.changedpathcount",
             "changedpaths" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "change.action" or "change.path",
+            "tree" => field is "tree.revision" or "tree.path" or "tree.name" or "tree.extension" or "tree.isdirectory",
+            "externals" => field is "external.snapshotrevision" or "external.parentpath" or "external.targetpath" or
+                "external.resolvedpath" or "external.url" or "external.revision" or "external.pegrevision" or "external.raw",
             _ => false,
         };
     }
@@ -746,7 +915,12 @@ public sealed class RepositoryIndexQueryService
     private static string NormalizeSource(string? value)
     {
         var normalized = NormalizeQueryToken(value);
-        return normalized == "changedpaths" ? "changedpaths" : normalized;
+        return normalized switch
+        {
+            "changedpath" or "changedpaths" => "changedpaths",
+            "external" or "externals" or "svnexternals" or "svn:externals" => "externals",
+            _ => normalized,
+        };
     }
 
     private static string DisplaySource(string source) =>
@@ -855,6 +1029,7 @@ public sealed record RepositoryIndexQueryIndexInfo(
     int MissingRepositories,
     int BehindRepositories,
     long RemainingRevisions,
-    DateTimeOffset? LastSuccessAt);
+    DateTimeOffset? LastSuccessAt,
+    int StaleSnapshotRepositories = 0);
 
 public sealed record RepositoryIndexQueryChangedPath(string Action, string Path);

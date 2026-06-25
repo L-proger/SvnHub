@@ -47,6 +47,13 @@ public interface ISvnLookClient
         CancellationToken cancellationToken = default
     );
 
+    Task<IReadOnlyList<SvnTreeEntry>> ListTreeRecursiveAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default
+    );
+
     Task<string> CatAsync(
         string repoLocalPath,
         string filePath,
@@ -73,6 +80,14 @@ public interface ISvnLookClient
         string repoLocalPath,
         string path,
         long revision,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<string?> GetPropertyValueAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        string propertyName,
         CancellationToken cancellationToken = default
     );
 

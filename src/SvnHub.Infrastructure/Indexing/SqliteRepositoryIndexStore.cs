@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using SvnHub.App.Configuration;
 using SvnHub.App.Indexing;
+using SvnHub.App.System;
 using SvnHub.Domain;
 
 namespace SvnHub.Infrastructure.Indexing;
@@ -41,6 +42,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    ir.repository_name,
                    ir.youngest_revision,
                    ir.indexed_revision,
+                   ir.head_tree_revision,
+                   ir.externals_revision,
                    ir.last_success_at,
                    ir.last_error,
                    ir.is_missing,
@@ -62,12 +65,14 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 reader.GetString(1),
                 reader.GetInt64(2),
                 reader.GetInt64(3),
-                ReadOptionalDate(reader, 4),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.GetInt64(6) != 0,
+                reader.GetInt64(4),
+                reader.GetInt64(5),
+                ReadOptionalDate(reader, 6),
                 reader.IsDBNull(7) ? null : reader.GetString(7),
-                ReadOptionalDate(reader, 8),
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.GetInt64(8) != 0,
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                ReadOptionalDate(reader, 10),
+                reader.IsDBNull(11) ? null : reader.GetString(11)));
         }
 
         return rows;
@@ -169,6 +174,98 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         return rows;
     }
 
+    public async Task<IReadOnlyList<RepositoryIndexTreeEntry>> ListHeadTreeEntriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexTreeEntry>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   ir.head_tree_revision,
+                   hte.path,
+                   hte.name,
+                   hte.extension,
+                   hte.is_directory
+              from head_tree_entries hte
+              join index_repositories ir on ir.repository_id = hte.repository_id
+             order by lower(ir.repository_name) asc, hte.path asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexTreeEntry(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt64(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetInt64(8) != 0));
+        }
+
+        return rows;
+    }
+
+    public async Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexExternal>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   ir.externals_revision,
+                   he.parent_path,
+                   he.target_path,
+                   he.resolved_path,
+                   he.url,
+                   he.revision,
+                   he.peg_revision,
+                   he.raw_definition
+              from head_externals he
+              join index_repositories ir on ir.repository_id = he.repository_id
+             order by lower(ir.repository_name) asc, he.parent_path asc, he.ordinal asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexExternal(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt64(4),
+                reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.GetString(11)));
+        }
+
+        return rows;
+    }
+
     public async Task<RepositoryIndexStoreStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -188,6 +285,14 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             connection,
             "select count(*) from changed_paths;",
             cancellationToken);
+        var headTreeEntryCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_tree_entries;",
+            cancellationToken);
+        var headExternalCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_externals;",
+            cancellationToken);
 
         var repositories = new List<RepositoryIndexRepositoryState>();
         await using (var command = connection.CreateCommand())
@@ -198,6 +303,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                        local_path,
                        youngest_revision,
                        indexed_revision,
+                       head_tree_revision,
+                       externals_revision,
                        last_scan_started_at,
                        last_scan_completed_at,
                        last_success_at,
@@ -220,6 +327,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             repositoryCount,
             revisionCount,
             changedPathCount,
+            headTreeEntryCount,
+            headExternalCount,
             repositories
                 .Where(r => r.LastSuccessAt is not null)
                 .Select(r => r.LastSuccessAt)
@@ -244,6 +353,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    local_path,
                    youngest_revision,
                    indexed_revision,
+                   head_tree_revision,
+                   externals_revision,
                    last_scan_started_at,
                    last_scan_completed_at,
                    last_success_at,
@@ -439,6 +550,132 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         transaction.Commit();
     }
 
+    public async Task SaveHeadSnapshotAsync(
+        Guid repositoryId,
+        long revision,
+        IReadOnlyList<SvnTreeEntry> treeEntries,
+        IReadOnlyList<RepositoryIndexExternalDefinition> externals,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "delete from head_tree_entries where repository_id = $repositoryId;",
+            [("$repositoryId", FormatGuid(repositoryId))],
+            cancellationToken);
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "delete from head_externals where repository_id = $repositoryId;",
+            [("$repositoryId", FormatGuid(repositoryId))],
+            cancellationToken);
+
+        foreach (var entry in treeEntries)
+        {
+            await ExecuteNonQueryAsync(
+                connection,
+                transaction,
+                """
+                insert into head_tree_entries (
+                    repository_id,
+                    path,
+                    name,
+                    extension,
+                    is_directory,
+                    revision
+                ) values (
+                    $repositoryId,
+                    $path,
+                    $name,
+                    $extension,
+                    $isDirectory,
+                    $revision
+                );
+                """,
+                [
+                    ("$repositoryId", FormatGuid(repositoryId)),
+                    ("$path", entry.Path),
+                    ("$name", entry.Name),
+                    ("$extension", DbValue(GetExtension(entry))),
+                    ("$isDirectory", entry.IsDirectory ? 1 : 0),
+                    ("$revision", revision),
+                ],
+                cancellationToken);
+        }
+
+        for (var i = 0; i < externals.Count; i++)
+        {
+            var external = externals[i];
+            await ExecuteNonQueryAsync(
+                connection,
+                transaction,
+                """
+                insert into head_externals (
+                    repository_id,
+                    ordinal,
+                    parent_path,
+                    target_path,
+                    resolved_path,
+                    url,
+                    revision,
+                    peg_revision,
+                    raw_definition,
+                    snapshot_revision
+                ) values (
+                    $repositoryId,
+                    $ordinal,
+                    $parentPath,
+                    $targetPath,
+                    $resolvedPath,
+                    $url,
+                    $revision,
+                    $pegRevision,
+                    $rawDefinition,
+                    $snapshotRevision
+                );
+                """,
+                [
+                    ("$repositoryId", FormatGuid(repositoryId)),
+                    ("$ordinal", i),
+                    ("$parentPath", external.ParentPath),
+                    ("$targetPath", DbValue(external.TargetPath)),
+                    ("$resolvedPath", DbValue(external.ResolvedPath)),
+                    ("$url", DbValue(external.Url)),
+                    ("$revision", DbValue(external.Revision)),
+                    ("$pegRevision", DbValue(external.PegRevision)),
+                    ("$rawDefinition", external.RawDefinition),
+                    ("$snapshotRevision", revision),
+                ],
+                cancellationToken);
+        }
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            """
+            update index_repositories
+               set head_tree_revision = $revision,
+                   externals_revision = $revision,
+                   updated_at = $now
+             where repository_id = $repositoryId;
+            """,
+            [
+                ("$revision", revision),
+                ("$now", FormatDate(DateTimeOffset.UtcNow)),
+                ("$repositoryId", FormatGuid(repositoryId)),
+            ],
+            cancellationToken);
+
+        transaction.Commit();
+    }
+
     public async Task MarkScanSucceededAsync(
         Guid repositoryId,
         long indexedRevision,
@@ -534,6 +771,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     local_path text not null,
                     youngest_revision integer not null default 0,
                     indexed_revision integer not null default 0,
+                    head_tree_revision integer not null default 0,
+                    externals_revision integer not null default 0,
                     last_scan_started_at text null,
                     last_scan_completed_at text null,
                     last_success_at text null,
@@ -562,12 +801,58 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     foreign key (repository_id, revision) references revisions(repository_id, revision) on delete cascade
                 );
 
+                create table if not exists head_tree_entries (
+                    repository_id text not null,
+                    path text not null,
+                    name text not null,
+                    extension text null,
+                    is_directory integer not null,
+                    revision integer not null,
+                    primary key (repository_id, path),
+                    foreign key (repository_id) references index_repositories(repository_id) on delete cascade
+                );
+
+                create table if not exists head_externals (
+                    repository_id text not null,
+                    ordinal integer not null,
+                    parent_path text not null,
+                    target_path text null,
+                    resolved_path text null,
+                    url text null,
+                    revision text null,
+                    peg_revision text null,
+                    raw_definition text not null,
+                    snapshot_revision integer not null,
+                    primary key (repository_id, ordinal),
+                    foreign key (repository_id) references index_repositories(repository_id) on delete cascade
+                );
+
                 create index if not exists ix_revisions_author on revisions(author);
                 create index if not exists ix_revisions_date on revisions(date);
                 create index if not exists ix_changed_paths_path on changed_paths(path);
                 create index if not exists ix_changed_paths_action on changed_paths(action);
+                create index if not exists ix_head_tree_entries_name on head_tree_entries(name);
+                create index if not exists ix_head_tree_entries_path on head_tree_entries(path);
+                create index if not exists ix_head_tree_entries_extension on head_tree_entries(extension);
+                create index if not exists ix_head_externals_target_path on head_externals(target_path);
+                create index if not exists ix_head_externals_resolved_path on head_externals(resolved_path);
+                create index if not exists ix_head_externals_url on head_externals(url);
                 """,
                 [],
+                cancellationToken);
+
+            await EnsureColumnAsync(
+                connection,
+                "index_repositories",
+                "head_tree_revision",
+                "head_tree_revision integer not null default 0",
+                cancellationToken);
+
+            await EnsureColumnAsync(
+                connection,
+                "index_repositories",
+                "externals_revision",
+                "externals_revision integer not null default 0",
                 cancellationToken);
 
             _initialized = true;
@@ -639,6 +924,41 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task EnsureColumnAsync(
+        SqliteConnection connection,
+        string tableName,
+        string columnName,
+        string columnDefinition,
+        CancellationToken cancellationToken)
+    {
+        var hasColumn = false;
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"pragma table_info({tableName});";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    hasColumn = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasColumn)
+        {
+            return;
+        }
+
+        await ExecuteNonQueryAsync(
+            connection,
+            null,
+            $"alter table {tableName} add column {columnDefinition};",
+            [],
+            cancellationToken);
+    }
+
     private static async Task<long> ExecuteScalarLongAsync(
         SqliteConnection connection,
         string commandText,
@@ -657,12 +977,14 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             reader.GetString(2),
             reader.GetInt64(3),
             reader.GetInt64(4),
-            ReadOptionalDate(reader, 5),
-            ReadOptionalDate(reader, 6),
+            reader.GetInt64(5),
+            reader.GetInt64(6),
             ReadOptionalDate(reader, 7),
-            reader.IsDBNull(8) ? null : reader.GetString(8),
-            reader.GetInt64(9) != 0,
-            ReadRequiredDate(reader, 10));
+            ReadOptionalDate(reader, 8),
+            ReadOptionalDate(reader, 9),
+            reader.IsDBNull(10) ? null : reader.GetString(10),
+            reader.GetInt64(11) != 0,
+            ReadRequiredDate(reader, 12));
 
     private static string ResolveDatabasePath(SvnHubOptions options)
     {
@@ -691,4 +1013,15 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
 
     private static object DbValue(string? value) =>
         string.IsNullOrEmpty(value) ? DBNull.Value : value;
+
+    private static string? GetExtension(SvnTreeEntry entry)
+    {
+        if (entry.IsDirectory)
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(entry.Name);
+        return string.IsNullOrWhiteSpace(extension) ? null : extension.ToLowerInvariant();
+    }
 }

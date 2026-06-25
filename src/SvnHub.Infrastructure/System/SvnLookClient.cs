@@ -516,6 +516,60 @@ public sealed class SvnLookClient : ISvnLookClient
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<SvnTreeEntry>> ListTreeRecursiveAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        CancellationToken cancellationToken = default)
+    {
+        var repoRelPath = ToRepoRelativePath(path);
+        var args = new List<string>
+        {
+            "tree",
+            "-r",
+            revision.ToString(CultureInfo.InvariantCulture),
+            "--full-paths",
+            repoLocalPath,
+        };
+
+        if (!string.IsNullOrWhiteSpace(repoRelPath))
+        {
+            args.Add(repoRelPath);
+        }
+
+        var result = await _runner.RunBinaryAsync(_options.SvnlookCommand, args, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook tree failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var rows = new List<SvnTreeEntry>();
+        var stdout = DecodeSvnText(result.StandardOutput);
+        foreach (var rawLine in stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line == "/")
+            {
+                continue;
+            }
+
+            var isDirectory = line.EndsWith("/", StringComparison.Ordinal);
+            var normalizedPath = NormalizePath(isDirectory ? line.TrimEnd('/') : line);
+            var name = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            rows.Add(new SvnTreeEntry(name, normalizedPath, isDirectory));
+        }
+
+        return rows
+            .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static string DecodeSvnText(byte[] bytes)
     {
         if (bytes.Length == 0)
@@ -785,6 +839,54 @@ public sealed class SvnLookClient : ISvnLookClient
 
         var props = await Task.WhenAll(names.Select(LoadOneAsync));
         return props.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    public async Task<string?> GetPropertyValueAsync(
+        string repoLocalPath,
+        string path,
+        long revision,
+        string propertyName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(propertyName))
+        {
+            throw new ArgumentException("Property name is required.", nameof(propertyName));
+        }
+
+        var repoRelPath = ToRepoRelativePath(path) ?? "/";
+        var list = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["proplist", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath, repoRelPath],
+            cancellationToken);
+
+        if (!list.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook proplist failed (exit {list.ExitCode}): {list.StandardError}".Trim());
+        }
+
+        var hasProperty = DecodeSvnText(list.StandardOutput)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.Trim())
+            .Any(l => string.Equals(l, propertyName, StringComparison.Ordinal));
+
+        if (!hasProperty)
+        {
+            return null;
+        }
+
+        var get = await _runner.RunBinaryAsync(
+            _options.SvnlookCommand,
+            ["propget", "-r", revision.ToString(CultureInfo.InvariantCulture), repoLocalPath, propertyName, repoRelPath],
+            cancellationToken);
+
+        if (!get.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook propget failed (exit {get.ExitCode}): {get.StandardError}".Trim());
+        }
+
+        return DecodeSvnText(get.StandardOutput).TrimEnd('\r', '\n');
     }
 
     private static bool TryParseSvnDate(string text, out DateTimeOffset dto)

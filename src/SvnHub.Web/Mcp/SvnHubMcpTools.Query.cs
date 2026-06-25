@@ -14,26 +14,32 @@ public sealed partial class SvnHubMcpTools
         OpenWorld = false)]
     [Description(
         "Run a safe declarative query against the SvnHub SQLite metadata index. " +
-        "This tool never reads live SVN repositories. It only searches indexed revisions and changed paths, so results can be incomplete when the index is behind HEAD. " +
+        "This tool never reads live SVN repositories. It searches indexed revisions, changed paths, HEAD tree entries, and svn:externals declarations, so results can be incomplete when the index is behind HEAD. " +
         "Use from=repositories for one row per visible indexed repository with latest indexed commit and index status fields. " +
         "Use from=commits for indexed revision rows. Use from=changedPaths for indexed changed-path rows. " +
-        "This tool does not read file contents, file sizes, trees, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
+        "Use from=tree for current HEAD file/folder existence by path, name, extension, and isDirectory. " +
+        "Use from=externals for current HEAD svn:externals declarations; it indexes declarations only and does not scan external targets recursively. " +
+        "This tool does not read file contents, file sizes, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
         "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?}. " +
         "scan supports repositoryNames and repositoryNameContains. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action. Do not combine aliases with slash characters. " +
+        "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action, name, extension, isDirectory, targetPath, resolvedPath, url. Do not combine aliases with slash characters. " +
         "Example repositories where latest indexed commit is by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"indexed.remainingRevisions\"]}. " +
         "Example repositories where user participated: {\"from\":\"commits\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\",\"latest.commit.message\"]}. " +
         "Example changed paths by user: {\"from\":\"changedPaths\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"date\",\"author\",\"action\",\"path\"]}. " +
+        "Example repositories with README.md in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"README.md\"}],\"select\":[\"repositoryName\",\"path\",\"isDirectory\"]}. " +
+        "Example repositories where Math is declared as an external: {\"from\":\"externals\",\"where\":[{\"field\":\"targetPath\",\"op\":\"contains\",\"value\":\"Math\"}],\"select\":[\"repositoryName\",\"parentPath\",\"targetPath\",\"resolvedPath\",\"url\",\"revision\"]}. " +
         "Call svnhub_index_query_schema for the full schema and examples.")]
     public static async Task<RepositoryIndexQueryResult> IndexQueryAsync(
         [Description(
-            "Index query object. Sources: repositories, commits, changedPaths. " +
-            "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
+            "Index query object. Sources: repositories, commits, changedPaths, tree, externals. " +
+            "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
-            "Aliases, each used as its own field string: repositoryName, revision, author, date, message, path, action. Never send repositoryName/name.")]
+            "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. " +
+            "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.raw. " +
+            "Aliases, each used as its own field string: repositoryName, revision, author, date, message, path, action, name, extension, isDirectory, targetPath, resolvedPath, url. Never send repositoryName/name.")]
         RepositoryIndexQueryRequest query,
         RepositoryIndexQueryService indexQuery,
         IHttpContextAccessor httpContextAccessor,
@@ -52,7 +58,7 @@ public sealed partial class SvnHubMcpTools
     public static McpIndexQuerySchemaResult GetIndexQuerySchema()
     {
         return new McpIndexQuerySchemaResult(
-            IndexOnly: "svnhub_index_query reads only the SvnHub SQLite metadata index. It does not read live SVN, file contents, file sizes, trees, or diffs. Use warnings/index.complete to detect incomplete index coverage.",
+            IndexOnly: "svnhub_index_query reads only the SvnHub SQLite metadata index. It does not read live SVN, file contents, file sizes, or diffs. Sources tree and externals use the indexed HEAD snapshot. Use warnings/index.complete to detect incomplete index coverage.",
             Sources:
             [
                 new McpIndexQuerySourceSchema(
@@ -66,6 +72,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
                         "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
                         "indexed.lastSuccessAt",
@@ -86,6 +94,8 @@ public sealed partial class SvnHubMcpTools
                         ["message"] = "latest.message",
                         ["headRevision"] = "indexed.headRevision",
                         ["indexedRevision"] = "indexed.revision",
+                        ["headTreeRevision"] = "indexed.headTreeRevision",
+                        ["externalsRevision"] = "indexed.externalsRevision",
                         ["remainingRevisions"] = "indexed.remainingRevisions",
                         ["complete"] = "indexed.complete",
                     }),
@@ -100,6 +110,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
                         "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
                         "commit.revision",
@@ -131,6 +143,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
                         "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
                         "indexed.remainingRevisions",
                         "indexed.complete",
                         "commit.revision",
@@ -150,6 +164,81 @@ public sealed partial class SvnHubMcpTools
                         ["message"] = "commit.message",
                         ["action"] = "change.action",
                         ["path"] = "change.path",
+                    }),
+                new McpIndexQuerySourceSchema(
+                    "tree",
+                    "One row per visible file or folder in the indexed HEAD snapshot. Use this for current file/folder existence queries.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "indexed.headRevision",
+                        "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
+                        "indexed.remainingRevisions",
+                        "indexed.complete",
+                        "tree.revision",
+                        "tree.path",
+                        "tree.name",
+                        "tree.extension",
+                        "tree.isDirectory",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["repositoryName"] = "repository.name",
+                        ["revision"] = "tree.revision",
+                        ["snapshotRevision"] = "tree.revision",
+                        ["path"] = "tree.path",
+                        ["name"] = "tree.name",
+                        ["extension"] = "tree.extension",
+                        ["isDirectory"] = "tree.isDirectory",
+                        ["headTreeRevision"] = "indexed.headTreeRevision",
+                        ["remainingRevisions"] = "indexed.remainingRevisions",
+                        ["complete"] = "indexed.complete",
+                    }),
+                new McpIndexQuerySourceSchema(
+                    "externals",
+                    "One row per visible svn:externals declaration in the indexed HEAD snapshot. External targets are not recursively scanned.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "indexed.headRevision",
+                        "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
+                        "indexed.remainingRevisions",
+                        "indexed.complete",
+                        "external.snapshotRevision",
+                        "external.parentPath",
+                        "external.targetPath",
+                        "external.resolvedPath",
+                        "external.url",
+                        "external.revision",
+                        "external.pegRevision",
+                        "external.raw",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["repositoryName"] = "repository.name",
+                        ["snapshotRevision"] = "external.snapshotRevision",
+                        ["parentPath"] = "external.parentPath",
+                        ["targetPath"] = "external.targetPath",
+                        ["name"] = "external.targetPath",
+                        ["path"] = "external.resolvedPath",
+                        ["resolvedPath"] = "external.resolvedPath",
+                        ["url"] = "external.url",
+                        ["revision"] = "external.revision",
+                        ["pegRevision"] = "external.pegRevision",
+                        ["raw"] = "external.raw",
+                        ["externalsRevision"] = "indexed.externalsRevision",
+                        ["remainingRevisions"] = "indexed.remainingRevisions",
+                        ["complete"] = "indexed.complete",
                     }),
             ],
             Operators: ["eq", "neq", "contains", "startsWith", "endsWith", "gt", "gte", "lt", "lte", "in", "exists"],
@@ -188,6 +277,22 @@ public sealed partial class SvnHubMcpTools
                         From = "changedPaths",
                         Where = [new RepositoryIndexQueryCondition { Field = "path", Op = "contains", Value = "CMake" }],
                         Select = ["repositoryName", "revision", "date", "author", "action", "path"],
+                    }),
+                new McpIndexQueryExample(
+                    "Repositories with README.md in current HEAD",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "tree",
+                        Where = [new RepositoryIndexQueryCondition { Field = "name", Op = "eq", Value = "README.md" }],
+                        Select = ["repositoryName", "path", "isDirectory", "revision"],
+                    }),
+                new McpIndexQueryExample(
+                    "Repositories where Math is declared as an svn:externals target",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "externals",
+                        Where = [new RepositoryIndexQueryCondition { Field = "targetPath", Op = "contains", Value = "Math" }],
+                        Select = ["repositoryName", "parentPath", "targetPath", "resolvedPath", "url", "revision"],
                     }),
             ]);
     }

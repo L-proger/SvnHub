@@ -119,6 +119,56 @@
                     : (Model.IndexStatus.Settings.Enabled ? "Automatic scan enabled" : "Manual only"))
             </dd>
 
+            <dt id="index-run-progress-label"
+                class="col-sm-3 @(Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRunTotalRepositories > 0 ? "" : "d-none")">
+                Scan progress
+            </dt>
+            <dd id="index-run-progress"
+                class="col-sm-9 @(Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRunTotalRepositories > 0 ? "" : "d-none")">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span id="index-run-progress-text">
+                        @Model.IndexStatus.CurrentRunProcessedRepositories / @Model.IndexStatus.CurrentRunTotalRepositories repositories
+                    </span>
+                    <span id="index-run-progress-remaining" class="text-muted">
+                        @Model.IndexStatus.CurrentRunRemainingRepositories remaining
+                    </span>
+                </div>
+                <div class="progress mt-1" style="height: 6px;">
+                    <div id="index-run-progress-bar"
+                         class="progress-bar"
+                         role="progressbar"
+                         style="width: @(Model.RunRepositoryProgressPercent)%"
+                         aria-valuenow="@Model.RunRepositoryProgressPercent"
+                         aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
+            </dd>
+
+            <dt id="index-current-repo-progress-label"
+                class="col-sm-3 @(Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRepositoryTotalRevisions > 0 ? "" : "d-none")">
+                Current repository
+            </dt>
+            <dd id="index-current-repo-progress"
+                class="col-sm-9 @(Model.IndexStatus.IsRunning && Model.IndexStatus.CurrentRepositoryTotalRevisions > 0 ? "" : "d-none")">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span id="index-current-repo-progress-text">
+                        @Model.IndexStatus.CurrentRepositoryProcessedRevisions / @Model.IndexStatus.CurrentRepositoryTotalRevisions revisions
+                    </span>
+                    <span id="index-current-repo-progress-detail" class="text-muted">
+                        r@(Model.IndexStatus.CurrentRepositoryCurrentRevision) of r@(Model.IndexStatus.CurrentRepositoryTargetRevision)
+                    </span>
+                </div>
+                <div class="progress mt-1" style="height: 6px;">
+                    <div id="index-current-repo-progress-bar"
+                         class="progress-bar"
+                         role="progressbar"
+                         style="width: @(Model.CurrentRepositoryProgressPercent)%"
+                         aria-valuenow="@Model.CurrentRepositoryProgressPercent"
+                         aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
+            </dd>
+
             <dt class="col-sm-3">Last run</dt>
             <dd id="index-last-run" class="col-sm-9">@SettingsModel.FormatDate(Model.IndexStatus.LastRunCompletedAt)</dd>
 
@@ -129,12 +179,14 @@
             <dd id="index-indexed-data" class="col-sm-9">
                 @Model.IndexStatus.Store.RepositoryCount repositories,
                 @Model.IndexStatus.Store.RevisionCount revisions,
-                @Model.IndexStatus.Store.ChangedPathCount changed paths
+                @Model.IndexStatus.Store.ChangedPathCount changed paths,
+                @Model.IndexStatus.Store.HeadTreeEntryCount head tree entries,
+                @Model.IndexStatus.Store.HeadExternalCount externals
             </dd>
 
             <dt class="col-sm-3">Remaining</dt>
             <dd id="index-remaining" class="col-sm-9">
-                @Model.IndexRemainingRevisions revisions
+                @Model.LiveIndexRemainingRevisions revisions
                 @if (Model.IndexPendingRepositoryCount > 0)
                 {
                     <span class="text-muted">in @Model.IndexPendingRepositoryCount repositories</span>
@@ -247,6 +299,14 @@
                 element.classList.toggle('d-none', hidden);
             };
 
+            const setProgressBar = (id, percent) => {
+                const element = document.getElementById(id);
+                if (!element) return;
+                const normalized = Math.max(0, Math.min(100, Number(percent) || 0));
+                element.style.width = `${normalized}%`;
+                element.setAttribute('aria-valuenow', normalized.toString());
+            };
+
             const appendCell = (row, value) => {
                 const cell = document.createElement('td');
                 cell.textContent = value ?? '';
@@ -288,6 +348,18 @@
                 setText('index-remaining', data.remaining);
 
                 if (scanButton) scanButton.disabled = data.isRunning === true;
+
+                setHidden(document.getElementById('index-run-progress-label'), !data.runProgressVisible);
+                setHidden(document.getElementById('index-run-progress'), !data.runProgressVisible);
+                setText('index-run-progress-text', data.runProgressText);
+                setText('index-run-progress-remaining', data.runProgressRemaining);
+                setProgressBar('index-run-progress-bar', data.runProgressPercent);
+
+                setHidden(document.getElementById('index-current-repo-progress-label'), !data.currentRepositoryProgressVisible);
+                setHidden(document.getElementById('index-current-repo-progress'), !data.currentRepositoryProgressVisible);
+                setText('index-current-repo-progress-text', data.currentRepositoryProgressText);
+                setText('index-current-repo-progress-detail', data.currentRepositoryProgressDetail);
+                setProgressBar('index-current-repo-progress-bar', data.currentRepositoryProgressPercent);
 
                 const error = document.getElementById('index-last-error');
                 if (error) {
