@@ -791,11 +791,7 @@ public sealed class SvnLookClient : ISvnLookClient
         long revision,
         CancellationToken cancellationToken = default)
     {
-        var repoRelPath = ToRepoRelativePath(path);
-        if (string.IsNullOrWhiteSpace(repoRelPath))
-        {
-            throw new ArgumentException("Path is required.", nameof(path));
-        }
+        var repoRelPath = ToRepoRelativePath(path) ?? "/";
 
         var list = await _runner.RunAsync(
             _options.SvnlookCommand,

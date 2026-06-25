@@ -14,32 +14,37 @@ public sealed partial class SvnHubMcpTools
         OpenWorld = false)]
     [Description(
         "Run a safe declarative query against the SvnHub SQLite metadata index. " +
-        "This tool never reads live SVN repositories. It searches indexed revisions, changed paths, HEAD tree entries, and svn:externals declarations, so results can be incomplete when the index is behind HEAD. " +
+        "This tool never reads live SVN repositories. It searches indexed revisions, changed paths, HEAD tree entries, directory/root properties, and svn:externals declarations, so results can be incomplete when the index is behind HEAD. " +
         "Use from=repositories for one row per visible indexed repository with latest indexed commit and index status fields. " +
         "Use from=commits for indexed revision rows. Use from=changedPaths for indexed changed-path rows. " +
         "Use from=tree for current HEAD file/folder existence by path, name, extension, and isDirectory. " +
+        "tree.extension result values include the leading dot, for example .pri, but filters accept either pri or .pri for eq/neq/in. " +
+        "Use from=properties for current HEAD SVN properties on repository root and directories only; file properties are not indexed. " +
         "Use from=externals for current HEAD svn:externals declarations; it indexes declarations only and does not scan external targets recursively. " +
         "This tool does not read file contents, file sizes, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
         "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?}. " +
         "scan supports repositoryNames and repositoryNameContains. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action, name, extension, isDirectory, targetPath, resolvedPath, url. Do not combine aliases with slash characters. " +
+        "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Do not combine aliases with slash characters. " +
         "Example repositories where latest indexed commit is by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"indexed.remainingRevisions\"]}. " +
         "Example repositories where user participated: {\"from\":\"commits\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\",\"latest.commit.message\"]}. " +
         "Example changed paths by user: {\"from\":\"changedPaths\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"date\",\"author\",\"action\",\"path\"]}. " +
         "Example repositories with README.md in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"README.md\"}],\"select\":[\"repositoryName\",\"path\",\"isDirectory\"]}. " +
-        "Example repositories where Math is declared as an external: {\"from\":\"externals\",\"where\":[{\"field\":\"targetPath\",\"op\":\"contains\",\"value\":\"Math\"}],\"select\":[\"repositoryName\",\"parentPath\",\"targetPath\",\"resolvedPath\",\"url\",\"revision\"]}. " +
+        "Example repositories with .pri files in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"extension\",\"op\":\"eq\",\"value\":\"pri\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\"]}. " +
+        "Example directory properties: {\"from\":\"properties\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"svn:externals\"}],\"select\":[\"repositoryName\",\"path\",\"nodeKind\",\"name\",\"value\"]}. " +
+        "Example unpinned externals: {\"from\":\"externals\",\"where\":[{\"field\":\"isPinned\",\"op\":\"eq\",\"value\":\"false\"}],\"select\":[\"repositoryName\",\"parentPath\",\"targetPath\",\"url\",\"isPinned\",\"raw\"]}. " +
         "Call svnhub_index_query_schema for the full schema and examples.")]
     public static async Task<RepositoryIndexQueryResult> IndexQueryAsync(
         [Description(
-            "Index query object. Sources: repositories, commits, changedPaths, tree, externals. " +
+            "Index query object. Sources: repositories, commits, changedPaths, tree, properties, externals. " +
             "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
-            "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. " +
-            "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.raw. " +
-            "Aliases, each used as its own field string: repositoryName, revision, author, date, message, path, action, name, extension, isDirectory, targetPath, resolvedPath, url. Never send repositoryName/name.")]
+            "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. tree.extension returns values with a leading dot, for example .pri; filters accept pri or .pri. " +
+            "properties fields: property.snapshotRevision, property.path, property.nodeKind, property.name, property.value. Properties are indexed only on root and directories. " +
+            "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.isPinned, external.raw. " +
+            "Aliases, each used as its own field string: repositoryName, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Never send repositoryName/name.")]
         RepositoryIndexQueryRequest query,
         RepositoryIndexQueryService indexQuery,
         IHttpContextAccessor httpContextAccessor,
@@ -58,7 +63,7 @@ public sealed partial class SvnHubMcpTools
     public static McpIndexQuerySchemaResult GetIndexQuerySchema()
     {
         return new McpIndexQuerySchemaResult(
-            IndexOnly: "svnhub_index_query reads only the SvnHub SQLite metadata index. It does not read live SVN, file contents, file sizes, or diffs. Sources tree and externals use the indexed HEAD snapshot. Use warnings/index.complete to detect incomplete index coverage.",
+            IndexOnly: "svnhub_index_query reads only the SvnHub SQLite metadata index. It does not read live SVN, file contents, file sizes, or diffs. Sources tree, properties, and externals use the indexed HEAD snapshot. Properties are indexed only on repository root and directories. Use warnings/index.complete to detect incomplete index coverage.",
             Sources:
             [
                 new McpIndexQuerySourceSchema(
@@ -167,7 +172,7 @@ public sealed partial class SvnHubMcpTools
                     }),
                 new McpIndexQuerySourceSchema(
                     "tree",
-                    "One row per visible file or folder in the indexed HEAD snapshot. Use this for current file/folder existence queries.",
+                    "One row per visible file or folder in the indexed HEAD snapshot. Use this for current file/folder existence queries. tree.extension result values include the leading dot, for example .pri; eq/neq/in filters also accept pri.",
                     Fields:
                     [
                         "repository.name",
@@ -221,6 +226,7 @@ public sealed partial class SvnHubMcpTools
                         "external.url",
                         "external.revision",
                         "external.pegRevision",
+                        "external.isPinned",
                         "external.raw",
                     ],
                     Aliases: new Dictionary<string, string>
@@ -235,8 +241,44 @@ public sealed partial class SvnHubMcpTools
                         ["url"] = "external.url",
                         ["revision"] = "external.revision",
                         ["pegRevision"] = "external.pegRevision",
+                        ["isPinned"] = "external.isPinned",
                         ["raw"] = "external.raw",
                         ["externalsRevision"] = "indexed.externalsRevision",
+                        ["remainingRevisions"] = "indexed.remainingRevisions",
+                        ["complete"] = "indexed.complete",
+                    }),
+                new McpIndexQuerySourceSchema(
+                    "properties",
+                    "One row per visible SVN property on the repository root or a directory in the indexed HEAD snapshot. File properties are not indexed.",
+                    Fields:
+                    [
+                        "repository.name",
+                        "repository.createdAt",
+                        "repository.rootAccess",
+                        "repository.authenticatedDefaultAccess",
+                        "indexed.headRevision",
+                        "indexed.revision",
+                        "indexed.headTreeRevision",
+                        "indexed.externalsRevision",
+                        "indexed.remainingRevisions",
+                        "indexed.complete",
+                        "property.snapshotRevision",
+                        "property.path",
+                        "property.nodeKind",
+                        "property.name",
+                        "property.value",
+                    ],
+                    Aliases: new Dictionary<string, string>
+                    {
+                        ["repositoryName"] = "repository.name",
+                        ["snapshotRevision"] = "property.snapshotRevision",
+                        ["path"] = "property.path",
+                        ["nodeKind"] = "property.nodeKind",
+                        ["name"] = "property.name",
+                        ["propertyName"] = "property.name",
+                        ["value"] = "property.value",
+                        ["propertyValue"] = "property.value",
+                        ["propertiesRevision"] = "indexed.externalsRevision",
                         ["remainingRevisions"] = "indexed.remainingRevisions",
                         ["complete"] = "indexed.complete",
                     }),
@@ -287,12 +329,37 @@ public sealed partial class SvnHubMcpTools
                         Select = ["repositoryName", "path", "isDirectory", "revision"],
                     }),
                 new McpIndexQueryExample(
+                    "Repositories with .pri files in current HEAD",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "tree",
+                        Where = [new RepositoryIndexQueryCondition { Field = "extension", Op = "eq", Value = "pri" }],
+                        GroupBy = ["repositoryName"],
+                        Select = ["repositoryName", "count"],
+                    }),
+                new McpIndexQueryExample(
                     "Repositories where Math is declared as an svn:externals target",
                     new RepositoryIndexQueryRequest
                     {
                         From = "externals",
                         Where = [new RepositoryIndexQueryCondition { Field = "targetPath", Op = "contains", Value = "Math" }],
-                        Select = ["repositoryName", "parentPath", "targetPath", "resolvedPath", "url", "revision"],
+                        Select = ["repositoryName", "parentPath", "targetPath", "resolvedPath", "url", "revision", "isPinned"],
+                    }),
+                new McpIndexQueryExample(
+                    "Directory/root svn:externals properties in current HEAD",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "properties",
+                        Where = [new RepositoryIndexQueryCondition { Field = "name", Op = "eq", Value = "svn:externals" }],
+                        Select = ["repositoryName", "path", "nodeKind", "name", "value"],
+                    }),
+                new McpIndexQueryExample(
+                    "Unpinned externals in current HEAD",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "externals",
+                        Where = [new RepositoryIndexQueryCondition { Field = "isPinned", Op = "eq", Value = "false" }],
+                        Select = ["repositoryName", "parentPath", "targetPath", "url", "isPinned", "raw"],
                     }),
             ]);
     }

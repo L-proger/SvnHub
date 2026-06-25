@@ -21,6 +21,9 @@ public interface IRepositoryIndexStore
     Task<IReadOnlyList<RepositoryIndexTreeEntry>> ListHeadTreeEntriesAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<RepositoryIndexProperty>> ListHeadPropertiesAsync(
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsAsync(
         CancellationToken cancellationToken = default);
 
@@ -49,6 +52,7 @@ public interface IRepositoryIndexStore
         Guid repositoryId,
         long revision,
         IReadOnlyList<SvnTreeEntry> treeEntries,
+        IReadOnlyList<RepositoryIndexPropertyDefinition> properties,
         IReadOnlyList<RepositoryIndexExternalDefinition> externals,
         CancellationToken cancellationToken = default);
 
@@ -93,6 +97,7 @@ public sealed record RepositoryIndexStoreStatus(
     long RevisionCount,
     long ChangedPathCount,
     long HeadTreeEntryCount,
+    long HeadPropertyCount,
     long HeadExternalCount,
     DateTimeOffset? LastSuccessAt,
     IReadOnlyList<RepositoryIndexRepositoryState> Repositories);
@@ -145,6 +150,23 @@ public sealed record RepositoryIndexTreeEntry(
     string? Extension,
     bool IsDirectory);
 
+public sealed record RepositoryIndexPropertyDefinition(
+    string Path,
+    string NodeKind,
+    string Name,
+    string Value);
+
+public sealed record RepositoryIndexProperty(
+    Guid RepositoryId,
+    string RepositoryName,
+    long YoungestRevision,
+    long IndexedRevision,
+    long PropertiesRevision,
+    string Path,
+    string NodeKind,
+    string Name,
+    string Value);
+
 public sealed record RepositoryIndexExternalDefinition(
     string ParentPath,
     string? TargetPath,
@@ -152,6 +174,7 @@ public sealed record RepositoryIndexExternalDefinition(
     string? Url,
     string? Revision,
     string? PegRevision,
+    bool IsPinned,
     string RawDefinition);
 
 public sealed record RepositoryIndexExternal(
@@ -166,4 +189,5 @@ public sealed record RepositoryIndexExternal(
     string? Url,
     string? Revision,
     string? PegRevision,
+    bool IsPinned,
     string RawDefinition);

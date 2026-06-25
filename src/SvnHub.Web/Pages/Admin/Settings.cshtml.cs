@@ -97,6 +97,7 @@ public sealed class SettingsModel : PageModel
                 $"{IndexStatus.Store.RevisionCount} revisions, " +
                 $"{IndexStatus.Store.ChangedPathCount} changed paths, " +
                 $"{IndexStatus.Store.HeadTreeEntryCount} head tree entries, " +
+                $"{IndexStatus.Store.HeadPropertyCount} head properties, " +
                 $"{IndexStatus.Store.HeadExternalCount} externals",
             remainingRevisions = LiveIndexRemainingRevisions,
             pendingRepositoryCount = IndexPendingRepositoryCount,

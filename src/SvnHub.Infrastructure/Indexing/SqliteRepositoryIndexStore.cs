@@ -217,6 +217,49 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         return rows;
     }
 
+    public async Task<IReadOnlyList<RepositoryIndexProperty>> ListHeadPropertiesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexProperty>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   ir.externals_revision,
+                   hp.path,
+                   hp.node_kind,
+                   hp.property_name,
+                   hp.property_value
+              from head_properties hp
+              join index_repositories ir on ir.repository_id = hp.repository_id
+             order by lower(ir.repository_name) asc, hp.path asc, hp.property_name asc;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexProperty(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt64(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetString(8)));
+        }
+
+        return rows;
+    }
+
     public async Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -239,6 +282,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    he.url,
                    he.revision,
                    he.peg_revision,
+                   he.is_pinned,
                    he.raw_definition
               from head_externals he
               join index_repositories ir on ir.repository_id = he.repository_id
@@ -260,7 +304,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 reader.IsDBNull(8) ? null : reader.GetString(8),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
-                reader.GetString(11)));
+                reader.GetInt64(11) != 0,
+                reader.GetString(12)));
         }
 
         return rows;
@@ -288,6 +333,10 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         var headTreeEntryCount = await ExecuteScalarLongAsync(
             connection,
             "select count(*) from head_tree_entries;",
+            cancellationToken);
+        var headPropertyCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_properties;",
             cancellationToken);
         var headExternalCount = await ExecuteScalarLongAsync(
             connection,
@@ -328,6 +377,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             revisionCount,
             changedPathCount,
             headTreeEntryCount,
+            headPropertyCount,
             headExternalCount,
             repositories
                 .Where(r => r.LastSuccessAt is not null)
@@ -554,6 +604,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         Guid repositoryId,
         long revision,
         IReadOnlyList<SvnTreeEntry> treeEntries,
+        IReadOnlyList<RepositoryIndexPropertyDefinition> properties,
         IReadOnlyList<RepositoryIndexExternalDefinition> externals,
         CancellationToken cancellationToken = default)
     {
@@ -567,6 +618,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             connection,
             transaction,
             "delete from head_tree_entries where repository_id = $repositoryId;",
+            [("$repositoryId", FormatGuid(repositoryId))],
+            cancellationToken);
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "delete from head_properties where repository_id = $repositoryId;",
             [("$repositoryId", FormatGuid(repositoryId))],
             cancellationToken);
 
@@ -610,6 +668,40 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 cancellationToken);
         }
 
+        for (var i = 0; i < properties.Count; i++)
+        {
+            var property = properties[i];
+            await ExecuteNonQueryAsync(
+                connection,
+                transaction,
+                """
+                insert into head_properties (
+                    repository_id,
+                    path,
+                    property_name,
+                    property_value,
+                    node_kind,
+                    snapshot_revision
+                ) values (
+                    $repositoryId,
+                    $path,
+                    $propertyName,
+                    $propertyValue,
+                    $nodeKind,
+                    $snapshotRevision
+                );
+                """,
+                [
+                    ("$repositoryId", FormatGuid(repositoryId)),
+                    ("$path", property.Path),
+                    ("$propertyName", property.Name),
+                    ("$propertyValue", property.Value),
+                    ("$nodeKind", property.NodeKind),
+                    ("$snapshotRevision", revision),
+                ],
+                cancellationToken);
+        }
+
         for (var i = 0; i < externals.Count; i++)
         {
             var external = externals[i];
@@ -626,6 +718,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     url,
                     revision,
                     peg_revision,
+                    is_pinned,
                     raw_definition,
                     snapshot_revision
                 ) values (
@@ -637,6 +730,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     $url,
                     $revision,
                     $pegRevision,
+                    $isPinned,
                     $rawDefinition,
                     $snapshotRevision
                 );
@@ -650,6 +744,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     ("$url", DbValue(external.Url)),
                     ("$revision", DbValue(external.Revision)),
                     ("$pegRevision", DbValue(external.PegRevision)),
+                    ("$isPinned", external.IsPinned ? 1 : 0),
                     ("$rawDefinition", external.RawDefinition),
                     ("$snapshotRevision", revision),
                 ],
@@ -812,6 +907,17 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     foreign key (repository_id) references index_repositories(repository_id) on delete cascade
                 );
 
+                create table if not exists head_properties (
+                    repository_id text not null,
+                    path text not null,
+                    property_name text not null,
+                    property_value text not null,
+                    node_kind text not null,
+                    snapshot_revision integer not null,
+                    primary key (repository_id, path, property_name),
+                    foreign key (repository_id) references index_repositories(repository_id) on delete cascade
+                );
+
                 create table if not exists head_externals (
                     repository_id text not null,
                     ordinal integer not null,
@@ -821,6 +927,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     url text null,
                     revision text null,
                     peg_revision text null,
+                    is_pinned integer not null default 0,
                     raw_definition text not null,
                     snapshot_revision integer not null,
                     primary key (repository_id, ordinal),
@@ -834,9 +941,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 create index if not exists ix_head_tree_entries_name on head_tree_entries(name);
                 create index if not exists ix_head_tree_entries_path on head_tree_entries(path);
                 create index if not exists ix_head_tree_entries_extension on head_tree_entries(extension);
+                create index if not exists ix_head_properties_name on head_properties(property_name);
+                create index if not exists ix_head_properties_path on head_properties(path);
+                create index if not exists ix_head_properties_node_kind on head_properties(node_kind);
                 create index if not exists ix_head_externals_target_path on head_externals(target_path);
                 create index if not exists ix_head_externals_resolved_path on head_externals(resolved_path);
                 create index if not exists ix_head_externals_url on head_externals(url);
+                create index if not exists ix_head_externals_is_pinned on head_externals(is_pinned);
                 """,
                 [],
                 cancellationToken);
@@ -853,6 +964,13 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 "index_repositories",
                 "externals_revision",
                 "externals_revision integer not null default 0",
+                cancellationToken);
+
+            await EnsureColumnAsync(
+                connection,
+                "head_externals",
+                "is_pinned",
+                "is_pinned integer not null default 0",
                 cancellationToken);
 
             _initialized = true;

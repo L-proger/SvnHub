@@ -329,30 +329,39 @@ public sealed class RepositoryIndexService
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
 
+        var properties = new List<RepositoryIndexPropertyDefinition>();
         var externals = new List<RepositoryIndexExternalDefinition>();
         foreach (var directory in directories)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var value = await _svnlook.GetPropertyValueAsync(
+            var directoryProperties = await _svnlook.GetPropertiesAsync(
                 repository.LocalPath,
                 directory,
                 revision,
-                "svn:externals",
                 cancellationToken);
 
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
+            var nodeKind = directory == "/" ? "root" : "directory";
+            properties.AddRange(directoryProperties.Select(property =>
+                new RepositoryIndexPropertyDefinition(
+                    NormalizeRepositoryPath(directory),
+                    nodeKind,
+                    property.Name,
+                    property.Value)));
 
-            externals.AddRange(ParseExternalDefinitions(directory, value));
+            var externalsProperty = directoryProperties.FirstOrDefault(p =>
+                string.Equals(p.Name, "svn:externals", StringComparison.Ordinal));
+            if (!string.IsNullOrWhiteSpace(externalsProperty?.Value))
+            {
+                externals.AddRange(ParseExternalDefinitions(directory, externalsProperty.Value));
+            }
         }
 
         await _store.SaveHeadSnapshotAsync(
             repository.Id,
             revision,
             treeEntries,
+            properties,
             externals,
             cancellationToken);
     }
@@ -423,8 +432,12 @@ public sealed class RepositoryIndexService
             url,
             NullIfWhiteSpace(revision),
             NullIfWhiteSpace(pegRevision),
+            IsPinned(revision, pegRevision),
             rawDefinition);
     }
+
+    private static bool IsPinned(string? revision, string? pegRevision) =>
+        !string.IsNullOrWhiteSpace(revision) || !string.IsNullOrWhiteSpace(pegRevision);
 
     private static List<string> TokenizeExternalDefinition(string value)
     {

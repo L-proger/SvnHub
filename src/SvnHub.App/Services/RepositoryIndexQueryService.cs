@@ -39,9 +39,9 @@ public sealed class RepositoryIndexQueryService
             NormalizeQuery(query);
 
             from = NormalizeSource(query.From);
-            if (from is not ("repositories" or "commits" or "changedpaths" or "tree" or "externals"))
+            if (from is not ("repositories" or "commits" or "changedpaths" or "tree" or "properties" or "externals"))
             {
-                return QueryError(from, $"Query from must be one of: repositories, commits, changedPaths, tree, externals. Received: '{query.From}'.");
+                return QueryError(from, $"Query from must be one of: repositories, commits, changedPaths, tree, properties, externals. Received: '{query.From}'.");
             }
 
             NormalizeQueryFields(from, query);
@@ -98,6 +98,7 @@ public sealed class RepositoryIndexQueryService
             "commits" => await BuildCommitRowsAsync(repositoryById, userId, cancellationToken),
             "changedpaths" => await BuildChangedPathRowsAsync(repositoryById, userId, cancellationToken),
             "tree" => await BuildTreeRowsAsync(repositoryById, userId, cancellationToken),
+            "properties" => await BuildPropertyRowsAsync(repositoryById, userId, cancellationToken),
             "externals" => await BuildExternalRowsAsync(repositoryById, userId, cancellationToken),
             _ => throw new InvalidOperationException("Unsupported query source."),
         };
@@ -326,7 +327,49 @@ public sealed class RepositoryIndexQueryService
             row["external.url"] = external.Url;
             row["external.revision"] = external.Revision;
             row["external.pegRevision"] = external.PegRevision;
+            row["external.isPinned"] = external.IsPinned;
             row["external.raw"] = external.RawDefinition;
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    private async Task<List<Dictionary<string, object?>>> BuildPropertyRowsAsync(
+        IReadOnlyDictionary<Guid, Repository> visibleRepositories,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var properties = await _store.ListHeadPropertiesAsync(cancellationToken);
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var property in properties)
+        {
+            if (!visibleRepositories.TryGetValue(property.RepositoryId, out var repo))
+            {
+                continue;
+            }
+
+            if (_access.GetAccess(userId, repo.Id, property.Path) < AccessLevel.Read)
+            {
+                continue;
+            }
+
+            var row = CreateBaseRow(
+                repo,
+                _access.GetAccess(userId, repo.Id, "/"),
+                property.YoungestRevision,
+                property.IndexedRevision,
+                0,
+                property.PropertiesRevision,
+                lastSuccessAt: null,
+                lastError: null,
+                isMissing: false);
+            row["property.snapshotRevision"] = property.PropertiesRevision;
+            row["property.path"] = property.Path;
+            row["property.nodeKind"] = property.NodeKind;
+            row["property.name"] = property.Name;
+            row["property.value"] = property.Value;
             rows.Add(row);
         }
 
@@ -347,6 +390,7 @@ public sealed class RepositoryIndexQueryService
         var staleSnapshotRepositories = from switch
         {
             "tree" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.HeadTreeRevision != r.IndexedRevision),
+            "properties" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.ExternalsRevision != r.IndexedRevision),
             "externals" => visibleRows.Count(r => r.IndexedRevision >= r.YoungestRevision && r.ExternalsRevision != r.IndexedRevision),
             _ => 0,
         };
@@ -456,6 +500,7 @@ public sealed class RepositoryIndexQueryService
         foreach (var condition in query.Where)
         {
             condition.Field = ResolveFieldAlias(from, condition.Field, allowAggregateFields: false);
+            NormalizeConditionValues(condition);
         }
 
         for (var i = 0; i < query.GroupBy.Count; i++)
@@ -563,6 +608,7 @@ public sealed class RepositoryIndexQueryService
                 "url" or "externalurl" => "external.url",
                 "revision" or "externalrevision" => "external.revision",
                 "pegrevision" => "external.pegRevision",
+                "ispinned" or "pinned" => "external.isPinned",
                 "raw" or "definition" or "rawdefinition" => "external.raw",
                 "indexedrevision" => "indexed.revision",
                 "externalsrevision" => "indexed.externalsRevision",
@@ -570,8 +616,58 @@ public sealed class RepositoryIndexQueryService
                 "complete" => "indexed.complete",
                 _ => normalized,
             },
+            "properties" => normalized switch
+            {
+                "repositoryname" or "repo" or "reponame" => "repository.name",
+                "createdat" or "created" => "repository.createdAt",
+                "rootaccess" or "access" => "repository.rootAccess",
+                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "snapshotrevision" or "headrevision" => "property.snapshotRevision",
+                "path" or "propertypath" => "property.path",
+                "nodekind" or "kind" => "property.nodeKind",
+                "name" or "propertyname" => "property.name",
+                "value" or "propertyvalue" => "property.value",
+                "indexedrevision" => "indexed.revision",
+                "propertiesrevision" or "externalsrevision" => "indexed.externalsRevision",
+                "remainingrevisions" => "indexed.remainingRevisions",
+                "complete" => "indexed.complete",
+                _ => normalized,
+            },
             _ => normalized,
         };
+    }
+
+    private static void NormalizeConditionValues(RepositoryIndexQueryCondition condition)
+    {
+        if (!string.Equals(condition.Field, "tree.extension", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var op = NormalizeQueryToken(condition.Op);
+        if (op is not ("eq" or "neq" or "in"))
+        {
+            return;
+        }
+
+        condition.Value = NormalizeExtensionFilterValue(condition.Value);
+        for (var i = 0; i < condition.Values.Count; i++)
+        {
+            condition.Values[i] = NormalizeExtensionFilterValue(condition.Values[i]) ?? "";
+        }
+    }
+
+    private static string? NormalizeExtensionFilterValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.StartsWith(".", StringComparison.Ordinal)
+            ? trimmed
+            : "." + trimmed;
     }
 
     private static RepositoryIndexQueryResult QueryError(string? from, string message) =>
@@ -707,6 +803,7 @@ public sealed class RepositoryIndexQueryService
             CopyLatestFields(latest, grouped, "commit.");
             CopyLatestFields(latest, grouped, "change.");
             CopyLatestFields(latest, grouped, "tree.");
+            CopyLatestFields(latest, grouped, "property.");
             CopyLatestFields(latest, grouped, "external.");
             CopyLatestFields(latest, grouped, "latest.");
             result.Add(grouped);
@@ -788,7 +885,8 @@ public sealed class RepositoryIndexQueryService
             "commits" => ["repository.name", "commit.revision", "commit.author", "commit.date", "commit.message", "commit.changedPathCount"],
             "changedpaths" => ["repository.name", "commit.revision", "commit.author", "commit.date", "change.action", "change.path"],
             "tree" => ["repository.name", "tree.path", "tree.name", "tree.extension", "tree.isDirectory", "tree.revision"],
-            "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.revision"],
+            "properties" => ["repository.name", "property.path", "property.nodeKind", "property.name", "property.value", "property.snapshotRevision"],
+            "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.revision", "external.isPinned"],
             _ => ["repository.name", "latest.revision", "latest.author", "latest.date", "latest.message", "indexed.remainingRevisions"],
         };
     }
@@ -831,6 +929,11 @@ public sealed class RepositoryIndexQueryService
         if (row.TryGetValue("external.snapshotRevision", out var externalSnapshotRevision) && externalSnapshotRevision is long e)
         {
             return e;
+        }
+
+        if (row.TryGetValue("property.snapshotRevision", out var propertySnapshotRevision) && propertySnapshotRevision is long p)
+        {
+            return p;
         }
 
         return 0;
@@ -906,8 +1009,9 @@ public sealed class RepositoryIndexQueryService
             "commits" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "commit.changedpaths" or "commit.changedpathcount",
             "changedpaths" => field is "commit.revision" or "commit.author" or "commit.date" or "commit.message" or "change.action" or "change.path",
             "tree" => field is "tree.revision" or "tree.path" or "tree.name" or "tree.extension" or "tree.isdirectory",
+            "properties" => field is "property.snapshotrevision" or "property.path" or "property.nodekind" or "property.name" or "property.value",
             "externals" => field is "external.snapshotrevision" or "external.parentpath" or "external.targetpath" or
-                "external.resolvedpath" or "external.url" or "external.revision" or "external.pegrevision" or "external.raw",
+                "external.resolvedpath" or "external.url" or "external.revision" or "external.pegrevision" or "external.ispinned" or "external.raw",
             _ => false,
         };
     }
@@ -918,6 +1022,7 @@ public sealed class RepositoryIndexQueryService
         return normalized switch
         {
             "changedpath" or "changedpaths" => "changedpaths",
+            "property" or "properties" or "props" => "properties",
             "external" or "externals" or "svnexternals" or "svn:externals" => "externals",
             _ => normalized,
         };
