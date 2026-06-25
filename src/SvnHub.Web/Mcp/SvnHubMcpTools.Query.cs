@@ -22,8 +22,9 @@ public sealed partial class SvnHubMcpTools
         "Use from=properties for current HEAD SVN properties on repository root and directories only; file properties are not indexed. " +
         "Use from=externals for current HEAD svn:externals declarations; it indexes declarations only and does not scan external targets recursively. " +
         "This tool does not read file contents, file sizes, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
-        "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?}. " +
+        "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?, offset?}. " +
         "scan supports repositoryNames and repositoryNameContains. " +
+        "Pagination: default limit is 100, maximum limit is 1000, default offset is 0. If truncated=true, matchedRows is the real total count; repeat the same query with a higher limit or with offset=previous offset+limit until truncated=false. For all rows over 1000, use multiple pages with a stable orderBy. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
         "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Do not combine aliases with slash characters. " +
         "Example repositories where latest indexed commit is by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"indexed.remainingRevisions\"]}. " +
@@ -37,6 +38,7 @@ public sealed partial class SvnHubMcpTools
     public static async Task<RepositoryIndexQueryResult> IndexQueryAsync(
         [Description(
             "Index query object. Sources: repositories, commits, changedPaths, tree, properties, externals. " +
+            "Use limit and offset for pagination. Default limit is 100, max limit is 1000. If the result has truncated=true, use matchedRows to know the total and request the next page with offset += limit. For datasets over 1000 rows, make multiple calls with the same where/select/orderBy and increasing offset. " +
             "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
@@ -64,6 +66,7 @@ public sealed partial class SvnHubMcpTools
     {
         return new McpIndexQuerySchemaResult(
             IndexOnly: "svnhub_index_query reads only the SvnHub SQLite metadata index. It does not read live SVN, file contents, file sizes, or diffs. Sources tree, properties, and externals use the indexed HEAD snapshot. Properties are indexed only on repository root and directories. Use warnings/index.complete to detect incomplete index coverage.",
+            Pagination: "Default limit is 100, maximum limit is 1000, default offset is 0. If truncated=true, matchedRows is the total count. Fetch all data by repeating the same query with the same where/select/groupBy/orderBy and offset increased by limit until truncated=false. Always use a stable orderBy when paging large result sets.",
             Sources:
             [
                 new McpIndexQuerySourceSchema(
@@ -375,6 +378,7 @@ public sealed partial class SvnHubMcpTools
 
 public sealed record McpIndexQuerySchemaResult(
     string IndexOnly,
+    string Pagination,
     IReadOnlyList<McpIndexQuerySourceSchema> Sources,
     IReadOnlyList<string> Operators,
     IReadOnlyList<McpIndexQueryExample> Examples);

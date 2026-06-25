@@ -116,8 +116,18 @@ public sealed class RepositoryIndexQueryService
         matchedRows = OrderRows(matchedRows, query.OrderBy);
 
         var limit = Math.Clamp(query.Limit ?? DefaultQueryLimit, 1, MaxQueryLimit);
-        var truncated = matchedRows.Count > limit;
+        var offset = Math.Clamp(query.Offset ?? 0, 0, int.MaxValue);
+        var nextOffset = (long)offset + limit;
+        var truncated = matchedRows.Count > nextOffset;
+        if (truncated)
+        {
+            warnings.Add(
+                $"Result page is truncated: returned rows {offset + 1}-{Math.Min(nextOffset, matchedRows.Count)} of {matchedRows.Count}. " +
+                $"Request the next page with offset={nextOffset} and limit up to {MaxQueryLimit}.");
+        }
+
         var selectedRows = matchedRows
+            .Skip(offset)
             .Take(limit)
             .Select(row => SelectRow(row, query.Select, from, query.GroupBy.Count > 0))
             .ToArray();
@@ -128,6 +138,8 @@ public sealed class RepositoryIndexQueryService
             scannedRows,
             matchedRows.Count,
             truncated,
+            offset,
+            limit,
             indexInfo,
             warnings,
             selectedRows);
@@ -688,6 +700,8 @@ public sealed class RepositoryIndexQueryService
             ScannedRows: 0,
             MatchedRows: 0,
             Truncated: false,
+            Offset: 0,
+            Limit: DefaultQueryLimit,
             Index: new RepositoryIndexQueryIndexInfo(false, 0, 0, 0, null),
             Warnings:
             [
@@ -1108,6 +1122,7 @@ public sealed class RepositoryIndexQueryRequest
     public List<string> Select { get; set; } = [];
     public List<RepositoryIndexQueryOrder> OrderBy { get; set; } = [];
     public int? Limit { get; set; }
+    public int? Offset { get; set; }
 }
 
 public sealed class RepositoryIndexQueryScan
@@ -1136,6 +1151,8 @@ public sealed record RepositoryIndexQueryResult(
     int ScannedRows,
     int MatchedRows,
     bool Truncated,
+    int Offset,
+    int Limit,
     RepositoryIndexQueryIndexInfo Index,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<Dictionary<string, object?>> Rows);
