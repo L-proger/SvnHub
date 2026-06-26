@@ -5,7 +5,7 @@ Vendored browser bundles used by the repository file preview for Gerber and Exce
 Sources:
 
 - `@tracespace/core` 5.0.0-alpha.0
-- `@tracespace/parser` 5.0.0-next.0
+- `@tracespace/parser` 5.0.0-alpha.0
 - `@tracespace/plotter` 5.0.0-alpha.0
 - `@tracespace/renderer` 5.0.0-alpha.0
 - `@tracespace/identify-layers` 5.0.0-alpha.0
