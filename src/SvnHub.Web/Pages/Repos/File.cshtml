@@ -1,4 +1,4 @@
-@page "/repos/{repoName}/file"
+@page "/repos/{repoName}/file/{**path}"
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
@@ -46,13 +46,13 @@ else
                        asp-page="/Repos/File"
                        asp-page-handler="Raw"
                        asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.Path"
+                       asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
                        asp-route-rev="@Model.ViewRevision">Raw</a>
                     <a class="btn btn-sm btn-outline-secondary"
                        asp-page="/Repos/File"
                        asp-page-handler="Download"
                        asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.Path"
+                       asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
                        asp-route-rev="@Model.ViewRevision">Download</a>
                 }
                 <a class="btn btn-sm btn-outline-secondary"
@@ -101,14 +101,14 @@ else
                 <div class="text-center">
                     <img class="img-fluid border rounded d-inline-block"
                          alt="@Model.Path"
-                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision }, null)" />
+                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)" />
                 </div>
             }
             else if (Model.IsPdf)
             {
                 <iframe class="file-pdf-preview"
                         title="@System.IO.Path.GetFileName(Model.Path)"
-                        src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision }, null)">
+                        src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
                 </iframe>
             }
             else if (Model.IsMarkdown)

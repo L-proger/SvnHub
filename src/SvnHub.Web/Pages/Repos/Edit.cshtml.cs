@@ -328,7 +328,7 @@ public sealed class EditModel : PageModel
                         createMsg,
                         User?.Identity?.Name,
                         cancellationToken);
-                    return RedirectToPage("/Repos/Tree", new { repoName, path = createNewPath });
+                    return RedirectToPage("/Repos/Tree", new { repoName, path = RepositoryPath.ToRouteValue(createNewPath) });
                 }
 
                 var createContentBytes = Encoding.UTF8.GetBytes(Input.Contents ?? "");
@@ -348,7 +348,7 @@ public sealed class EditModel : PageModel
                     createMsg,
                     User?.Identity?.Name,
                     cancellationToken);
-                return RedirectToPage("/Repos/File", new { repoName, path = createNewPath });
+                return RedirectToPage("/Repos/File", new { repoName, path = RepositoryPath.ToRouteValue(createNewPath) });
             }
             catch (Exception ex)
             {
@@ -457,10 +457,10 @@ public sealed class EditModel : PageModel
 
         if (Input.IsDirectory)
         {
-            return RedirectToPage("/Repos/Tree", new { repoName, path = newPath });
+            return RedirectToPage("/Repos/Tree", new { repoName, path = RepositoryPath.ToRouteValue(newPath) });
         }
 
-        return RedirectToPage("/Repos/File", new { repoName, path = newPath });
+        return RedirectToPage("/Repos/File", new { repoName, path = RepositoryPath.ToRouteValue(newPath) });
     }
 
     public sealed class EditInput

@@ -293,11 +293,11 @@ public sealed class FileModel : PageModel
         catch (Exception ex)
         {
             FlashError = ex.Message;
-            return RedirectToPage("/Repos/File", new { repoName, path = Path });
+            return RedirectToPage("/Repos/File", new { repoName, path = RepositoryPath.ToRouteValue(Path) });
         }
 
         TempData["Message"] = $"Deleted {System.IO.Path.GetFileName(Path)}";
-        return RedirectToPage("/Repos/Tree", new { repoName, path = ParentPath == "/" ? null : ParentPath });
+        return RedirectToPage("/Repos/Tree", new { repoName, path = RepositoryPath.ToRouteValue(ParentPath) });
     }
 
     public async Task<IActionResult> OnGetDownloadAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)

@@ -1,4 +1,4 @@
-@page "/repos/{repoName}/tree"
+@page "/repos/{repoName}/tree/{**path}"
 @model SvnHub.Web.Pages.Repos.TreeModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
@@ -70,7 +70,7 @@ else
                    asp-page="/Repos/Tree"
                    asp-page-handler="Zip"
                    asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)"
+                   asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
                    asp-route-rev="@Model.ViewRevision">
                     Download ZIP
                 </a>
@@ -123,7 +123,7 @@ else
                     <form method="post"
                           asp-page-handler="DeleteEntry"
                           asp-route-repoName="@Model.RepoName"
-                          asp-route-path="@(Model.ParentPath == "/" ? null : Model.ParentPath)"
+                          asp-route-path="@RepositoryPath.ToRouteValue(Model.ParentPath)"
                           class="d-inline">
                         <input type="hidden" name="targetPath" value="@Model.Path" />
                         <button type="submit"
@@ -157,7 +157,7 @@ else
                     <a class="btn btn-sm btn-outline-secondary"
                        asp-page="/Repos/File"
                        asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.ReadmePath"
+                       asp-route-path="@RepositoryPath.ToRouteValue(Model.ReadmePath)"
                        asp-route-rev="@Model.ViewRevision">Open</a>
                 </div>
             </div>

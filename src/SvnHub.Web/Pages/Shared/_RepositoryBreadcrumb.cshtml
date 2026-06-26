@@ -43,7 +43,7 @@
                         <a class="repo-breadcrumb-segment"
                            asp-page="/Repos/Tree"
                            asp-route-repoName="@Model.RepositoryName"
-                           asp-route-path="@current"
+                           asp-route-path="@RepositoryPath.ToRouteValue(current)"
                            asp-route-rev="@Model.Revision">
                             @parts[i]
                         </a>

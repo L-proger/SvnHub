@@ -130,8 +130,8 @@ public sealed class TreeModel : PageModel
                 if (trunkPath is not null && _access.GetAccess(userId.Value, repo.Id, trunkPath) >= AccessLevel.Read)
                 {
                     return rev is null
-                        ? RedirectToPage(new { repoName, path = trunkPath })
-                        : RedirectToPage(new { repoName, path = trunkPath, rev });
+                        ? RedirectToPage(new { repoName, path = RoutePath(trunkPath) })
+                        : RedirectToPage(new { repoName, path = RoutePath(trunkPath), rev });
                 }
             }
 
@@ -640,14 +640,14 @@ public sealed class TreeModel : PageModel
         if (string.IsNullOrWhiteSpace(targetPath))
         {
             FlashError = "Invalid path.";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         var normalizedTarget = Normalize(targetPath);
         if (normalizedTarget == "/")
         {
             FlashError = "Refusing to delete repository root.";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
@@ -677,11 +677,11 @@ public sealed class TreeModel : PageModel
         catch (Exception ex)
         {
             FlashError = ex.Message;
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         Message = $"Deleted {System.IO.Path.GetFileName(normalizedTarget)}";
-        return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        return RedirectToPage(new { repoName, path = RoutePath(Path) });
     }
 
     public async Task<IActionResult> OnPostUploadAsync(
@@ -700,13 +700,13 @@ public sealed class TreeModel : PageModel
         if (files is null || files.Count == 0)
         {
             FlashError = "Select at least one file to upload.";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         if (string.IsNullOrWhiteSpace(commitMessage))
         {
             FlashError = "Commit message is required.";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
@@ -734,7 +734,7 @@ public sealed class TreeModel : PageModel
         catch (Exception ex)
         {
             FlashError = ex.Message;
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         var maxUploadBytes = _settings.GetEffectiveMaxUploadBytes();
@@ -743,7 +743,7 @@ public sealed class TreeModel : PageModel
         if (totalBytes > maxUploadBytes)
         {
             FlashError = $"Upload is too large (>{maxUploadBytes} bytes).";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         foreach (var f in files)
@@ -751,7 +751,7 @@ public sealed class TreeModel : PageModel
             if (f.Length > maxUploadBytes)
             {
                 FlashError = $"File '{System.IO.Path.GetFileName(f.FileName)}' is too large (>{maxUploadBytes} bytes).";
-                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                return RedirectToPage(new { repoName, path = RoutePath(Path) });
             }
         }
 
@@ -759,7 +759,7 @@ public sealed class TreeModel : PageModel
         if (normalizedMode is not ("files" or "folder"))
         {
             FlashError = "Invalid upload mode.";
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         static string NormalizeUploadPath(string raw, bool allowSubdirs)
@@ -830,20 +830,20 @@ public sealed class TreeModel : PageModel
             if (string.IsNullOrWhiteSpace(relRaw))
             {
                 FlashError = $"Invalid upload path: {f.FileName}";
-                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                return RedirectToPage(new { repoName, path = RoutePath(Path) });
             }
 
             var segments = relRaw.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (segments.Length == 0)
             {
                 FlashError = $"Invalid upload path: {f.FileName}";
-                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                return RedirectToPage(new { repoName, path = RoutePath(Path) });
             }
 
             if (segments.Any(s => !IsSafeSegment(s)))
             {
                 FlashError = $"Invalid upload path: {f.FileName}";
-                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                return RedirectToPage(new { repoName, path = RoutePath(Path) });
             }
 
             // Accumulate directory creation requests for folder uploads.
@@ -863,7 +863,7 @@ public sealed class TreeModel : PageModel
             if (string.IsNullOrWhiteSpace(targetPath))
             {
                 FlashError = $"Invalid upload path: {f.FileName}";
-                return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                return RedirectToPage(new { repoName, path = RoutePath(Path) });
             }
 
             if (_access.GetAccess(userId.Value, repo.Id, targetPath) < AccessLevel.Write)
@@ -923,7 +923,7 @@ public sealed class TreeModel : PageModel
                     if (!match.IsDirectory)
                     {
                         FlashError = $"Cannot create folder '{dir}': a file with the same name already exists.";
-                        return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+                        return RedirectToPage(new { repoName, path = RoutePath(Path) });
                     }
 
                     continue; // already exists
@@ -949,11 +949,11 @@ public sealed class TreeModel : PageModel
         catch (Exception ex)
         {
             FlashError = ex.Message;
-            return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
         }
 
         Message = $"Uploaded {puts.Count} file(s).";
-        return RedirectToPage(new { repoName, path = Path == "/" ? null : Path });
+        return RedirectToPage(new { repoName, path = RoutePath(Path) });
     }
 
     public async Task<IActionResult> OnGetZipAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -1104,6 +1104,8 @@ public sealed class TreeModel : PageModel
     private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
     private static string GetParent(string path) => RepositoryPath.GetParent(path);
+
+    private static string? RoutePath(string? path) => RepositoryPath.ToRouteValue(path);
 
     private static string NormalizeRepoRelativePath(string path)
     {

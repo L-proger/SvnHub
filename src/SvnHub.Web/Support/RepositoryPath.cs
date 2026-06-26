@@ -48,4 +48,10 @@ public static class RepositoryPath
 
         return path[..idx];
     }
+
+    public static string? ToRouteValue(string? path)
+    {
+        var normalized = Normalize(path);
+        return normalized == "/" ? null : normalized.TrimStart('/');
+    }
 }

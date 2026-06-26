@@ -436,32 +436,49 @@ public static class MarkdownRenderer
     private static string BuildTreeUrl(string repoName, string svnPath, long? revision)
     {
         var repoSegment = Uri.EscapeDataString(repoName);
-        if (string.IsNullOrWhiteSpace(svnPath) || svnPath == "/")
-        {
-            return revision is null
-                ? $"/repos/{repoSegment}/tree"
-                : $"/repos/{repoSegment}/tree?rev={revision.Value}";
-        }
+        var pathSegment = BuildRoutePath(svnPath);
+        var baseUrl = string.IsNullOrWhiteSpace(pathSegment)
+            ? $"/repos/{repoSegment}/tree"
+            : $"/repos/{repoSegment}/tree/{pathSegment}";
 
-        return revision is null
-            ? $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}"
-            : $"/repos/{repoSegment}/tree?path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
+        return revision is null ? baseUrl : $"{baseUrl}?rev={revision.Value}";
     }
 
     private static string BuildFileUrl(string repoName, string svnPath, long? revision)
     {
         var repoSegment = Uri.EscapeDataString(repoName);
-        return revision is null
-            ? $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}"
-            : $"/repos/{repoSegment}/file?path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
+        var pathSegment = BuildRoutePath(svnPath);
+        var baseUrl = string.IsNullOrWhiteSpace(pathSegment)
+            ? $"/repos/{repoSegment}/file"
+            : $"/repos/{repoSegment}/file/{pathSegment}";
+
+        return revision is null ? baseUrl : $"{baseUrl}?rev={revision.Value}";
     }
 
     private static string BuildRawFileUrl(string repoName, string svnPath, long? revision)
     {
         var repoSegment = Uri.EscapeDataString(repoName);
-        return revision is null
-            ? $"/repos/{repoSegment}/file?handler=Raw&path={Uri.EscapeDataString(svnPath)}"
-            : $"/repos/{repoSegment}/file?handler=Raw&path={Uri.EscapeDataString(svnPath)}&rev={revision.Value}";
+        var pathSegment = BuildRoutePath(svnPath);
+        var baseUrl = string.IsNullOrWhiteSpace(pathSegment)
+            ? $"/repos/{repoSegment}/file?handler=Raw"
+            : $"/repos/{repoSegment}/file/{pathSegment}?handler=Raw";
+
+        return revision is null ? baseUrl : $"{baseUrl}&rev={revision.Value}";
+    }
+
+    private static string BuildRoutePath(string svnPath)
+    {
+        var normalized = NormalizeRepoPath(svnPath);
+        if (normalized == "/")
+        {
+            return "";
+        }
+
+        return string.Join(
+            '/',
+            normalized
+                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(Uri.EscapeDataString));
     }
 
     private static string GetDirectoryPath(string currentPath)

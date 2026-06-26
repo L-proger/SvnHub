@@ -7,7 +7,7 @@
             <div class="modal-content">
                 <form method="post"
                       asp-page-handler="Upload"
-                      asp-route-path="@(Model.Path == "/" ? null : Model.Path)"
+                      asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
                       enctype="multipart/form-data"
                       autocomplete="off">
                     @Html.AntiForgeryToken()

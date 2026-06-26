@@ -97,7 +97,7 @@
                             {
                                 <a asp-page="/Repos/Tree"
                                    asp-route-repoName="@externalLink.TargetRepoName"
-                                   asp-route-path="@(externalLink.TargetPath == "/" ? null : externalLink.TargetPath)"
+                                   asp-route-path="@RepositoryPath.ToRouteValue(externalLink.TargetPath)"
                                    asp-route-rev="@externalLink.Revision"
                                    class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover"
                                    title="@externalLink.RawDefinition">
@@ -120,7 +120,7 @@
                             {
                                 <a asp-page="/Repos/Tree"
                                    asp-route-repoName="@Model.RepoName"
-                                   asp-route-path="@e.Path"
+                                   asp-route-path="@RepositoryPath.ToRouteValue(e.Path)"
                                    asp-route-rev="@Model.ViewRevision"
                                    class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                     @e.Name
@@ -130,7 +130,7 @@
                             {
                                 <a asp-page="/Repos/File"
                                    asp-route-repoName="@Model.RepoName"
-                                   asp-route-path="@e.Path"
+                                   asp-route-path="@RepositoryPath.ToRouteValue(e.Path)"
                                    asp-route-rev="@Model.ViewRevision"
                                    class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                     @e.Name
@@ -165,7 +165,7 @@
                                     <a class="dropdown-item"
                                        asp-page="/Repos/Edit"
                                        asp-route-repoName="@Model.RepoName"
-                                       asp-route-path="@e.Path">
+                                       asp-route-path="@RepositoryPath.ToRouteValue(e.Path)">
                                         Edit
                                     </a>
                                 </li>
