@@ -2,6 +2,16 @@
 @model SvnHub.Web.Pages.Repos.TreeModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
+    var treeTitleMetadata = new List<string>
+    {
+        $"{Model.DirectoryCount} {(Model.DirectoryCount == 1 ? "folder" : "folders")}",
+        $"{Model.FileCount} {(Model.FileCount == 1 ? "file" : "files")}",
+    };
+
+    if (Model.ExternalCount > 0)
+    {
+        treeTitleMetadata.Add($"{Model.ExternalCount} {(Model.ExternalCount == 1 ? "external" : "externals")}");
+    }
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -41,15 +51,7 @@ else
 {
     <div class="card file-viewer mt-3">
         <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-            <div class="text-muted small">
-                @(Model.Path == "/" ? "Repository root" : System.IO.Path.GetFileName(Model.Path))
-                <span class="mx-1">|</span>@Model.DirectoryCount @(Model.DirectoryCount == 1 ? "folder" : "folders")
-                <span class="mx-1">|</span>@Model.FileCount @(Model.FileCount == 1 ? "file" : "files")
-                @if (Model.ExternalCount > 0)
-                {
-                    <span class="mx-1">|</span>@($"{Model.ExternalCount} {(Model.ExternalCount == 1 ? "external" : "externals")}")
-                }
-            </div>
+            @await Html.PartialAsync("Shared/_RepositoryObjectTitle", new SvnHub.Web.Support.RepositoryObjectTitleModel(Model.Path, IsDirectory: true, treeTitleMetadata))
             <div class="d-flex align-items-center gap-2">
                 @if (Model.CanWriteActions && Model.Path != "/")
                 {

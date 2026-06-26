@@ -1,0 +1,22 @@
+@model SvnHub.Web.Support.RepositoryObjectTitleModel
+@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
+@{
+    var iconHref = FileIcons.GetIconHref(Model.Path, Model.IsDirectory, isOpen: Model.IsDirectory);
+    var title = Model.Path == "/"
+        ? "Repository root"
+        : System.IO.Path.GetFileName(Model.Path.TrimEnd('/', '\\'));
+}
+
+<div class="d-flex align-items-center gap-2 text-muted small sp-min-w-0">
+    @if (!string.IsNullOrWhiteSpace(iconHref))
+    {
+        <img class="sp-icon sp-file-icon" src="@Url.Content(iconHref)" alt="" aria-hidden="true" />
+    }
+    <div class="text-truncate sp-min-w-0">
+        @title
+        @foreach (var item in Model.Metadata.Where(m => !string.IsNullOrWhiteSpace(m)))
+        {
+            <span class="mx-1">|</span>@item
+        }
+    </div>
+</div>
