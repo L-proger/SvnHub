@@ -1,10 +1,12 @@
-importScripts ('occt-import-js.js');
+const occtBasePath = '/lib/online-3d-viewer/occt/';
+
+importScripts (occtBasePath + 'occt-import-js.js');
 
 onmessage = async function (ev)
 {
 	let modulOverrides = {
 		locateFile: function (path) {
-			return path;
+			return occtBasePath + path;
 		}
 	};
 	let occt = await occtimportjs (modulOverrides);
