@@ -47,11 +47,11 @@ public sealed partial class SvnHubMcpTools
         ReadOnly = true,
         Destructive = false,
         OpenWorld = false)]
-    [Description("List one repository directory at a revision, filtered by SvnHub read permissions.")]
+    [Description("List one repository directory at a revision, filtered by SvnHub read permissions. Omit revision or pass 0 for HEAD.")]
     public static async Task<McpTreeResult> ListTreeAsync(
         [Description("Repository name.")] string repoName,
         [Description("Repository path. Use / for root.")] string? path,
-        [Description("Optional revision. Defaults to HEAD.")] long? revision,
+        [Description("Optional revision. Omit, null, or 0 means HEAD. Positive values open that exact revision.")] long? revision,
         RepositoryService repositories,
         AccessService access,
         ISvnLookClient svnlook,
@@ -80,11 +80,11 @@ public sealed partial class SvnHubMcpTools
         ReadOnly = true,
         Destructive = false,
         OpenWorld = false)]
-    [Description("Read a text file from a repository. Binary and oversized files return metadata without contents.")]
+    [Description("Read a text file from a repository. Binary and oversized files return metadata without contents. Omit revision or pass 0 for HEAD.")]
     public static async Task<McpFileReadResult> ReadFileAsync(
         [Description("Repository name.")] string repoName,
         [Description("File path inside the repository.")] string path,
-        [Description("Optional revision. Defaults to HEAD.")] long? revision,
+        [Description("Optional revision. Omit, null, or 0 means HEAD. Positive values open that exact revision.")] long? revision,
         [Description("Maximum characters to return. Defaults to 200000 and caps at 1000000.")] int? maxChars,
         RepositoryService repositories,
         AccessService access,
@@ -288,7 +288,7 @@ public sealed partial class SvnHubMcpTools
 
     private static long ResolveRevision(long? requested, long head)
     {
-        if (requested is null)
+        if (requested is null or 0)
         {
             return head;
         }
