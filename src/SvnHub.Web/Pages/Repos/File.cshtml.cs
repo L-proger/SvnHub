@@ -59,12 +59,14 @@ public sealed class FileModel : PageModel
     public bool IsImage { get; private set; }
     public bool IsPdf { get; private set; }
     public bool IsGerberPreview { get; private set; }
+    public bool IsModelPreview { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
     public string Language { get; private set; } = "plaintext";
     public string LineNumbers { get; private set; } = "";
     public long FileSizeBytes { get; private set; }
     public string FileSizeLabel { get; private set; } = "";
     public IReadOnlyList<GerberPreviewFile> GerberPreviewFiles { get; private set; } = [];
+    public IReadOnlyList<ModelPreviewFile> ModelPreviewFiles { get; private set; } = [];
     public int? LineCount { get; private set; }
     public bool CanWrite { get; private set; }
     public string? CheckoutUrl { get; private set; }
@@ -78,6 +80,7 @@ public sealed class FileModel : PageModel
         !IsImage &&
         !IsPdf &&
         !IsGerberPreview &&
+        !IsModelPreview &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -160,6 +163,30 @@ public sealed class FileModel : PageModel
                 {
                     ClearTextPreviewState();
                     IsGerberPreview = true;
+                    return Page();
+                }
+
+                if (!string.IsNullOrWhiteSpace(PreviewUnavailableMessage))
+                {
+                    ClearTextPreviewState();
+                    return Page();
+                }
+            }
+
+            if (ModelPreviewFileClassifier.IsImportableModelPath(Path))
+            {
+                ModelPreviewFiles = await BuildModelPreviewFilesAsync(
+                    repo.Id,
+                    repo.LocalPath,
+                    userId.Value,
+                    Revision,
+                    maxPreviewBytes,
+                    cancellationToken);
+
+                if (ModelPreviewFiles.Count != 0)
+                {
+                    ClearTextPreviewState();
+                    IsModelPreview = true;
                     return Page();
                 }
 
@@ -255,6 +282,7 @@ public sealed class FileModel : PageModel
         MarkdownHtml = "";
         IsMarkdown = false;
         IsGerberPreview = false;
+        IsModelPreview = false;
         LineNumbers = "";
         LineCount = null;
     }
@@ -305,6 +333,60 @@ public sealed class FileModel : PageModel
                 entry.Name,
                 entry.Path,
                 GerberDrillFileClassifier.Describe(entry.Path),
+                size,
+                FormatByteSize(size)));
+        }
+
+        return files;
+    }
+
+    private async Task<IReadOnlyList<ModelPreviewFile>> BuildModelPreviewFilesAsync(
+        Guid repoId,
+        string repoLocalPath,
+        Guid userId,
+        long revision,
+        long maxPreviewBytes,
+        CancellationToken cancellationToken)
+    {
+        var entries = await _svnlook.ListTreeAsync(repoLocalPath, ParentPath, revision, cancellationToken);
+        var candidates = entries
+            .Where(e => !e.IsDirectory)
+            .Where(e => ModelPreviewFileClassifier.IsRelatedModelPath(e.Path))
+            .Where(e => _access.GetAccess(userId, repoId, e.Path) >= AccessLevel.Read)
+            .OrderByDescending(e => string.Equals(e.Path, Path, StringComparison.Ordinal))
+            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(96)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            return [];
+        }
+
+        var files = new List<ModelPreviewFile>(candidates.Length);
+        long totalBytes = 0;
+        foreach (var entry in candidates)
+        {
+            var size = await _svnlook.GetFileSizeAsync(repoLocalPath, entry.Path, revision, cancellationToken);
+            if (size > maxPreviewBytes)
+            {
+                PreviewUnavailableMessage =
+                    $"3D preview is disabled because {entry.Name} is larger than {MaxPreviewSizeLabel}.";
+                return [];
+            }
+
+            totalBytes += size;
+            if (totalBytes > maxPreviewBytes)
+            {
+                PreviewUnavailableMessage =
+                    $"3D preview is disabled because the model file set is larger than {MaxPreviewSizeLabel}.";
+                return [];
+            }
+
+            files.Add(new ModelPreviewFile(
+                entry.Name,
+                entry.Path,
+                ModelPreviewFileClassifier.Describe(entry.Path),
                 size,
                 FormatByteSize(size)));
         }

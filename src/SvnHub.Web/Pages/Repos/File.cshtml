@@ -2,8 +2,17 @@
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
-    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsMarkdown ? Model.LineCount : null;
+    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsModelPreview && !Model.IsMarkdown ? Model.LineCount : null;
     var gerberPreviewFiles = Model.GerberPreviewFiles
+        .Select(f => new
+        {
+            name = f.Name,
+            kind = f.Kind,
+            sizeLabel = f.SizeLabel,
+            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+        })
+        .ToArray();
+    var modelPreviewFiles = Model.ModelPreviewFiles
         .Select(f => new
         {
             name = f.Name,
@@ -153,6 +162,33 @@ else
                 </div>
                 <script type="application/json" id="gerber-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(gerberPreviewFiles))</script>
             }
+            else if (Model.IsModelPreview)
+            {
+                <div class="model-preview" data-model-preview>
+                    <div class="model-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="fw-semibold">3D model preview</div>
+                            <div class="text-muted small">@Model.ModelPreviewFiles.Count model files/assets in this directory</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-model-reset>Reset view</button>
+                    </div>
+                    <div class="model-preview-status alert alert-secondary mb-3" data-model-status>
+                        Loading model preview...
+                    </div>
+                    <div class="model-preview-stage" data-model-stage></div>
+                    <div class="model-preview-files mt-3">
+                        @foreach (var file in Model.ModelPreviewFiles)
+                        {
+                            <div class="model-preview-file">
+                                <span class="text-truncate">@file.Name</span>
+                                <span class="text-muted">@file.Kind</span>
+                                <span class="text-muted">@file.SizeLabel</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <script type="application/json" id="model-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(modelPreviewFiles))</script>
+            }
             else if (Model.IsMarkdown)
             {
                 <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
@@ -200,5 +236,10 @@ else
         <script src="~/lib/tracespace/renderer.umd.js" asp-append-version="true"></script>
         <script src="~/lib/tracespace/core.umd.js" asp-append-version="true"></script>
         <script src="~/js/gerber-preview.js" asp-append-version="true"></script>
+    }
+    @if (Model.IsModelPreview)
+    {
+        <script src="~/lib/online-3d-viewer/o3dv.min.js" asp-append-version="true"></script>
+        <script src="~/js/model-preview.js" asp-append-version="true"></script>
     }
 }

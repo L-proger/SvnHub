@@ -97,6 +97,45 @@
   font-size: 0.875rem;
 }
 
+.model-preview-stage {
+  width: 100%;
+  height: clamp(420px, 72vh, 860px);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--sp-surface-2);
+  overflow: hidden;
+}
+
+.model-preview-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.model-preview-stage > div {
+  padding: 1rem;
+  color: var(--bs-secondary-color);
+}
+
+.model-preview-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.model-preview-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--sp-surface);
+  font-size: 0.875rem;
+}
+
 .table {
   color: var(--bs-body-color);
 }
