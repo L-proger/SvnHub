@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
 using ModelContextProtocol.Protocol;
@@ -33,8 +34,13 @@ if (!Path.IsPathRooted(options.DataDirectory))
 
 options.DataDirectory = Path.GetFullPath(options.DataDirectory);
 Directory.CreateDirectory(options.DataDirectory);
+var dataProtectionKeysDirectory = Path.Combine(options.DataDirectory, "data-protection-keys");
+Directory.CreateDirectory(dataProtectionKeysDirectory);
 
 builder.Services.AddSingleton(options);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDirectory))
+    .SetApplicationName("SvnHub");
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

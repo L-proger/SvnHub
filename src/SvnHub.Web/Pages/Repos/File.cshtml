@@ -137,9 +137,27 @@ else
                             <div class="fw-semibold">PCB fabrication preview</div>
                             <div class="text-muted small">@Model.GerberPreviewFiles.Count CAM files in this directory</div>
                         </div>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
-                            <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
-                            <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                            <div class="gerber-opacity-control" data-gerber-opacity-control hidden>
+                                <label class="form-label small text-muted mb-0" for="gerberLayerOpacity">Opacity</label>
+                                <input class="form-range"
+                                       id="gerberLayerOpacity"
+                                       type="range"
+                                       min="20"
+                                       max="100"
+                                       value="45"
+                                       data-gerber-opacity />
+                            </div>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    data-gerber-xray
+                                    aria-pressed="false">
+                                X-ray
+                            </button>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                                <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
+                                <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
+                            </div>
                         </div>
                     </div>
                     <div class="gerber-preview-status alert alert-secondary mb-3" data-gerber-status>

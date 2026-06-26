@@ -37,8 +37,13 @@ These map to container paths:
   - `permissions.json`
   - `api-tokens.json`
   - `audit.json`
+  - `data-protection-keys/`
   - `authz`
   - `htpasswd`
+
+The `data-protection-keys/` directory stores ASP.NET keys used to validate
+browser login cookies. Keep it in the persistent data mount; otherwise users
+will be asked to log in again after the container is recreated.
 
 ## File ownership model
 

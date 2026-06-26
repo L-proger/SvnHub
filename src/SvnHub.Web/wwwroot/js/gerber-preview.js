@@ -8,11 +8,15 @@
     const layerPanel = root.querySelector('[data-gerber-layer-panel]');
     const boards = new Map(Array.from(root.querySelectorAll('[data-gerber-board]')).map((el) => [el.dataset.gerberBoard, el]));
     const sideButtons = Array.from(root.querySelectorAll('[data-gerber-side]'));
+    const xrayButton = root.querySelector('[data-gerber-xray]');
+    const opacityInput = root.querySelector('[data-gerber-opacity]');
+    const opacityControl = root.querySelector('[data-gerber-opacity-control]');
     const filesJson = document.getElementById('gerber-preview-files');
     const visibleLayerIds = new Set();
     let tracespaceCore = null;
     let renderedLayers = null;
     let fileEntriesByName = new Map();
+    let xrayEnabled = false;
 
     const layerGroups = [
         { key: 'top', label: 'Top' },
@@ -49,6 +53,21 @@
             const active = button.dataset.gerberSide === side;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+    }
+
+    function updateXrayState() {
+        const opacity = Math.max(20, Math.min(100, Number(opacityInput?.value || 45))) / 100;
+        root.style.setProperty('--gerber-xray-opacity', opacity.toString());
+        root.classList.toggle('gerber-preview-xray', xrayEnabled);
+
+        if (xrayButton) {
+            xrayButton.classList.toggle('active', xrayEnabled);
+            xrayButton.setAttribute('aria-pressed', xrayEnabled ? 'true' : 'false');
+        }
+
+        if (opacityControl) {
+            opacityControl.hidden = !xrayEnabled;
         }
     }
 
@@ -226,6 +245,14 @@
     for (const button of sideButtons) {
         button.addEventListener('click', () => showSide(button.dataset.gerberSide));
     }
+
+    xrayButton?.addEventListener('click', () => {
+        xrayEnabled = !xrayEnabled;
+        updateXrayState();
+    });
+
+    opacityInput?.addEventListener('input', updateXrayState);
+    updateXrayState();
 
     render().catch((err) => {
         if (layout) layout.hidden = true;
