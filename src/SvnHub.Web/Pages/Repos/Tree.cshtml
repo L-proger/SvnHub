@@ -45,6 +45,10 @@ else
                 @(Model.Path == "/" ? "Repository root" : System.IO.Path.GetFileName(Model.Path))
                 <span class="mx-1">|</span>@Model.DirectoryCount @(Model.DirectoryCount == 1 ? "folder" : "folders")
                 <span class="mx-1">|</span>@Model.FileCount @(Model.FileCount == 1 ? "file" : "files")
+                @if (Model.ExternalCount > 0)
+                {
+                    <span class="mx-1">|</span>@Model.ExternalCount @(Model.ExternalCount == 1 ? "external" : "externals")
+                }
             </div>
             <div class="d-flex align-items-center gap-2">
                 <a class="btn btn-sm btn-outline-secondary"

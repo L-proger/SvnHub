@@ -63,10 +63,12 @@
     @foreach (var row in Model.Rows)
     {
         var e = row.Entry;
+        var externalLink = row.ExternalLink;
         var entryIconHref = FileIcons.GetIconHref(e.Path, e.IsDirectory);
-        var canZip = e.IsDirectory && Model.ZipPaths.Contains(e.Path);
-        var canWrite = Model.DeletablePaths.Contains(e.Path);
-        var hasAnyAction = canZip || canWrite || !string.IsNullOrWhiteSpace(Model.SvnBaseUrl);
+        var isExternal = externalLink is not null;
+        var canZip = !isExternal && e.IsDirectory && Model.ZipPaths.Contains(e.Path);
+        var canWrite = !isExternal && Model.DeletablePaths.Contains(e.Path);
+        var hasAnyAction = !isExternal && (canZip || canWrite || !string.IsNullOrWhiteSpace(Model.SvnBaseUrl));
 
         <div class="list-group-item">
             <div class="d-flex align-items-center justify-content-between gap-3">
@@ -91,7 +93,30 @@
 
                     <div class="d-flex align-items-center justify-content-between flex-grow-1 gap-3 sp-min-w-0">
                         <div class="flex-grow-1 sp-min-w-0">
-                            @if (e.IsDirectory)
+                            @if (externalLink is { IsInternal: true })
+                            {
+                                <a asp-page="/Repos/Tree"
+                                   asp-route-repoName="@externalLink.TargetRepoName"
+                                   asp-route-path="@(externalLink.TargetPath == "/" ? null : externalLink.TargetPath)"
+                                   asp-route-rev="@externalLink.Revision"
+                                   class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover"
+                                   title="@externalLink.RawDefinition">
+                                    @e.Name
+                                </a>
+                            }
+                            else if (externalLink is not null && !string.IsNullOrWhiteSpace(externalLink.ExternalHref))
+                            {
+                                <a href="@externalLink.ExternalHref"
+                                   class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover"
+                                   title="@externalLink.RawDefinition">
+                                    @e.Name
+                                </a>
+                            }
+                            else if (externalLink is not null)
+                            {
+                                <span class="sp-entry-name" title="@externalLink.RawDefinition">@e.Name</span>
+                            }
+                            else if (e.IsDirectory)
                             {
                                 <a asp-page="/Repos/Tree"
                                    asp-route-repoName="@Model.RepoName"
@@ -158,7 +183,7 @@
                                     </a>
                                 </li>
                             }
-                            @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                            @if (!isExternal && !string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
                             {
                                 <li><hr class="dropdown-divider" /></li>
                                 <li>

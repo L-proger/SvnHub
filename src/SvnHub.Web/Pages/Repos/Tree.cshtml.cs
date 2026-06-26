@@ -68,6 +68,7 @@ public sealed class TreeModel : PageModel
     public bool CanWriteActions { get; private set; }
     public int DirectoryCount { get; private set; }
     public int FileCount { get; private set; }
+    public int ExternalCount { get; private set; }
     public string? Error { get; private set; }
     public bool HasReadme { get; private set; }
     public string ReadmeHtml { get; private set; } = "";
@@ -137,7 +138,10 @@ public sealed class TreeModel : PageModel
             Entries = preloadedEntries ?? await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
             DirectoryCount = Entries.Count(e => e.IsDirectory);
             FileCount = Entries.Count(e => !e.IsDirectory);
-            Rows = await LoadRowsAsync(repo.LocalPath, Entries, Revision, cancellationToken);
+            var entryRows = await LoadRowsAsync(repo.LocalPath, Entries, Revision, cancellationToken);
+            var externalRows = await LoadExternalRowsAsync(repo, Revision, cancellationToken);
+            ExternalCount = externalRows.Count;
+            Rows = MergeRows(entryRows, externalRows);
 
             DeletablePaths = CanWriteActions
                 ? Entries
@@ -195,6 +199,7 @@ public sealed class TreeModel : PageModel
             Error = ex.Message;
             DirectoryCount = 0;
             FileCount = 0;
+            ExternalCount = 0;
         }
 
         return Page();
@@ -331,6 +336,295 @@ public sealed class TreeModel : PageModel
 
             return new TreeRow(e, msg, author, age, lastRev);
         }).ToArray();
+    }
+
+    private async Task<IReadOnlyList<TreeRow>> LoadExternalRowsAsync(
+        Repository repo,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<SvnProperty> properties;
+        try
+        {
+            properties = await _svnlook.GetPropertiesAsync(repo.LocalPath, Path, revision, cancellationToken);
+        }
+        catch
+        {
+            return Array.Empty<TreeRow>();
+        }
+
+        var externalsProperty = properties.FirstOrDefault(p =>
+            string.Equals(p.Name, "svn:externals", StringComparison.Ordinal));
+        if (string.IsNullOrWhiteSpace(externalsProperty?.Value))
+        {
+            return Array.Empty<TreeRow>();
+        }
+
+        var knownRepositories = _repos.List();
+        var rows = new List<TreeRow>();
+        foreach (var external in SvnExternalDefinitionParser.Parse(Path, externalsProperty.Value))
+        {
+            var link = TryBuildExternalLink(repo.Name, Path, knownRepositories, external, SvnBaseUrl);
+            if (link is null)
+            {
+                continue;
+            }
+
+            var virtualPath = external.ResolvedPath ?? CombineRepoPath(Path, link.DisplayName);
+            var virtualEntry = new SvnTreeEntry("@" + link.DisplayName, virtualPath, true);
+            var targetLabel = link.IsInternal
+                ? $"{link.TargetRepoName}{(link.TargetPath == "/" ? "" : link.TargetPath)}"
+                : link.ExternalHref ?? external.Url ?? external.RawDefinition;
+            rows.Add(new TreeRow(
+                virtualEntry,
+                targetLabel,
+                "svn:externals",
+                null,
+                link.Revision,
+                link));
+        }
+
+        return rows
+            .OrderBy(r => r.ExternalLink?.DisplayName ?? r.Entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static TreeExternalLink? TryBuildExternalLink(
+        string currentRepoName,
+        string currentPath,
+        IReadOnlyList<Repository> repositories,
+        SvnExternalDefinition external,
+        string? svnBaseUrl)
+    {
+        var displayName = GetExternalDisplayName(external);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            return null;
+        }
+
+        var revision = TryParseRevision(external.Revision) ?? TryParseRevision(external.PegRevision);
+        if (!string.IsNullOrWhiteSpace(external.Url))
+        {
+            var target = ResolveExternalTarget(currentRepoName, repositories, external.Url);
+            if (target is not null)
+            {
+                return new TreeExternalLink(
+                    displayName,
+                    target.Value.RepoName,
+                    target.Value.Path,
+                    null,
+                    revision,
+                    external.RawDefinition);
+            }
+        }
+
+        return new TreeExternalLink(
+            displayName,
+            null,
+            null,
+            BuildExternalHref(svnBaseUrl, currentRepoName, currentPath, external.Url),
+            revision,
+            external.RawDefinition);
+    }
+
+    private static (string RepoName, string Path)? ResolveExternalTarget(
+        string currentRepoName,
+        IReadOnlyList<Repository> repositories,
+        string url)
+    {
+        var value = url.Trim().Replace('\\', '/');
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        if (value.StartsWith("^/", StringComparison.Ordinal))
+        {
+            var relative = value[2..];
+            return ResolveRepositoryPath(currentRepoName, repositories, relative);
+        }
+
+        if (value.StartsWith("../", StringComparison.Ordinal) ||
+            value.StartsWith("./", StringComparison.Ordinal))
+        {
+            return ResolveRepositoryPath(currentRepoName, repositories, value);
+        }
+
+        if (value.StartsWith("/", StringComparison.Ordinal))
+        {
+            return ResolveRepositoryPath(null, repositories, value.TrimStart('/'));
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return ResolveRepositoryPath(null, repositories, Uri.UnescapeDataString(uri.AbsolutePath.Trim('/')));
+        }
+
+        return null;
+    }
+
+    private static (string RepoName, string Path)? ResolveRepositoryPath(
+        string? currentRepoName,
+        IReadOnlyList<Repository> repositories,
+        string relativePath)
+    {
+        var segments = new List<string>();
+        if (!string.IsNullOrWhiteSpace(currentRepoName))
+        {
+            segments.Add(currentRepoName);
+        }
+
+        foreach (var rawSegment in relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (rawSegment == ".")
+            {
+                continue;
+            }
+
+            if (rawSegment == "..")
+            {
+                if (segments.Count > 0)
+                {
+                    segments.RemoveAt(segments.Count - 1);
+                }
+
+                continue;
+            }
+
+            segments.Add(rawSegment);
+        }
+
+        for (var i = 0; i < segments.Count; i++)
+        {
+            var repo = repositories.FirstOrDefault(r =>
+                string.Equals(r.Name, segments[i], StringComparison.OrdinalIgnoreCase));
+            if (repo is null)
+            {
+                continue;
+            }
+
+            var pathSegments = segments.Skip(i + 1).ToArray();
+            var targetPath = pathSegments.Length == 0 ? "/" : "/" + string.Join("/", pathSegments);
+            return (repo.Name, Normalize(targetPath));
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<TreeRow> MergeRows(
+        IReadOnlyList<TreeRow> entryRows,
+        IReadOnlyList<TreeRow> externalRows)
+    {
+        if (externalRows.Count == 0)
+        {
+            return entryRows;
+        }
+
+        if (entryRows.Count == 0)
+        {
+            return externalRows;
+        }
+
+        var rows = new List<TreeRow>(externalRows.Count + entryRows.Count);
+        rows.AddRange(externalRows);
+        rows.AddRange(entryRows);
+        return rows;
+    }
+
+    private static long? TryParseRevision(string? value) =>
+        long.TryParse(value, out var revision) && revision > 0 ? revision : null;
+
+    private static string GetLastPathSegment(string path)
+    {
+        var normalized = path.Trim().Replace('\\', '/').TrimEnd('/');
+        if (normalized.Length == 0)
+        {
+            return "";
+        }
+
+        var slash = normalized.LastIndexOf('/');
+        return slash >= 0 ? normalized[(slash + 1)..] : normalized;
+    }
+
+    private static string GetExternalDisplayName(SvnExternalDefinition external)
+    {
+        if (!string.IsNullOrWhiteSpace(external.TargetPath))
+        {
+            return GetLastPathSegment(external.TargetPath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(external.Url))
+        {
+            return GetLastPathSegment(external.Url);
+        }
+
+        return GetLastPathSegment(external.RawDefinition);
+    }
+
+    private static string? BuildExternalHref(
+        string? svnBaseUrl,
+        string currentRepoName,
+        string currentPath,
+        string? externalUrl)
+    {
+        if (string.IsNullOrWhiteSpace(externalUrl))
+        {
+            return null;
+        }
+
+        var value = externalUrl.Trim().Replace('\\', '/');
+        if (Uri.TryCreate(value, UriKind.Absolute, out _))
+        {
+            return value;
+        }
+
+        if (value.StartsWith("//", StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        var normalizedBase = string.IsNullOrWhiteSpace(svnBaseUrl)
+            ? null
+            : svnBaseUrl.Trim().TrimEnd('/');
+
+        if (value.StartsWith("^/", StringComparison.Ordinal))
+        {
+            return normalizedBase is null ? value : normalizedBase + "/" + value[2..].TrimStart('/');
+        }
+
+        if (value.StartsWith("/", StringComparison.Ordinal))
+        {
+            if (normalizedBase is not null && Uri.TryCreate(normalizedBase, UriKind.Absolute, out var baseUri))
+            {
+                return $"{baseUri.Scheme}://{baseUri.Authority}{value}";
+            }
+
+            return value;
+        }
+
+        if (value.StartsWith("../", StringComparison.Ordinal) ||
+            value.StartsWith("./", StringComparison.Ordinal))
+        {
+            var currentUrl = SvnCheckoutUrl.Build(normalizedBase, currentRepoName, currentPath);
+            if (!string.IsNullOrWhiteSpace(currentUrl) &&
+                Uri.TryCreate(currentUrl.TrimEnd('/') + "/", UriKind.Absolute, out var currentUri) &&
+                Uri.TryCreate(currentUri, value, out var resolvedUri))
+            {
+                return resolvedUri.ToString();
+            }
+        }
+
+        return value;
+    }
+
+    private static string CombineRepoPath(string baseDir, string rel)
+    {
+        if (baseDir == "/")
+        {
+            return "/" + rel.TrimStart('/');
+        }
+
+        return baseDir.TrimEnd('/') + "/" + rel.TrimStart('/');
     }
 
     public async Task<IActionResult> OnPostDeleteEntryAsync(
@@ -894,5 +1188,19 @@ public sealed class TreeModel : PageModel
         string? LastCommitMessage,
         string? LastChangedAuthor,
         string? LastChangedAge,
-        long? LastChangedRevision);
+        long? LastChangedRevision,
+        TreeExternalLink? ExternalLink = null);
+
+    public sealed record TreeExternalLink(
+        string DisplayName,
+        string? TargetRepoName,
+        string? TargetPath,
+        string? ExternalHref,
+        long? Revision,
+        string RawDefinition)
+    {
+        public bool IsInternal =>
+            !string.IsNullOrWhiteSpace(TargetRepoName) &&
+            !string.IsNullOrWhiteSpace(TargetPath);
+    }
 }
