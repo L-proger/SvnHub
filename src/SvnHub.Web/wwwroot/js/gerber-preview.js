@@ -15,6 +15,7 @@
     const visibleLayerIds = new Set();
     let tracespaceCore = null;
     let renderedLayers = null;
+    let renderedFragments = null;
     let fileEntriesByName = new Map();
     let xrayEnabled = false;
 
@@ -56,7 +57,7 @@
         }
     }
 
-    function updateXrayState() {
+    function updateXrayState(rerender) {
         const opacity = Math.max(20, Math.min(100, Number(opacityInput?.value || 45))) / 100;
         root.style.setProperty('--gerber-xray-opacity', opacity.toString());
         root.classList.toggle('gerber-preview-xray', xrayEnabled);
@@ -68,6 +69,10 @@
 
         if (opacityControl) {
             opacityControl.hidden = !xrayEnabled;
+        }
+
+        if (rerender) {
+            renderVisibleBoard();
         }
     }
 
@@ -101,7 +106,12 @@
     }
 
     function getLayerColor(layer) {
-        return layerColors[(layer.type || '').toLowerCase()] || '#6c757d';
+        const type = (layer.type || '').toLowerCase();
+        const side = (layer.side || '').toLowerCase();
+        if (type === 'copper' && side === 'top') return '#d18b2f';
+        if (type === 'copper' && side === 'bottom') return '#7c5cff';
+        if (type === 'copper' && side === 'inner') return '#23a6d5';
+        return layerColors[type] || '#6c757d';
     }
 
     function createEyeIcon() {
@@ -114,6 +124,11 @@
     function renderVisibleBoard() {
         if (!tracespaceCore || !renderedLayers) return;
 
+        if (xrayEnabled) {
+            renderXrayBoard();
+            return;
+        }
+
         const visibleLayers = renderedLayers.layers.filter((layer) => visibleLayerIds.has(layer.id));
         const boardResult = tracespaceCore.renderBoard({
             ...renderedLayers,
@@ -124,6 +139,68 @@
         const bottom = boards.get('bottom');
         if (top) top.innerHTML = tracespaceCore.stringifySvg(boardResult.top);
         if (bottom) bottom.innerHTML = tracespaceCore.stringifySvg(boardResult.bottom);
+    }
+
+    function escapeAttribute(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('"', '&quot;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+    }
+
+    function getLayerSortWeight(layer) {
+        const side = (layer.side || '').toLowerCase();
+        const type = (layer.type || '').toLowerCase();
+
+        if (type === 'outline') return 90;
+        if (type === 'drill') return 80;
+        if (type === 'silkscreen') return 70;
+        if (type === 'solderpaste') return 60;
+        if (type === 'soldermask') return 50;
+        if (side === 'top') return 40;
+        if (side === 'inner') return 30;
+        if (side === 'bottom') return 20;
+        return 10;
+    }
+
+    function renderXrayBoard() {
+        if (!renderedFragments) return;
+
+        const viewBox = renderedFragments.boardShapeRenderFragment?.viewBox || [0, 0, 100, 100];
+        const [x, y, width, height] = viewBox;
+        const viewBoxText = viewBox.join(' ');
+        const shape = renderedFragments.boardShapeRenderFragment?.svgFragment || '';
+        const layers = renderedFragments.layers
+            .filter((layer) => visibleLayerIds.has(layer.id))
+            .slice()
+            .sort((a, b) => getLayerSortWeight(a) - getLayerSortWeight(b));
+
+        for (const [side, board] of boards) {
+            const clipId = `gerber-xray-clip-${side}`;
+            const transform = side === 'bottom'
+                ? ` transform="translate(${(2 * x) + width},0) scale(-1,1)"`
+                : '';
+            const clip = shape ? ` clip-path="url(#${clipId})"` : '';
+            const layerMarkup = layers.map((layer) => {
+                const fragment = renderedFragments.svgFragmentsById[layer.id];
+                if (!fragment) return '';
+
+                const color = escapeAttribute(getLayerColor(layer));
+                const label = escapeAttribute(`${getLayerLabel(layer)} ${layer.filename || ''}`.trim());
+                return `<g class="gerber-xray-layer" color="${color}" aria-label="${label}">${fragment}</g>`;
+            }).join('');
+            const defs = shape ? `<defs><clipPath id="${clipId}">${shape}</clipPath></defs>` : '';
+
+            board.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttribute(viewBoxText)}" role="img" aria-label="PCB X-ray ${escapeAttribute(side)} view">
+                    ${defs}
+                    <g${transform}${clip}>
+                        <rect class="gerber-xray-substrate" x="${x}" y="${y}" width="${width}" height="${height}"></rect>
+                        ${layerMarkup}
+                    </g>
+                </svg>`;
+        }
     }
 
     function updateLayerButton(button, isVisible) {
@@ -227,6 +304,7 @@
         const readResult = await tracespaceCore.read(files);
         const plotResult = tracespaceCore.plot(readResult);
         renderedLayers = tracespaceCore.renderLayers(plotResult);
+        renderedFragments = tracespaceCore.renderFragments(plotResult);
 
         visibleLayerIds.clear();
         for (const layer of renderedLayers.layers) {
@@ -248,10 +326,10 @@
 
     xrayButton?.addEventListener('click', () => {
         xrayEnabled = !xrayEnabled;
-        updateXrayState();
+        updateXrayState(true);
     });
 
-    opacityInput?.addEventListener('input', updateXrayState);
+    opacityInput?.addEventListener('input', () => updateXrayState(false));
     updateXrayState();
 
     render().catch((err) => {

@@ -172,7 +172,12 @@
   margin: 0 auto;
 }
 
-.gerber-preview-xray .gerber-preview-board svg > g > g {
+.gerber-xray-substrate {
+  fill: #128a55;
+  opacity: 0.08;
+}
+
+.gerber-xray-layer {
   opacity: var(--gerber-xray-opacity, 0.45);
 }
 
