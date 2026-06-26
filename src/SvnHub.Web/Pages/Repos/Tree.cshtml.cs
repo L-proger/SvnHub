@@ -326,31 +326,11 @@ public sealed class TreeModel : PageModel
             revInfoByRev.TryGetValue(lastRev, out var info);
 
             var age = info.Date is null ? null : IndexModel.FormatUpdatedAgo(info.Date.Value, now);
-            var msg = FormatCommitMessage(info.Log);
+            var msg = CommitMessageFormatter.FirstLine(info.Log, 80);
             var author = string.IsNullOrWhiteSpace(info.Author) ? null : info.Author.Trim();
 
             return new TreeRow(e, msg, author, age, lastRev);
         }).ToArray();
-    }
-
-    private static string? FormatCommitMessage(string? log)
-    {
-        if (string.IsNullOrWhiteSpace(log))
-        {
-            return null;
-        }
-
-        var firstLine = log
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(firstLine))
-        {
-            return null;
-        }
-
-        const int max = 80;
-        return firstLine.Length <= max ? firstLine : firstLine[..max] + "…";
     }
 
     public async Task<IActionResult> OnPostDeleteEntryAsync(
@@ -827,52 +807,9 @@ public sealed class TreeModel : PageModel
         return requested.Value;
     }
 
-    private static string Normalize(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || path == "/")
-        {
-            return "/";
-        }
+    private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
-        var p = path.Trim();
-        if (!p.StartsWith('/'))
-        {
-            p = "/" + p;
-        }
-
-        while (p.Contains("//", StringComparison.Ordinal))
-        {
-            p = p.Replace("//", "/", StringComparison.Ordinal);
-        }
-
-        if (p.Length > 1 && p.EndsWith('/'))
-        {
-            p = p.TrimEnd('/');
-        }
-
-        if (p.Contains("/../", StringComparison.Ordinal) || p.EndsWith("/..", StringComparison.Ordinal) || p == "/..")
-        {
-            return "/";
-        }
-
-        return p;
-    }
-
-    private static string GetParent(string path)
-    {
-        if (path == "/")
-        {
-            return "/";
-        }
-
-        var idx = path.LastIndexOf('/');
-        if (idx <= 0)
-        {
-            return "/";
-        }
-
-        return path[..idx];
-    }
+    private static string GetParent(string path) => RepositoryPath.GetParent(path);
 
     private static string NormalizeRepoRelativePath(string path)
     {

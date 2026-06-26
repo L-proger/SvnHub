@@ -11,8 +11,7 @@
         <input type="search"
                name="q"
                value="@Model.SearchQuery"
-               class="form-control form-control-sm"
-               style="width: min(520px, 70vw)"
+               class="form-control form-control-sm repo-search-input"
                placeholder="Search repositories"
                oninput="this.form.p.value = 1;" />
         <button class="btn btn-sm btn-outline-secondary" type="submit" title="Search" aria-label="Search">
@@ -28,7 +27,7 @@
         }
 
         <label class="text-muted small ms-2" for="pageSize">Per page</label>
-        <select id="pageSize" name="pageSize" class="form-select form-select-sm" style="width: auto"
+        <select id="pageSize" name="pageSize" class="form-select form-select-sm sp-auto-width"
                 onchange="this.form.p.value = 1; this.form.submit();">
             @foreach (var pageSize in Model.PageSizeOptions)
             {
@@ -63,7 +62,7 @@
     </div>
 }
 
-<div class="list-group list-group-flush sp-list mt-3">
+<div class="list-group list-group-flush sp-list repo-list mt-3">
     @foreach (var r in Model.Repositories)
     {
         var updatedAt = Model.UpdatedAtByRepoName.TryGetValue(r.Name, out var dt) ? dt : null;

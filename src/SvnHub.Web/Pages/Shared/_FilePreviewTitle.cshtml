@@ -4,12 +4,12 @@
     var fileIconHref = FileIcons.GetIconHref(Model.Path, isDirectory: false);
 }
 
-<div class="d-flex align-items-center gap-2 text-muted small" style="min-width: 0;">
+<div class="d-flex align-items-center gap-2 text-muted small sp-min-w-0">
     @if (!string.IsNullOrWhiteSpace(fileIconHref))
     {
         <img class="sp-icon sp-file-icon" src="@Url.Content(fileIconHref)" alt="" aria-hidden="true" />
     }
-    <div class="text-truncate" style="min-width: 0;">
+    <div class="text-truncate sp-min-w-0">
         @System.IO.Path.GetFileName(Model.Path)
         @if (!string.IsNullOrWhiteSpace(Model.FileSizeLabel))
         {

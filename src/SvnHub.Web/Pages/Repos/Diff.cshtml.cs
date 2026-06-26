@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
+using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -77,7 +78,7 @@ public sealed class DiffModel : PageModel
 
             Author = string.IsNullOrWhiteSpace(author) ? null : author.Trim();
             Age = IndexModel.FormatUpdatedAgo(dt, DateTimeOffset.UtcNow);
-            Message = FormatCommitMessage(log);
+            Message = CommitMessageFormatter.FirstLine(log, 160);
 
             var diff = await _svnlook.GetDiffAsync(repo.LocalPath, Path, Revision, cancellationToken);
             Diff = Cap(diff, 2 * 1024 * 1024);
@@ -90,56 +91,7 @@ public sealed class DiffModel : PageModel
         return Page();
     }
 
-    private static string Normalize(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return "/";
-        }
-
-        var p = path.Trim();
-        if (!p.StartsWith('/'))
-        {
-            p = "/" + p;
-        }
-
-        while (p.Contains("//", StringComparison.Ordinal))
-        {
-            p = p.Replace("//", "/", StringComparison.Ordinal);
-        }
-
-        if (p.Length > 1 && p.EndsWith('/'))
-        {
-            p = p.TrimEnd('/');
-        }
-
-        if (p.Contains("/../", StringComparison.Ordinal) || p.EndsWith("/..", StringComparison.Ordinal) || p == "/..")
-        {
-            return "/";
-        }
-
-        return p;
-    }
-
-    private static string? FormatCommitMessage(string? log)
-    {
-        if (string.IsNullOrWhiteSpace(log))
-        {
-            return null;
-        }
-
-        var firstLine = log
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(firstLine))
-        {
-            return null;
-        }
-
-        const int max = 160;
-        return firstLine.Length <= max ? firstLine : firstLine[..max] + "…";
-    }
+    private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
     private string Cap(string diff, int maxChars)
     {

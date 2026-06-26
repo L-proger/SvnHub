@@ -13,41 +13,7 @@
 </div>
 <div class="text-muted">r@(Model.Revision)</div>
 
-<nav class="mt-2" aria-label="breadcrumb">
-    <ol class="breadcrumb mb-0">
-        @{
-            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var isRoot = parts.Length == 0;
-            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
-                @if (isRoot)
-                {
-                    @Model.RepoName
-                }
-                else
-                {
-                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
-                }
-            </li>
-
-            var current = "";
-            for (var i = 0; i < parts.Length; i++)
-            {
-                current += "/" + parts[i];
-                var isLast = i == parts.Length - 1;
-                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
-                    @if (isLast)
-                    {
-                        @parts[i]
-                    }
-                    else
-                    {
-                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current">@parts[i]</a>
-                    }
-                </li>
-            }
-        }
-    </ol>
-</nav>
+@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path))
 
 @if (!string.IsNullOrWhiteSpace(Model.FlashError))
 {
@@ -114,9 +80,9 @@ else
                     <table class="table table-sm align-middle mb-0">
                         <thead>
                         <tr class="text-muted small">
-                            <th style="width: 30%;">Name</th>
+                            <th class="edit-property-name-col">Name</th>
                             <th>Value</th>
-                            <th class="text-end" style="width: 1%;">Delete</th>
+                            <th class="text-end edit-property-delete-col">Delete</th>
                         </tr>
                         </thead>
                         <tbody>

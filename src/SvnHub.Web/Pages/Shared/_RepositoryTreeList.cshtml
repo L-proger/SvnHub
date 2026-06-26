@@ -1,0 +1,193 @@
+@model SvnHub.Web.Pages.Repos.TreeModel
+@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
+
+<div class="list-group list-group-flush sp-list sp-tree-list">
+    @if (Model.Path == "/")
+    {
+        var rootIconHref = FileIcons.GetIconHref(Model.RepoName, isDirectory: true, isOpen: true);
+        <div class="list-group-item">
+            <div class="d-flex align-items-center justify-content-between gap-3">
+                <div class="d-flex align-items-center gap-2">
+                    @if (!string.IsNullOrWhiteSpace(rootIconHref))
+                    {
+                        <img class="sp-icon sp-file-icon" src="@Url.Content(rootIconHref)" alt="" aria-hidden="true" />
+                    }
+                    else
+                    {
+                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                        </svg>
+                    }
+                    <div class="flex-grow-1">
+                        <div class="sp-entry-name">@Model.RepoName</div>
+                        <div class="text-muted small">Repository root</div>
+                    </div>
+                </div>
+
+                <div class="sp-row-actions dropdown">
+                    <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-label="Actions">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+                        </svg>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item"
+                               asp-page="/Repos/Tree"
+                               asp-page-handler="Zip"
+                               asp-route-repoName="@Model.RepoName"
+                               asp-route-rev="@Model.ViewRevision">
+                                Download ZIP
+                            </a>
+                        </li>
+                        @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                        {
+                            <li><hr class="dropdown-divider" /></li>
+                            <li>
+                                <button type="button"
+                                        class="dropdown-item"
+                                        data-copy-text="@Model.GetCheckoutUrl("/")">
+                                    Copy SVN URL
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+
+    @foreach (var row in Model.Rows)
+    {
+        var e = row.Entry;
+        var entryIconHref = FileIcons.GetIconHref(e.Path, e.IsDirectory);
+        var canZip = e.IsDirectory && Model.ZipPaths.Contains(e.Path);
+        var canWrite = Model.DeletablePaths.Contains(e.Path);
+        var hasAnyAction = canZip || canWrite || !string.IsNullOrWhiteSpace(Model.SvnBaseUrl);
+
+        <div class="list-group-item">
+            <div class="d-flex align-items-center justify-content-between gap-3">
+                <div class="d-flex align-items-center gap-2 flex-grow-1 sp-min-w-0">
+                    @if (!string.IsNullOrWhiteSpace(entryIconHref))
+                    {
+                        <img class="sp-icon sp-file-icon" src="@Url.Content(entryIconHref)" alt="" aria-hidden="true" />
+                    }
+                    else if (e.IsDirectory)
+                    {
+                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5z"/>
+                            <path d="M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+                        </svg>
+                    }
+
+                    <div class="d-flex align-items-center justify-content-between flex-grow-1 gap-3 sp-min-w-0">
+                        <div class="flex-grow-1 sp-min-w-0">
+                            @if (e.IsDirectory)
+                            {
+                                <a asp-page="/Repos/Tree"
+                                   asp-route-repoName="@Model.RepoName"
+                                   asp-route-path="@e.Path"
+                                   asp-route-rev="@Model.ViewRevision"
+                                   class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                                    @e.Name
+                                </a>
+                            }
+                            else
+                            {
+                                <a asp-page="/Repos/File"
+                                   asp-route-repoName="@Model.RepoName"
+                                   asp-route-path="@e.Path"
+                                   asp-route-rev="@Model.ViewRevision"
+                                   class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
+                                    @e.Name
+                                </a>
+                            }
+                        </div>
+
+                        <div class="sp-entry-meta d-flex text-muted small">
+                            <div class="sp-entry-msg text-truncate" title="@row.LastCommitMessage">@((row.LastCommitMessage ?? "-"))</div>
+                            <div class="sp-entry-author text-truncate" title="@row.LastChangedAuthor">@((row.LastChangedAuthor ?? "-"))</div>
+                            <div class="sp-entry-age">@((row.LastChangedAge ?? "-"))</div>
+                            <div class="sp-entry-rev">@((row.LastChangedRevision is null ? "-" : $"r{row.LastChangedRevision}"))</div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (hasAnyAction)
+                {
+                    <div class="sp-row-actions dropdown">
+                        <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-label="Actions">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+                            </svg>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if (canWrite)
+                            {
+                                <li>
+                                    <a class="dropdown-item"
+                                       asp-page="/Repos/Edit"
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-path="@e.Path">
+                                        Edit
+                                    </a>
+                                </li>
+                            }
+                            @if (canZip)
+                            {
+                                <li>
+                                   <a class="dropdown-item"
+                                       asp-page="/Repos/Tree"
+                                       asp-page-handler="Zip"
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-path="@e.Path"
+                                       asp-route-rev="@Model.ViewRevision">
+                                        Download ZIP
+                                    </a>
+                                </li>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
+                            {
+                                <li><hr class="dropdown-divider" /></li>
+                                <li>
+                                    <button type="button"
+                                            class="dropdown-item"
+                                            data-copy-text="@Model.GetCheckoutUrl(e.Path)">
+                                        Copy SVN URL
+                                    </button>
+                                </li>
+                            }
+                            @if (canWrite)
+                            {
+                                <li><hr class="dropdown-divider" /></li>
+                                <li>
+                                    <form method="post" asp-page-handler="DeleteEntry" class="m-0">
+                                        <input type="hidden" name="path" value="@Model.Path" />
+                                        <input type="hidden" name="targetPath" value="@e.Path" />
+                                        <button type="submit"
+                                                class="dropdown-item text-danger"
+                                                onclick="return confirm('Delete this @(e.IsDirectory ? "folder" : "file") from SVN? This will create a new revision.');">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

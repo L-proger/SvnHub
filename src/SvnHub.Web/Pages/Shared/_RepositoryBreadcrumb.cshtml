@@ -1,0 +1,55 @@
+@model SvnHub.Web.Support.RepositoryBreadcrumbModel
+@{
+    var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var isRoot = parts.Length == 0;
+}
+
+<nav class="repo-breadcrumb mt-2" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        @if (isRoot)
+        {
+            <li class="breadcrumb-item active" aria-current="page">
+                <span class="repo-breadcrumb-segment">@Model.RepositoryName</span>
+            </li>
+        }
+        else
+        {
+            <li class="breadcrumb-item">
+                <a class="repo-breadcrumb-segment"
+                   asp-page="/Repos/Tree"
+                   asp-route-repoName="@Model.RepositoryName"
+                   asp-route-rev="@Model.Revision">
+                    @Model.RepositoryName
+                </a>
+            </li>
+        }
+
+        @{
+            var current = "";
+            for (var i = 0; i < parts.Length; i++)
+            {
+                current += "/" + parts[i];
+                var isLast = i == parts.Length - 1;
+
+                if (isLast)
+                {
+                    <li class="breadcrumb-item active" aria-current="page">
+                        <span class="repo-breadcrumb-segment">@parts[i]</span>
+                    </li>
+                }
+                else
+                {
+                    <li class="breadcrumb-item">
+                        <a class="repo-breadcrumb-segment"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@Model.RepositoryName"
+                           asp-route-path="@current"
+                           asp-route-rev="@Model.Revision">
+                            @parts[i]
+                        </a>
+                    </li>
+                }
+            }
+        }
+    </ol>
+</nav>

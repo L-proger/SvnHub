@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.App.System;
 using SvnHub.Domain;
+using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages.Repos;
 
@@ -83,7 +84,7 @@ public sealed class HistoryModel : PageModel
                         Revision: entry.Revision,
                         Author: string.IsNullOrWhiteSpace(author) ? null : author.Trim(),
                         Age: IndexModel.FormatUpdatedAgo(dt, now),
-                        Message: FormatCommitMessage(log),
+                        Message: CommitMessageFormatter.FirstLine(log, 80),
                         ChangedPath: entry.Path
                     );
                 }
@@ -115,72 +116,9 @@ public sealed class HistoryModel : PageModel
 
     public sealed record HistoryRow(long Revision, string? Author, string? Age, string? Message, string? ChangedPath);
 
-    private static string? FormatCommitMessage(string? log)
-    {
-        if (string.IsNullOrWhiteSpace(log))
-        {
-            return null;
-        }
+    private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
-        var firstLine = log
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(firstLine))
-        {
-            return null;
-        }
-
-        const int max = 80;
-        return firstLine.Length <= max ? firstLine : firstLine[..max] + "…";
-    }
-
-    private static string Normalize(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return "/";
-        }
-
-        var p = path.Trim();
-        if (!p.StartsWith('/'))
-        {
-            p = "/" + p;
-        }
-
-        while (p.Contains("//", StringComparison.Ordinal))
-        {
-            p = p.Replace("//", "/", StringComparison.Ordinal);
-        }
-
-        if (p.Length > 1 && p.EndsWith('/'))
-        {
-            p = p.TrimEnd('/');
-        }
-
-        if (p.Contains("/../", StringComparison.Ordinal) || p.EndsWith("/..", StringComparison.Ordinal) || p == "/..")
-        {
-            return "/";
-        }
-
-        return p;
-    }
-
-    private static string GetParent(string path)
-    {
-        if (path == "/")
-        {
-            return "/";
-        }
-
-        var idx = path.LastIndexOf('/');
-        if (idx <= 0)
-        {
-            return "/";
-        }
-
-        return path[..idx];
-    }
+    private static string GetParent(string path) => RepositoryPath.GetParent(path);
 
     private async Task<bool> DetectIsDirectoryAsync(string repoLocalPath, string path, long revision, CancellationToken cancellationToken)
     {

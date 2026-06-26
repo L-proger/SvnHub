@@ -1,6 +1,5 @@
 @page "/repos/{repoName}/tree"
 @model SvnHub.Web.Pages.Repos.TreeModel
-@inject SvnHub.Web.Support.MaterialFileIconService FileIcons
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
 }
@@ -14,41 +13,7 @@
 </div>
 <div class="text-muted">r@(Model.Revision)</div>
 
-<nav class="mt-2" aria-label="breadcrumb">
-    <ol class="breadcrumb mb-0">
-        @{
-            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var isRoot = parts.Length == 0;
-            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
-                @if (isRoot)
-                {
-                    @Model.RepoName
-                }
-                else
-                {
-                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-rev="@Model.ViewRevision">@Model.RepoName</a>
-                }
-            </li>
-
-            var current = "";
-            for (var i = 0; i < parts.Length; i++)
-            {
-                current += "/" + parts[i];
-                var isLast = i == parts.Length - 1;
-                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
-                    @if (isLast)
-                    {
-                        @parts[i]
-                    }
-                    else
-                    {
-                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current" asp-route-rev="@Model.ViewRevision">@parts[i]</a>
-                    }
-                </li>
-            }
-        }
-    </ol>
-</nav>
+@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
 
 @section Head
 {
@@ -74,8 +39,8 @@
 }
 else
 {
-        <div class="card file-viewer mt-3">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+    <div class="card file-viewer mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <div class="text-muted small">
                 @(Model.Path == "/" ? "Repository root" : System.IO.Path.GetFileName(Model.Path))
                 <span class="mx-1">|</span>@Model.DirectoryCount @(Model.DirectoryCount == 1 ? "folder" : "folders")
@@ -128,22 +93,18 @@ else
                             </li>
                             <li><hr class="dropdown-divider" /></li>
                             <li>
-                                 <button type="button"
-                                         class="dropdown-item"
-                                         data-upload-open="files">
+                                <button type="button" class="dropdown-item" data-upload-open="files">
                                     Upload files...
-                                 </button>
-                             </li>
-                             <li>
-                                 <button type="button"
-                                         class="dropdown-item"
-                                         data-upload-open="folder">
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" data-upload-open="folder">
                                     Upload folder...
-                                 </button>
-                             </li>
-                         </ul>
-                     </div>
-                 }
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                }
                 @if (Model.CanWriteActions && Model.Path != "/")
                 {
                     <form method="post"
@@ -162,257 +123,10 @@ else
             </div>
         </div>
 
-        <div class="list-group list-group-flush sp-list sp-tree-list">
-            @if (Model.Path == "/")
-            {
-                var rootIconHref = FileIcons.GetIconHref(Model.RepoName, isDirectory: true, isOpen: true);
-                <div class="list-group-item">
-                    <div class="d-flex align-items-center justify-content-between gap-3">
-                        <div class="d-flex align-items-center gap-2">
-                            @if (!string.IsNullOrWhiteSpace(rootIconHref))
-                            {
-                                <img class="sp-icon sp-file-icon" src="@Url.Content(rootIconHref)" alt="" aria-hidden="true" />
-                            }
-                            else
-                            {
-                                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                                    <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
-                                </svg>
-                            }
-                            <div class="flex-grow-1">
-                                <div class="sp-entry-name">@Model.RepoName</div>
-                                <div class="text-muted small">Repository root</div>
-                            </div>
-                        </div>
-
-                        <div class="sp-row-actions dropdown">
-                            <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
-                                    type="button"
-                                    data-bs-toggle="dropdown"
-                                    aria-label="Actions">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                                    <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
-                                </svg>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item"
-                                       asp-page="/Repos/Tree"
-                                       asp-page-handler="Zip"
-                                       asp-route-repoName="@Model.RepoName"
-                                       asp-route-rev="@Model.ViewRevision">
-                                        Download ZIP
-                                    </a>
-                                </li>
-                                @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
-                                {
-                                    <li><hr class="dropdown-divider" /></li>
-                                    <li>
-                                        <button type="button"
-                                                class="dropdown-item"
-                                                data-copy-text="@Model.GetCheckoutUrl("/")">
-                                            Copy SVN URL
-                                        </button>
-                                    </li>
-                                }
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            }
-
-            @foreach (var row in Model.Rows)
-            {
-                var e = row.Entry;
-                var entryIconHref = FileIcons.GetIconHref(e.Path, e.IsDirectory);
-                <div class="list-group-item">
-                    <div class="d-flex align-items-center justify-content-between gap-3">
-                        <div class="d-flex align-items-center gap-2 flex-grow-1" style="min-width: 0;">
-                            @if (!string.IsNullOrWhiteSpace(entryIconHref))
-                            {
-                                <img class="sp-icon sp-file-icon" src="@Url.Content(entryIconHref)" alt="" aria-hidden="true" />
-                            }
-                            else if (e.IsDirectory)
-                            {
-                                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                                    <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
-                                </svg>
-                            }
-                            else
-                            {
-                                <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5z"/>
-                                    <path d="M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
-                                </svg>
-                            }
-
-                            <div class="d-flex align-items-center justify-content-between flex-grow-1 gap-3" style="min-width: 0;">
-                                <div class="flex-grow-1" style="min-width: 0;">
-                                    @if (e.IsDirectory)
-                                    {
-                                        <a asp-page="/Repos/Tree"
-                                           asp-route-repoName="@Model.RepoName"
-                                           asp-route-path="@e.Path"
-                                           asp-route-rev="@Model.ViewRevision"
-                                           class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
-                                            @e.Name
-                                        </a>
-                                    }
-                                    else
-                                    {
-                                        <a asp-page="/Repos/File"
-                                           asp-route-repoName="@Model.RepoName"
-                                           asp-route-path="@e.Path"
-                                           asp-route-rev="@Model.ViewRevision"
-                                           class="sp-entry-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
-                                            @e.Name
-                                        </a>
-                                    }
-                                </div>
-
-                                <div class="sp-entry-meta d-flex text-muted small">
-                                    <div class="sp-entry-msg text-truncate" title="@row.LastCommitMessage">@((row.LastCommitMessage ?? "—"))</div>
-                                    <div class="sp-entry-author text-truncate" title="@row.LastChangedAuthor">@((row.LastChangedAuthor ?? "—"))</div>
-                                    <div class="sp-entry-age">@((row.LastChangedAge ?? "—"))</div>
-                                    <div class="sp-entry-rev">@((row.LastChangedRevision is null ? "—" : $"r{row.LastChangedRevision}"))</div>
-                                </div>
-                            </div>
-                        </div>
-
-                     @{
-                         var canZip = e.IsDirectory && Model.ZipPaths.Contains(e.Path);
-                         var canWrite = Model.DeletablePaths.Contains(e.Path);
-                        var hasAnyAction = canZip || canWrite || !string.IsNullOrWhiteSpace(Model.SvnBaseUrl);
-                    }
-
-                    @if (hasAnyAction)
-                    {
-                        <div class="sp-row-actions dropdown">
-                            <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
-                                    type="button"
-                                    data-bs-toggle="dropdown"
-                                    aria-label="Actions">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                                    <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
-                                </svg>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                @if (canWrite)
-                                {
-                                    <li>
-                                        <a class="dropdown-item"
-                                           asp-page="/Repos/Edit"
-                                           asp-route-repoName="@Model.RepoName"
-                                           asp-route-path="@e.Path">
-                                            Edit
-                                        </a>
-                                    </li>
-                                }
-                                @if (canZip)
-                                {
-                                    <li>
-                                       <a class="dropdown-item"
-                                           asp-page="/Repos/Tree"
-                                           asp-page-handler="Zip"
-                                           asp-route-repoName="@Model.RepoName"
-                                           asp-route-path="@e.Path"
-                                           asp-route-rev="@Model.ViewRevision">
-                                            Download ZIP
-                                        </a>
-                                    </li>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
-                                {
-                                    <li><hr class="dropdown-divider" /></li>
-                                    <li>
-                                        <button type="button"
-                                                class="dropdown-item"
-                                                data-copy-text="@Model.GetCheckoutUrl(e.Path)">
-                                            Copy SVN URL
-                                        </button>
-                                    </li>
-                                }
-                                @if (canWrite)
-                                {
-                                    <li><hr class="dropdown-divider" /></li>
-                                    <li>
-                                        <form method="post" asp-page-handler="DeleteEntry" class="m-0">
-                                            <input type="hidden" name="path" value="@Model.Path" />
-                                            <input type="hidden" name="targetPath" value="@e.Path" />
-                                            <button type="submit"
-                                                    class="dropdown-item text-danger"
-                                                    onclick="return confirm('Delete this @(e.IsDirectory ? "folder" : "file") from SVN? This will create a new revision.');">
-                                                Delete
-                                            </button>
-                                        </form>
-                                    </li>
-                                }
-                            </ul>
-                        </div>
-                    }
-                </div>
-                    </div>
-            }
-        </div>
+        @await Html.PartialAsync("Shared/_RepositoryTreeList", Model)
     </div>
 
-    @if (Model.CanWriteActions)
-    {
-        <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                    <form method="post"
-                          asp-page-handler="Upload"
-                          asp-route-path="@(Model.Path == "/" ? null : Model.Path)"
-                          enctype="multipart/form-data"
-                          autocomplete="off">
-                        @Html.AntiForgeryToken()
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="uploadModalTitle">Upload</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <input type="hidden" name="mode" id="uploadMode" value="files" />
-
-                            <div class="mb-2 text-muted small">
-                                Target: <code>@Model.Path</code>
-                            </div>
-
-                            <div class="mb-3" id="uploadFilesBlock">
-                                <label class="form-label">Files</label>
-                                <input class="form-control" type="file" name="files" id="uploadFiles" multiple />
-                                <div class="form-text">Select one or more files to upload into the current folder.</div>
-                                <div class="text-muted small mt-2" id="uploadFilesInfo"></div>
-                            </div>
-
-                            <div class="mb-3 d-none" id="uploadFolderBlock">
-                                <label class="form-label">Folder</label>
-                                <input class="form-control"
-                                       type="file"
-                                       name="files"
-                                       id="uploadFolder"
-                                       webkitdirectory
-                                       directory
-                                       multiple
-                                       disabled />
-                                <div class="form-text">Folder upload works in Chromium-based browsers (Edge/Chrome).</div>
-                                <div class="text-muted small mt-2" id="uploadFolderInfo"></div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label" for="uploadCommitMessage">Commit message</label>
-                                <input class="form-control" type="text" name="commitMessage" id="uploadCommitMessage" placeholder="Describe your changes" required />
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Upload</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    }
+    @await Html.PartialAsync("Shared/_RepositoryUploadModal", Model)
 
     @if (Model.HasReadme)
     {
@@ -443,88 +157,8 @@ else
 
 @section Scripts
 {
-    <script>
-        (function () {
-            const modalEl = document.getElementById('uploadModal');
-            if (!modalEl) return;
-
-            const modeInput = document.getElementById('uploadMode');
-            const titleEl = document.getElementById('uploadModalTitle');
-            const filesBlock = document.getElementById('uploadFilesBlock');
-            const folderBlock = document.getElementById('uploadFolderBlock');
-            const folderInput = document.getElementById('uploadFolder');
-            const filesInput = document.getElementById('uploadFiles');
-            const filesInfo = document.getElementById('uploadFilesInfo');
-            const folderInfo = document.getElementById('uploadFolderInfo');
-
-            const modal = new bootstrap.Modal(modalEl);
-
-            function formatBytes(bytes) {
-                if (!bytes || bytes < 0) bytes = 0;
-                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-                let size = bytes;
-                let unit = 0;
-                while (size >= 1024 && unit < units.length - 1) {
-                    size /= 1024;
-                    unit++;
-                }
-                if (unit === 0) return `${bytes} ${units[unit]}`;
-                return `${size.toFixed(size < 10 ? 1 : 0)} ${units[unit]}`;
-            }
-
-            function updateInfo(inputEl, infoEl) {
-                if (!inputEl || !infoEl) return;
-                const list = inputEl.files;
-                if (!list || list.length === 0) {
-                    infoEl.textContent = '';
-                    return;
-                }
-                let total = 0;
-                for (let i = 0; i < list.length; i++) total += (list[i].size || 0);
-                infoEl.textContent = `Selected ${list.length} file(s) • ${formatBytes(total)}`;
-            }
-
-            function setMode(mode) {
-                modeInput.value = mode;
-                if (mode === 'folder') {
-                    titleEl.textContent = 'Upload folder';
-                    filesBlock.classList.add('d-none');
-                    folderBlock.classList.remove('d-none');
-                    folderInput.disabled = false;
-                    filesInput.disabled = true;
-                    filesInput.value = '';
-                    if (filesInfo) filesInfo.textContent = '';
-                } else {
-                    titleEl.textContent = 'Upload files';
-                    folderBlock.classList.add('d-none');
-                    filesBlock.classList.remove('d-none');
-                    filesInput.disabled = false;
-                    folderInput.disabled = true;
-                    folderInput.value = '';
-                    if (folderInfo) folderInfo.textContent = '';
-                }
-            }
-
-            document.querySelectorAll('[data-upload-open]').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    setMode(btn.getAttribute('data-upload-open') || 'files');
-                    modal.show();
-                });
-            });
-
-            modalEl.addEventListener('hidden.bs.modal', () => {
-                if (filesInput) filesInput.value = '';
-                if (folderInput) folderInput.value = '';
-                if (filesInfo) filesInfo.textContent = '';
-                if (folderInfo) folderInfo.textContent = '';
-            });
-
-            if (filesInput) {
-                filesInput.addEventListener('change', () => updateInfo(filesInput, filesInfo));
-            }
-            if (folderInput) {
-                folderInput.addEventListener('change', () => updateInfo(folderInput, folderInfo));
-            }
-        })();
-    </script>
+    @if (Model.CanWriteActions)
+    {
+        <script src="~/js/repository-tree.js" asp-append-version="true"></script>
+    }
 }

@@ -437,50 +437,7 @@ public sealed class FileModel : PageModel
         return requested.Value;
     }
 
-    private static string Normalize(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return "/";
-        }
+    private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
-        var p = path.Trim();
-        if (!p.StartsWith('/'))
-        {
-            p = "/" + p;
-        }
-
-        while (p.Contains("//", StringComparison.Ordinal))
-        {
-            p = p.Replace("//", "/", StringComparison.Ordinal);
-        }
-
-        if (p.Length > 1 && p.EndsWith('/'))
-        {
-            p = p.TrimEnd('/');
-        }
-
-        if (p.Contains("/../", StringComparison.Ordinal) || p.EndsWith("/..", StringComparison.Ordinal) || p == "/..")
-        {
-            return "/";
-        }
-
-        return p;
-    }
-
-    private static string GetParent(string path)
-    {
-        if (path == "/")
-        {
-            return "/";
-        }
-
-        var idx = path.LastIndexOf('/');
-        if (idx <= 0)
-        {
-            return "/";
-        }
-
-        return path[..idx];
-    }
+    private static string GetParent(string path) => RepositoryPath.GetParent(path);
 }

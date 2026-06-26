@@ -234,6 +234,7 @@ app.Use(async (context, next) =>
                   <link rel="stylesheet" href="{{prefix}}/css/site.css" />
                   <link rel="stylesheet" href="{{prefix}}/SvnHub.Web.styles.css" />
                   <link rel="stylesheet" href="{{prefix}}/css/theme.css" />
+                  <link rel="stylesheet" href="{{prefix}}/css/components.css" />
                   <link rel="stylesheet" href="{{prefix}}/css/code.css" />
                 </head>
                 <body>

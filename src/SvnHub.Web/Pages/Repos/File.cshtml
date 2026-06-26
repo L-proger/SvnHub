@@ -14,41 +14,7 @@
 </div>
 <div class="text-muted">r@(Model.Revision)</div>
 
-<nav class="mt-2" aria-label="breadcrumb">
-    <ol class="breadcrumb mb-0">
-        @{
-            var parts = Model.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var isRoot = parts.Length == 0;
-            <li class="breadcrumb-item @(isRoot ? "active" : "")" @(isRoot ? "aria-current=\"page\"" : "")>
-                @if (isRoot)
-                {
-                    @Model.RepoName
-                }
-                else
-                {
-                    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-rev="@Model.ViewRevision">@Model.RepoName</a>
-                }
-            </li>
-
-            var current = "";
-            for (var i = 0; i < parts.Length; i++)
-            {
-                current += "/" + parts[i];
-                var isLast = i == parts.Length - 1;
-                <li class="breadcrumb-item @(isLast ? "active" : "")" @(isLast ? "aria-current=\"page\"" : "")>
-                    @if (isLast)
-                    {
-                        @parts[i]
-                    }
-                    else
-                    {
-                        <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName" asp-route-path="@current" asp-route-rev="@Model.ViewRevision">@parts[i]</a>
-                    }
-                </li>
-            }
-        }
-    </ol>
-</nav>
+@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
 
 @if (!string.IsNullOrWhiteSpace(Model.FlashError))
 {
@@ -169,7 +135,7 @@ else
 
 @if (Model.CanCopyContent)
 {
-    <textarea id="copySrc" style="position:fixed; left:-10000px; top:-10000px;">@Model.Contents</textarea>
+    <textarea id="copySrc" class="sp-copy-source">@Model.Contents</textarea>
 }
 
 @section Head

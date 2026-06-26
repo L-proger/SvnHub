@@ -9,7 +9,7 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <form method="get" class="d-flex align-items-center gap-2">
             <label class="text-muted small" for="pageSize">Per page</label>
-            <select id="pageSize" name="pageSize" class="form-select form-select-sm" style="width: auto"
+            <select id="pageSize" name="pageSize" class="form-select form-select-sm sp-auto-width"
                     onchange="this.form.p.value = 1; this.form.submit();">
                 @foreach (var pageSize in Model.PageSizeOptions)
                 {

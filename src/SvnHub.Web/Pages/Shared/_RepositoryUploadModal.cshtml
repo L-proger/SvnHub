@@ -1,0 +1,59 @@
+@model SvnHub.Web.Pages.Repos.TreeModel
+
+@if (Model.CanWriteActions)
+{
+    <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <form method="post"
+                      asp-page-handler="Upload"
+                      asp-route-path="@(Model.Path == "/" ? null : Model.Path)"
+                      enctype="multipart/form-data"
+                      autocomplete="off">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="uploadModalTitle">Upload</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="mode" id="uploadMode" value="files" />
+
+                        <div class="mb-2 text-muted small">
+                            Target: <code>@Model.Path</code>
+                        </div>
+
+                        <div class="mb-3" id="uploadFilesBlock">
+                            <label class="form-label">Files</label>
+                            <input class="form-control" type="file" name="files" id="uploadFiles" multiple />
+                            <div class="form-text">Select one or more files to upload into the current folder.</div>
+                            <div class="text-muted small mt-2" id="uploadFilesInfo"></div>
+                        </div>
+
+                        <div class="mb-3 d-none" id="uploadFolderBlock">
+                            <label class="form-label">Folder</label>
+                            <input class="form-control"
+                                   type="file"
+                                   name="files"
+                                   id="uploadFolder"
+                                   webkitdirectory
+                                   directory
+                                   multiple
+                                   disabled />
+                            <div class="form-text">Folder upload works in Chromium-based browsers (Edge/Chrome).</div>
+                            <div class="text-muted small mt-2" id="uploadFolderInfo"></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="uploadCommitMessage">Commit message</label>
+                            <input class="form-control" type="text" name="commitMessage" id="uploadCommitMessage" placeholder="Describe your changes" required />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Upload</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
