@@ -92,6 +92,7 @@
         <div class="col-md-3 mb-3">
             <label class="form-label" for="theme">Theme</label>
             <select id="theme" name="theme" class="form-select">
+                <option value="System" selected="@(Model.CurrentUser.Theme == PortalUserTheme.System ? "selected" : null)">System</option>
                 <option value="Dark" selected="@(Model.CurrentUser.Theme == PortalUserTheme.Dark ? "selected" : null)">Dark</option>
                 <option value="Light" selected="@(Model.CurrentUser.Theme == PortalUserTheme.Light ? "selected" : null)">Light</option>
             </select>

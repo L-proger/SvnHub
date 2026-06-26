@@ -2,6 +2,7 @@ namespace SvnHub.Domain;
 
 public enum PortalUserTheme
 {
-    Dark = 0,
-    Light = 1,
+    System = 0,
+    Dark = 1,
+    Light = 2,
 }

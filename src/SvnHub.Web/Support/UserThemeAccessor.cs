@@ -17,17 +17,17 @@ public sealed class UserThemeAccessor
     {
         if (principal?.Identity?.IsAuthenticated != true)
         {
-            return PortalUserTheme.Dark;
+            return PortalUserTheme.System;
         }
 
         var idStr = principal.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(idStr, out var userId))
         {
-            return PortalUserTheme.Dark;
+            return PortalUserTheme.System;
         }
 
         var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId && u.IsActive);
-        return IsKnownTheme(user?.Theme) ? user!.Theme : PortalUserTheme.Dark;
+        return IsKnownTheme(user?.Theme) ? user!.Theme : PortalUserTheme.System;
     }
 
     public string GetBootstrapTheme(ClaimsPrincipal? principal) => ToBootstrapTheme(GetTheme(principal));
@@ -42,13 +42,18 @@ public sealed class UserThemeAccessor
             return true;
         }
 
-        theme = PortalUserTheme.Dark;
+        theme = PortalUserTheme.System;
         return false;
     }
 
     public static string ToLabel(PortalUserTheme theme) =>
-        theme == PortalUserTheme.Light ? "Light" : "Dark";
+        theme switch
+        {
+            PortalUserTheme.Light => "Light",
+            PortalUserTheme.Dark => "Dark",
+            _ => "System",
+        };
 
     private static bool IsKnownTheme(PortalUserTheme? theme) =>
-        theme is PortalUserTheme.Dark or PortalUserTheme.Light;
+        theme is PortalUserTheme.System or PortalUserTheme.Dark or PortalUserTheme.Light;
 }

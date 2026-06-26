@@ -19,6 +19,24 @@
         var faviconLink = Branding.GetFaviconLink();
     }
     <link rel="icon" type="@faviconLink.ContentType" href="@Url.Content(faviconLink.Href)" />
+    @if (currentTheme == PortalUserTheme.System)
+    {
+        <script>
+            (() => {
+                const media = window.matchMedia('(prefers-color-scheme: dark)');
+                const applyTheme = () => {
+                    document.documentElement.setAttribute('data-bs-theme', media.matches ? 'dark' : 'light');
+                };
+
+                applyTheme();
+                if (media.addEventListener) {
+                    media.addEventListener('change', applyTheme);
+                } else if (media.addListener) {
+                    media.addListener(applyTheme);
+                }
+            })();
+        </script>
+    }
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
@@ -102,6 +120,17 @@
                                 <li>
                                     <form method="post" asp-page="/Account" asp-page-handler="ChangeTheme">
                                         <input type="hidden" name="returnUrl" value="@currentUrl" />
+                                        <button type="submit"
+                                                name="theme"
+                                                value="System"
+                                                class="dropdown-item d-flex justify-content-between gap-3 @(currentTheme == PortalUserTheme.System ? "active" : "")"
+                                                aria-current="@(currentTheme == PortalUserTheme.System ? "true" : null)">
+                                            <span>System</span>
+                                            @if (currentTheme == PortalUserTheme.System)
+                                            {
+                                                <span class="small">Current</span>
+                                            }
+                                        </button>
                                         <button type="submit"
                                                 name="theme"
                                                 value="Dark"

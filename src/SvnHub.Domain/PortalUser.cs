@@ -13,5 +13,5 @@ public sealed record PortalUser(
 )
 {
     [JsonConverter(typeof(JsonStringEnumConverter<PortalUserTheme>))]
-    public PortalUserTheme Theme { get; init; } = PortalUserTheme.Dark;
+    public PortalUserTheme Theme { get; init; } = PortalUserTheme.System;
 }
