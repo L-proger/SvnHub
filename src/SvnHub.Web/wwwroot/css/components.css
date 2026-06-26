@@ -172,12 +172,29 @@
   margin: 0 auto;
 }
 
-.gerber-xray-substrate {
+.gerber-composite-substrate {
   fill: #128a55;
   opacity: 0.08;
 }
 
-.gerber-xray-layer {
+.gerber-composite-layer {
+  color: var(--gerber-layer-color);
+}
+
+.gerber-composite-layer :is(path, circle, ellipse, rect, polygon, polyline) {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+.gerber-composite-layer [fill="none"] {
+  fill: none !important;
+}
+
+.gerber-composite-layer [stroke="none"] {
+  stroke: none !important;
+}
+
+.gerber-preview-xray .gerber-composite-layer {
   opacity: var(--gerber-xray-opacity, 0.45);
 }
 

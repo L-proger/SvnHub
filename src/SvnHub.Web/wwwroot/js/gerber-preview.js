@@ -72,7 +72,7 @@
         }
 
         if (rerender) {
-            renderVisibleBoard();
+            renderLayerBoard();
         }
     }
 
@@ -121,26 +121,6 @@
             </svg>`;
     }
 
-    function renderVisibleBoard() {
-        if (!tracespaceCore || !renderedLayers) return;
-
-        if (xrayEnabled) {
-            renderXrayBoard();
-            return;
-        }
-
-        const visibleLayers = renderedLayers.layers.filter((layer) => visibleLayerIds.has(layer.id));
-        const boardResult = tracespaceCore.renderBoard({
-            ...renderedLayers,
-            layers: visibleLayers,
-        });
-
-        const top = boards.get('top');
-        const bottom = boards.get('bottom');
-        if (top) top.innerHTML = tracespaceCore.stringifySvg(boardResult.top);
-        if (bottom) bottom.innerHTML = tracespaceCore.stringifySvg(boardResult.bottom);
-    }
-
     function escapeAttribute(value) {
         return String(value ?? '')
             .replaceAll('&', '&amp;')
@@ -164,7 +144,7 @@
         return 10;
     }
 
-    function renderXrayBoard() {
+    function renderLayerBoard() {
         if (!renderedFragments) return;
 
         const viewBox = renderedFragments.boardShapeRenderFragment?.viewBox || [0, 0, 100, 100];
@@ -188,15 +168,15 @@
 
                 const color = escapeAttribute(getLayerColor(layer));
                 const label = escapeAttribute(`${getLayerLabel(layer)} ${layer.filename || ''}`.trim());
-                return `<g class="gerber-xray-layer" color="${color}" aria-label="${label}">${fragment}</g>`;
+                return `<g class="gerber-composite-layer" style="--gerber-layer-color:${color}" color="${color}" aria-label="${label}">${fragment}</g>`;
             }).join('');
             const defs = shape ? `<defs><clipPath id="${clipId}">${shape}</clipPath></defs>` : '';
 
             board.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttribute(viewBoxText)}" role="img" aria-label="PCB X-ray ${escapeAttribute(side)} view">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttribute(viewBoxText)}" role="img" aria-label="PCB ${escapeAttribute(side)} layer view">
                     ${defs}
                     <g${transform}${clip}>
-                        <rect class="gerber-xray-substrate" x="${x}" y="${y}" width="${width}" height="${height}"></rect>
+                        <rect class="gerber-composite-substrate" x="${x}" y="${y}" width="${width}" height="${height}"></rect>
                         ${layerMarkup}
                     </g>
                 </svg>`;
@@ -261,7 +241,7 @@
                     }
 
                     updateLayerButton(button, !isVisible);
-                    renderVisibleBoard();
+                    renderLayerBoard();
                 });
 
                 section.appendChild(button);
@@ -312,7 +292,7 @@
         }
 
         buildLayerPanel(renderedLayers.layers);
-        renderVisibleBoard();
+        renderLayerBoard();
 
         if (layout) layout.hidden = false;
         if (stage) stage.hidden = false;
