@@ -2,7 +2,16 @@
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
-    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsMarkdown ? Model.LineCount : null;
+    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsMarkdown ? Model.LineCount : null;
+    var gerberPreviewFiles = Model.GerberPreviewFiles
+        .Select(f => new
+        {
+            name = f.Name,
+            kind = f.Kind,
+            sizeLabel = f.SizeLabel,
+            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+        })
+        .ToArray();
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -111,6 +120,39 @@ else
                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
                 </iframe>
             }
+            else if (Model.IsGerberPreview)
+            {
+                <div class="gerber-preview" data-gerber-preview>
+                    <div class="gerber-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="fw-semibold">PCB fabrication preview</div>
+                            <div class="text-muted small">@Model.GerberPreviewFiles.Count CAM files in this directory</div>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                            <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
+                            <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
+                        </div>
+                    </div>
+                    <div class="gerber-preview-status alert alert-secondary mb-3" data-gerber-status>
+                        Loading board preview...
+                    </div>
+                    <div class="gerber-preview-stage" data-gerber-stage hidden>
+                        <div class="gerber-preview-board" data-gerber-board="top"></div>
+                        <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
+                    </div>
+                    <div class="gerber-preview-layers mt-3">
+                        @foreach (var file in Model.GerberPreviewFiles)
+                        {
+                            <div class="gerber-preview-layer">
+                                <span class="text-truncate">@file.Name</span>
+                                <span class="text-muted">@file.Kind</span>
+                                <span class="text-muted">@file.SizeLabel</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <script type="application/json" id="gerber-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(gerberPreviewFiles))</script>
+            }
             else if (Model.IsMarkdown)
             {
                 <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
@@ -149,4 +191,14 @@ else
 @section Scripts
 {
     @* copy handlers live in wwwroot/js/site.js *@
+    @if (Model.IsGerberPreview)
+    {
+        <script src="~/lib/tracespace/xml-id.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/parser.min.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/plotter.umd.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/identify-layers.umd.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/renderer.umd.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/core.umd.js" asp-append-version="true"></script>
+        <script src="~/js/gerber-preview.js" asp-append-version="true"></script>
+    }
 }

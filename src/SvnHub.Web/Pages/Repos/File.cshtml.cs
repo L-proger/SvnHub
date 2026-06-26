@@ -58,11 +58,13 @@ public sealed class FileModel : PageModel
     public string MarkdownHtml { get; private set; } = "";
     public bool IsImage { get; private set; }
     public bool IsPdf { get; private set; }
+    public bool IsGerberPreview { get; private set; }
     public string ImageContentType { get; private set; } = "application/octet-stream";
     public string Language { get; private set; } = "plaintext";
     public string LineNumbers { get; private set; } = "";
     public long FileSizeBytes { get; private set; }
     public string FileSizeLabel { get; private set; } = "";
+    public IReadOnlyList<GerberPreviewFile> GerberPreviewFiles { get; private set; } = [];
     public int? LineCount { get; private set; }
     public bool CanWrite { get; private set; }
     public string? CheckoutUrl { get; private set; }
@@ -75,6 +77,7 @@ public sealed class FileModel : PageModel
         PreviewUnavailableMessage is null &&
         !IsImage &&
         !IsPdf &&
+        !IsGerberPreview &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -141,6 +144,30 @@ public sealed class FileModel : PageModel
                 PreviewUnavailableMessage =
                     $"Preview is disabled for files larger than {MaxPreviewSizeLabel}. This file is {FileSizeLabel}.";
                 return Page();
+            }
+
+            if (GerberDrillFileClassifier.IsBoardFileCandidate(Path))
+            {
+                GerberPreviewFiles = await BuildGerberPreviewFilesAsync(
+                    repo.Id,
+                    repo.LocalPath,
+                    userId.Value,
+                    Revision,
+                    maxPreviewBytes,
+                    cancellationToken);
+
+                if (GerberPreviewFiles.Count != 0)
+                {
+                    ClearTextPreviewState();
+                    IsGerberPreview = true;
+                    return Page();
+                }
+
+                if (!string.IsNullOrWhiteSpace(PreviewUnavailableMessage))
+                {
+                    ClearTextPreviewState();
+                    return Page();
+                }
             }
 
             if (IsImage)
@@ -227,8 +254,62 @@ public sealed class FileModel : PageModel
         HighlightedHtml = "";
         MarkdownHtml = "";
         IsMarkdown = false;
+        IsGerberPreview = false;
         LineNumbers = "";
         LineCount = null;
+    }
+
+    private async Task<IReadOnlyList<GerberPreviewFile>> BuildGerberPreviewFilesAsync(
+        Guid repoId,
+        string repoLocalPath,
+        Guid userId,
+        long revision,
+        long maxPreviewBytes,
+        CancellationToken cancellationToken)
+    {
+        var entries = await _svnlook.ListTreeAsync(repoLocalPath, ParentPath, revision, cancellationToken);
+        var candidates = entries
+            .Where(e => !e.IsDirectory)
+            .Where(e => GerberDrillFileClassifier.IsBoardFileCandidate(e.Path))
+            .Where(e => _access.GetAccess(userId, repoId, e.Path) >= AccessLevel.Read)
+            .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(64)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            return [];
+        }
+
+        var files = new List<GerberPreviewFile>(candidates.Length);
+        long totalBytes = 0;
+        foreach (var entry in candidates)
+        {
+            var size = await _svnlook.GetFileSizeAsync(repoLocalPath, entry.Path, revision, cancellationToken);
+            if (size > maxPreviewBytes)
+            {
+                PreviewUnavailableMessage =
+                    $"Gerber preview is disabled because {entry.Name} is larger than {MaxPreviewSizeLabel}.";
+                return [];
+            }
+
+            totalBytes += size;
+            if (totalBytes > maxPreviewBytes)
+            {
+                PreviewUnavailableMessage =
+                    $"Gerber preview is disabled because the CAM file set is larger than {MaxPreviewSizeLabel}.";
+                return [];
+            }
+
+            files.Add(new GerberPreviewFile(
+                entry.Name,
+                entry.Path,
+                GerberDrillFileClassifier.Describe(entry.Path),
+                size,
+                FormatByteSize(size)));
+        }
+
+        return files;
     }
 
     private static string FormatByteSize(long bytes)
