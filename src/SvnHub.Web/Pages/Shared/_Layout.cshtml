@@ -1,8 +1,16 @@
 @using SvnHub.App.Services
+@using SvnHub.Domain
+@using SvnHub.Web.Support
 @inject SettingsService Settings
 @inject BrandingService Branding
+@inject UserThemeAccessor UserTheme
+@{
+    var currentTheme = UserTheme.GetTheme(User);
+    var currentThemeName = UserThemeAccessor.ToBootstrapTheme(currentTheme);
+    var currentUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+}
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en" data-bs-theme="@currentThemeName">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -22,7 +30,7 @@
 </head>
 <body>
 <header>
-    <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-dark bg-body-tertiary border-bottom mb-3">
+    <nav class="navbar navbar-expand-sm navbar-toggleable-sm bg-body-tertiary border-bottom mb-3">
         <div class="container">
             @{
                 var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
@@ -83,6 +91,37 @@
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountMenu">
                                 <li>
                                     <a class="dropdown-item" asp-area="" asp-page="/Account">Account</a>
+                                </li>
+                                <li><hr class="dropdown-divider" /></li>
+                                <li>
+                                    <h6 class="dropdown-header">Theme</h6>
+                                </li>
+                                <li>
+                                    <form method="post" asp-page="/Account" asp-page-handler="ChangeTheme">
+                                        <input type="hidden" name="returnUrl" value="@currentUrl" />
+                                        <button type="submit"
+                                                name="theme"
+                                                value="Dark"
+                                                class="dropdown-item d-flex justify-content-between gap-3 @(currentTheme == PortalUserTheme.Dark ? "active" : "")"
+                                                aria-current="@(currentTheme == PortalUserTheme.Dark ? "true" : null)">
+                                            <span>Dark</span>
+                                            @if (currentTheme == PortalUserTheme.Dark)
+                                            {
+                                                <span class="small">Current</span>
+                                            }
+                                        </button>
+                                        <button type="submit"
+                                                name="theme"
+                                                value="Light"
+                                                class="dropdown-item d-flex justify-content-between gap-3 @(currentTheme == PortalUserTheme.Light ? "active" : "")"
+                                                aria-current="@(currentTheme == PortalUserTheme.Light ? "true" : null)">
+                                            <span>Light</span>
+                                            @if (currentTheme == PortalUserTheme.Light)
+                                            {
+                                                <span class="small">Current</span>
+                                            }
+                                        </button>
+                                    </form>
                                 </li>
                                 <li><hr class="dropdown-divider" /></li>
                                 <li>

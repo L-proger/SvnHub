@@ -301,6 +301,48 @@ public sealed class UserService
         return OperationResult<PortalUser>.Ok(updated);
     }
 
+    public OperationResult<PortalUser> ChangeOwnTheme(Guid userId, PortalUserTheme theme)
+    {
+        if (!Enum.IsDefined(theme))
+        {
+            return OperationResult<PortalUser>.Fail("Invalid theme.");
+        }
+
+        var state = _store.Read();
+        var user = GetActiveUser(state, userId);
+        if (user is null)
+        {
+            return OperationResult<PortalUser>.Fail("User not found.");
+        }
+
+        if (user.Theme == theme)
+        {
+            return OperationResult<PortalUser>.Ok(user);
+        }
+
+        var updated = user with { Theme = theme };
+        var newState = state with
+        {
+            Users = state.Users.Select(u => u.Id == userId ? updated : u).ToList(),
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: userId,
+                    Action: "user.change_theme",
+                    Target: user.UserName,
+                    Success: true,
+                    Details: theme.ToString()
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+        return OperationResult<PortalUser>.Ok(updated);
+    }
+
     public async Task<OperationResult> DeleteUserAsync(
         Guid actorUserId,
         Guid userId,

@@ -1,4 +1,5 @@
 @page "/account"
+@using SvnHub.Domain
 @model SvnHub.Web.Pages.AccountModel
 @{
     ViewData["Title"] = "Account";
@@ -59,6 +60,10 @@
             <td>@Model.RolesLabel</td>
         </tr>
         <tr>
+            <th scope="row">Theme</th>
+            <td>@Model.ThemeLabel</td>
+        </tr>
+        <tr>
             <th scope="row">Created</th>
             <td>@Model.CurrentUser.CreatedAt.ToString("u")</td>
         </tr>
@@ -78,6 +83,25 @@
         </tbody>
     </table>
 </div>
+
+<hr class="mt-4" />
+
+<h2>Appearance</h2>
+<form method="post" asp-page-handler="ChangeTheme" class="mt-3" autocomplete="off">
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <label class="form-label" for="theme">Theme</label>
+            <select id="theme" name="theme" class="form-select">
+                <option value="Dark" selected="@(Model.CurrentUser.Theme == PortalUserTheme.Dark ? "selected" : null)">Dark</option>
+                <option value="Light" selected="@(Model.CurrentUser.Theme == PortalUserTheme.Light ? "selected" : null)">Light</option>
+            </select>
+        </div>
+        <div class="col-md-7 mb-3"></div>
+        <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end">
+            <button class="btn btn-primary w-100" type="submit">Update</button>
+        </div>
+    </div>
+</form>
 
 <hr class="mt-4" />
 

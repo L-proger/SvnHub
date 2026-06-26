@@ -128,6 +128,7 @@ builder.Services.AddSingleton<GroupService>();
 builder.Services.AddSingleton<PermissionService>();
 builder.Services.AddSingleton<AccessService>();
 builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<UserThemeAccessor>();
 builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
 builder.Services.AddSingleton<MaterialFileIconService>();
@@ -236,7 +237,7 @@ app.Use(async (context, next) =>
                   <link rel="stylesheet" href="{{prefix}}/css/code.css" />
                 </head>
                 <body>
-                  <nav class="navbar navbar-expand-sm navbar-dark bg-body-tertiary border-bottom mb-3">
+                  <nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom mb-3">
                     <div class="container">
                       <a class="navbar-brand" href="{{prefix}}/Repos/Index">SvnHub</a>
                     </div>

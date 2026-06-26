@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
 using SvnHub.Domain;
+using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages;
 
@@ -23,6 +24,8 @@ public sealed class AccountModel : PageModel
     public PortalUser? CurrentUser { get; private set; }
 
     public string RolesLabel { get; private set; } = "";
+
+    public string ThemeLabel { get; private set; } = "";
 
     public IReadOnlyList<ApiToken> Tokens { get; private set; } = [];
 
@@ -123,6 +126,43 @@ public sealed class AccountModel : PageModel
         return RedirectToPage();
     }
 
+    public IActionResult OnPostChangeTheme(string theme, string? returnUrl)
+    {
+        if (!LoadAccount(out var userId))
+        {
+            return Forbid();
+        }
+
+        var showMessage = string.IsNullOrWhiteSpace(returnUrl);
+        if (!UserThemeAccessor.TryParse(theme, out var parsedTheme))
+        {
+            if (showMessage)
+            {
+                Error = "Invalid theme.";
+            }
+
+            return RedirectToLocal(returnUrl);
+        }
+
+        var result = _users.ChangeOwnTheme(userId, parsedTheme);
+        if (!result.Success)
+        {
+            if (showMessage)
+            {
+                Error = result.Error ?? "Failed to change theme.";
+            }
+
+            return RedirectToLocal(returnUrl);
+        }
+
+        if (showMessage)
+        {
+            Success = $"Theme changed to {UserThemeAccessor.ToLabel(parsedTheme)}.";
+        }
+
+        return RedirectToLocal(returnUrl);
+    }
+
     public IActionResult OnPostRevokeToken(Guid tokenId)
     {
         if (!LoadAccount(out var userId))
@@ -173,8 +213,19 @@ public sealed class AccountModel : PageModel
 
         CurrentUser = user;
         RolesLabel = ToRolesLabel(user.Roles);
+        ThemeLabel = UserThemeAccessor.ToLabel(user.Theme);
         Tokens = _tokens.ListForUser(userId);
         return true;
+    }
+
+    private IActionResult RedirectToLocal(string? returnUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+        {
+            return LocalRedirect(returnUrl);
+        }
+
+        return RedirectToPage();
     }
 
     private static int ParseExpiresInDays(string? value)
