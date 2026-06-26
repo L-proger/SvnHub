@@ -192,6 +192,10 @@
   margin-left: 0.5rem;
 }
 
+.repo-list .sp-row-actions {
+  align-self: center;
+}
+
 .list-group-item:hover .sp-row-actions {
   opacity: 1;
 }
