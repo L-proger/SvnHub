@@ -145,19 +145,12 @@ else
                     <div class="gerber-preview-status alert alert-secondary mb-3" data-gerber-status>
                         Loading board preview...
                     </div>
-                    <div class="gerber-preview-stage" data-gerber-stage hidden>
-                        <div class="gerber-preview-board" data-gerber-board="top"></div>
-                        <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
-                    </div>
-                    <div class="gerber-preview-layers mt-3">
-                        @foreach (var file in Model.GerberPreviewFiles)
-                        {
-                            <div class="gerber-preview-layer">
-                                <span class="text-truncate">@file.Name</span>
-                                <span class="text-muted">@file.Kind</span>
-                                <span class="text-muted">@file.SizeLabel</span>
-                            </div>
-                        }
+                    <div class="gerber-preview-layout" data-gerber-layout hidden>
+                        <div class="gerber-layer-panel" data-gerber-layer-panel aria-label="PCB layers"></div>
+                        <div class="gerber-preview-stage" data-gerber-stage>
+                            <div class="gerber-preview-board" data-gerber-board="top"></div>
+                            <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
+                        </div>
                     </div>
                 </div>
                 <script type="application/json" id="gerber-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(gerberPreviewFiles))</script>
