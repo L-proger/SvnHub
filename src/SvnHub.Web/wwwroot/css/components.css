@@ -60,7 +60,7 @@
 
 .gerber-preview-layout {
   display: grid;
-  grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
+  grid-template-columns: minmax(9.5rem, 12rem) minmax(0, 1fr);
   align-items: start;
   gap: 1rem;
 }
@@ -99,7 +99,7 @@
 
 .gerber-layer-toggle {
   display: grid;
-  grid-template-columns: minmax(4.75rem, auto) minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
   min-height: 2.15rem;
@@ -122,18 +122,19 @@
   opacity: 0.55;
 }
 
+.gerber-layer-toggle.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.gerber-layer-toggle.disabled:hover {
+  border-color: var(--bs-border-color);
+  background: var(--sp-surface);
+}
+
 .gerber-layer-name {
   font-weight: 600;
-}
-
-.gerber-layer-file {
-  color: var(--bs-secondary-color);
-}
-
-.gerber-layer-meta {
-  color: var(--bs-tertiary-color);
-  font-size: 0.75rem;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .gerber-layer-eye {
@@ -157,7 +158,14 @@
   border: 1px solid var(--bs-border-color);
   border-radius: 6px;
   background: var(--sp-surface-2);
-  overflow: auto;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.gerber-preview-stage.is-panning {
+  cursor: grabbing;
 }
 
 .gerber-preview-board {
@@ -170,6 +178,7 @@
   width: 100%;
   max-height: 74vh;
   margin: 0 auto;
+  pointer-events: none;
 }
 
 .gerber-composite-substrate {
@@ -179,23 +188,12 @@
 
 .gerber-composite-layer {
   color: var(--gerber-layer-color);
+  fill: var(--gerber-layer-color);
+  stroke: var(--gerber-layer-color);
 }
 
-.gerber-composite-layer :is(path, circle, ellipse, rect, polygon, polyline) {
-  fill: currentColor !important;
-  stroke: currentColor !important;
-}
-
-.gerber-composite-layer [fill="none"] {
-  fill: none !important;
-}
-
-.gerber-composite-layer [stroke="none"] {
-  stroke: none !important;
-}
-
-.gerber-preview-xray .gerber-composite-layer {
-  opacity: var(--gerber-xray-opacity, 0.45);
+.gerber-preview-layers .gerber-layer-render {
+  opacity: var(--gerber-layer-opacity, 0.45);
 }
 
 @media (max-width: 991.98px) {

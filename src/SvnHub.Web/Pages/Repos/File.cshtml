@@ -148,13 +148,8 @@ else
                                        value="50"
                                        data-gerber-opacity />
                             </div>
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-secondary"
-                                    data-gerber-xray
-                                    aria-pressed="false">
-                                X-ray
-                            </button>
                             <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                                <button type="button" class="btn btn-outline-secondary" data-gerber-side="layers">Layers</button>
                                 <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
                                 <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
                             </div>
@@ -166,6 +161,7 @@ else
                     <div class="gerber-preview-layout" data-gerber-layout hidden>
                         <div class="gerber-layer-panel" data-gerber-layer-panel aria-label="PCB layers"></div>
                         <div class="gerber-preview-stage" data-gerber-stage>
+                            <div class="gerber-preview-board" data-gerber-board="layers" hidden></div>
                             <div class="gerber-preview-board" data-gerber-board="top"></div>
                             <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
                         </div>
@@ -240,12 +236,7 @@ else
     @* copy handlers live in wwwroot/js/site.js *@
     @if (Model.IsGerberPreview)
     {
-        <script src="~/lib/tracespace/xml-id.js" asp-append-version="true"></script>
-        <script src="~/lib/tracespace/parser.min.js" asp-append-version="true"></script>
-        <script src="~/lib/tracespace/plotter.umd.js" asp-append-version="true"></script>
-        <script src="~/lib/tracespace/identify-layers.umd.js" asp-append-version="true"></script>
-        <script src="~/lib/tracespace/renderer.umd.js" asp-append-version="true"></script>
-        <script src="~/lib/tracespace/core.umd.js" asp-append-version="true"></script>
+        <script src="~/lib/tracespace/pcb-stackup.min.js" asp-append-version="true"></script>
         <script src="~/js/gerber-preview.js" asp-append-version="true"></script>
     }
     @if (Model.IsModelPreview)

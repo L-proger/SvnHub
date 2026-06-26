@@ -8,16 +8,18 @@
     const layerPanel = root.querySelector('[data-gerber-layer-panel]');
     const boards = new Map(Array.from(root.querySelectorAll('[data-gerber-board]')).map((el) => [el.dataset.gerberBoard, el]));
     const sideButtons = Array.from(root.querySelectorAll('[data-gerber-side]'));
-    const xrayButton = root.querySelector('[data-gerber-xray]');
     const opacityInput = root.querySelector('[data-gerber-opacity]');
     const opacityControl = root.querySelector('[data-gerber-opacity-control]');
     const filesJson = document.getElementById('gerber-preview-files');
     const visibleLayerIds = new Set();
-    let tracespaceCore = null;
-    let renderedLayers = null;
-    let renderedFragments = null;
+    let stackup = null;
     let fileEntriesByName = new Map();
-    let xrayEnabled = false;
+    let currentView = 'top';
+    let viewport = { panX: 0, panY: 0, zoom: 1 };
+    let panStart = null;
+
+    const minZoom = 0.25;
+    const maxZoom = 8;
 
     const layerGroups = [
         { key: 'top', label: 'Top' },
@@ -45,7 +47,84 @@
         status.hidden = !text;
     }
 
+    function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function getVisibleBoardEntry() {
+        return Array.from(boards.entries()).find(([, board]) => !board.hidden) || Array.from(boards.entries())[0] || null;
+    }
+
+    function getBoardBaseViewBox(side) {
+        if (side === 'layers') return getStackupViewBox();
+        if (side === 'bottom') return stackup?.bottom?.viewBox || getStackupViewBox();
+        return stackup?.top?.viewBox || getStackupViewBox();
+    }
+
+    function getDisplayViewBox(baseViewBox) {
+        const [baseX, baseY, baseWidth, baseHeight] = baseViewBox;
+        const width = baseWidth / viewport.zoom;
+        const height = baseHeight / viewport.zoom;
+        const x = baseX + ((baseWidth - width) / 2) + (viewport.panX * baseWidth);
+        const y = baseY + ((baseHeight - height) / 2) + (viewport.panY * baseHeight);
+        return [x, y, width, height];
+    }
+
+    function applyViewportViewBox() {
+        for (const [side, board] of boards) {
+            const svg = board.querySelector('svg');
+            if (!svg) continue;
+
+            const viewBox = getDisplayViewBox(getBoardBaseViewBox(side));
+            svg.setAttribute('viewBox', viewBox.join(' '));
+        }
+    }
+
+    function resetViewport() {
+        viewport = { panX: 0, panY: 0, zoom: 1 };
+        applyViewportViewBox();
+    }
+
+    function zoomAt(clientX, clientY, delta) {
+        if (!stage) return;
+
+        const visible = getVisibleBoardEntry();
+        if (!visible) return;
+
+        const [side, board] = visible;
+        const svg = board.querySelector('svg');
+        if (!svg) return;
+
+        const rect = svg.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const baseViewBox = getBoardBaseViewBox(side);
+        const oldViewBox = getDisplayViewBox(baseViewBox);
+        const oldZoom = viewport.zoom;
+        const nextZoom = clamp(oldZoom * Math.exp(delta), minZoom, maxZoom);
+        if (nextZoom === oldZoom) return;
+
+        const [, , baseWidth, baseHeight] = baseViewBox;
+        const [oldX, oldY, oldWidth, oldHeight] = oldViewBox;
+        const pointerX = clamp((clientX - rect.left) / rect.width, 0, 1);
+        const pointerY = clamp((clientY - rect.top) / rect.height, 0, 1);
+        const targetX = oldX + (pointerX * oldWidth);
+        const targetY = oldY + (pointerY * oldHeight);
+        const nextWidth = baseWidth / nextZoom;
+        const nextHeight = baseHeight / nextZoom;
+        const nextX = targetX - (pointerX * nextWidth);
+        const nextY = targetY - (pointerY * nextHeight);
+
+        viewport = {
+            panX: (nextX - baseViewBox[0] - ((baseWidth - nextWidth) / 2)) / baseWidth,
+            panY: (nextY - baseViewBox[1] - ((baseHeight - nextHeight) / 2)) / baseHeight,
+            zoom: nextZoom,
+        };
+        applyViewportViewBox();
+    }
+
     function showSide(side) {
+        currentView = side;
         for (const [name, board] of boards) {
             board.hidden = name !== side;
         }
@@ -55,24 +134,23 @@
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         }
+
+        updateViewState(true);
     }
 
-    function updateXrayState(rerender) {
-        const opacity = Math.max(20, Math.min(100, Number(opacityInput?.value || 45))) / 100;
-        root.style.setProperty('--gerber-xray-opacity', opacity.toString());
-        root.classList.toggle('gerber-preview-xray', xrayEnabled);
-
-        if (xrayButton) {
-            xrayButton.classList.toggle('active', xrayEnabled);
-            xrayButton.setAttribute('aria-pressed', xrayEnabled ? 'true' : 'false');
-        }
+    function updateViewState(rerender) {
+        const opacity = Math.max(5, Math.min(100, Number(opacityInput?.value || 50))) / 100;
+        root.style.setProperty('--gerber-layer-opacity', opacity.toString());
+        root.classList.toggle('gerber-preview-layers', currentView === 'layers');
 
         if (opacityControl) {
-            opacityControl.hidden = !xrayEnabled;
+            opacityControl.hidden = currentView !== 'layers';
         }
 
+        syncLayerControlState();
+
         if (rerender) {
-            renderLayerBoard();
+            renderBoard();
         }
     }
 
@@ -88,6 +166,10 @@
             case 'drawing': return 'Drawing';
             default: return layer.type || 'Layer';
         }
+    }
+
+    function getLayerId(layer) {
+        return layer.converter?.id || layer.options?.id || layer.filename || '';
     }
 
     function getLayerGroup(layer) {
@@ -135,52 +217,129 @@
 
         if (type === 'outline') return 90;
         if (type === 'drill') return 80;
-        if (type === 'silkscreen') return 70;
-        if (type === 'solderpaste') return 60;
+        if (type === 'solderpaste') return 70;
+        if (type === 'silkscreen') return 60;
         if (type === 'soldermask') return 50;
-        if (side === 'top') return 40;
-        if (side === 'inner') return 30;
-        if (side === 'bottom') return 20;
+        if (type === 'copper' && side === 'top') return 40;
+        if (type === 'copper' && side === 'inner') return 30;
+        if (type === 'copper' && side === 'bottom') return 20;
         return 10;
     }
 
-    function renderLayerBoard() {
-        if (!renderedFragments) return;
+    function addViewBoxes(first, second) {
+        if (!first) return second;
+        if (!second) return first;
 
-        const viewBox = renderedFragments.boardShapeRenderFragment?.viewBox || [0, 0, 100, 100];
-        const [x, y, width, height] = viewBox;
-        const viewBoxText = viewBox.join(' ');
-        const shape = renderedFragments.boardShapeRenderFragment?.svgFragment || '';
-        const layers = renderedFragments.layers
-            .filter((layer) => visibleLayerIds.has(layer.id))
+        const x = Math.min(first[0], second[0]);
+        const y = Math.min(first[1], second[1]);
+        const right = Math.max(first[0] + first[2], second[0] + second[2]);
+        const bottom = Math.max(first[1] + first[3], second[1] + second[3]);
+        return [x, y, right - x, bottom - y];
+    }
+
+    function getStackupViewBox() {
+        return addViewBoxes(stackup?.top?.viewBox, stackup?.bottom?.viewBox) || [0, 0, 100, 100];
+    }
+
+    function getStackupUnits() {
+        const count = { in: 0, mm: 0 };
+        for (const layer of stackup?.layers || []) {
+            const units = layer.converter?.units;
+            if (units === 'in' || units === 'mm') {
+                count[units] += 1;
+            }
+        }
+
+        return count.in > count.mm ? 'in' : 'mm';
+    }
+
+    function getLayerScale(layer) {
+        const units = layer.converter?.units;
+        const stackupUnits = getStackupUnits();
+        if (units === 'mm' && stackupUnits === 'in') return 1 / 25.4;
+        if (units === 'in' && stackupUnits === 'mm') return 25.4;
+        return 1;
+    }
+
+    function getVisibleLayers() {
+        return (stackup?.layers || [])
+            .filter((layer) => visibleLayerIds.has(getLayerId(layer)))
+            .filter((layer) => (layer.converter?.layer || []).length > 0)
             .slice()
             .sort((a, b) => getLayerSortWeight(a) - getLayerSortWeight(b));
+    }
 
-        for (const [side, board] of boards) {
-            const clipId = `gerber-xray-clip-${side}`;
-            const transform = side === 'bottom'
-                ? ` transform="translate(${(2 * x) + width},0) scale(-1,1)"`
-                : '';
-            const clip = shape ? ` clip-path="url(#${clipId})"` : '';
-            const layerMarkup = layers.map((layer) => {
-                const fragment = renderedFragments.svgFragmentsById[layer.id];
-                if (!fragment) return '';
+    function renderLayerFragments(layers) {
+        return layers.map((layer) => {
+            const converter = layer.converter;
+            if (!converter) return '';
 
-                const color = escapeAttribute(getLayerColor(layer));
-                const label = escapeAttribute(`${getLayerLabel(layer)} ${layer.filename || ''}`.trim());
-                return `<g class="gerber-composite-layer" style="--gerber-layer-color:${color}" color="${color}" aria-label="${label}">${fragment}</g>`;
-            }).join('');
-            const defs = shape ? `<defs><clipPath id="${clipId}">${shape}</clipPath></defs>` : '';
+            const id = escapeAttribute(getLayerId(layer));
+            const color = escapeAttribute(getLayerColor(layer));
+            const label = escapeAttribute(`${getLayerLabel(layer)} ${layer.filename || ''}`.trim());
+            const defs = (converter.defs || []).join('');
+            const content = (converter.layer || []).join('');
+            const scale = getLayerScale(layer);
+            const scaleAttribute = scale === 1 ? '' : ` transform="scale(${scale})"`;
 
-            board.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeAttribute(viewBoxText)}" role="img" aria-label="PCB ${escapeAttribute(side)} layer view">
-                    ${defs}
-                    <g${transform}${clip}>
-                        <rect class="gerber-composite-substrate" x="${x}" y="${y}" width="${width}" height="${height}"></rect>
-                        ${layerMarkup}
-                    </g>
-                </svg>`;
+            return `
+                <g id="${id}" class="gerber-composite-layer gerber-layer-render" style="--gerber-layer-color:${color}" fill="${color}" stroke="${color}" aria-label="${label}">
+                    <defs>${defs}</defs>
+                    <g${scaleAttribute}>${content}</g>
+                </g>`;
+        }).join('');
+    }
+
+    function renderBoard() {
+        if (!stackup) return;
+
+        if (currentView === 'layers') {
+            clearBoard('top');
+            clearBoard('bottom');
+            renderInspectionBoard();
+            return;
         }
+
+        clearBoard('layers');
+        clearBoard(currentView === 'top' ? 'bottom' : 'top');
+
+        const board = boards.get(currentView);
+        if (board) {
+            board.innerHTML = currentView === 'bottom'
+                ? stackup.bottom?.svg || ''
+                : stackup.top?.svg || '';
+        }
+
+        applyViewportViewBox();
+    }
+
+    function clearBoard(side) {
+        const board = boards.get(side);
+        if (board) {
+            board.replaceChildren();
+        }
+    }
+
+    function renderInspectionBoard() {
+        const board = boards.get('layers');
+        if (!board) return;
+
+        const [x, y, width, height] = getStackupViewBox();
+        const viewBoxText = [x, y, width, height].join(' ');
+        const layers = getVisibleLayers();
+        const layerMarkup = renderLayerFragments(layers);
+        const yFlip = height + (2 * y);
+        const transform = `translate(0,${yFlip}) scale(1,-1)`;
+
+        board.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round" stroke-width="0" fill-rule="evenodd" viewBox="${escapeAttribute(viewBoxText)}" role="img" aria-label="PCB layers view">
+                <rect class="gerber-composite-substrate" x="${x}" y="${y}" width="${width}" height="${height}"></rect>
+                <g transform="${transform}">
+                    ${layerMarkup}
+                </g>
+            </svg>`;
+
+        applyViewportViewBox();
     }
 
     function updateLayerButton(button, isVisible) {
@@ -189,13 +348,28 @@
         button.title = isVisible ? 'Hide layer' : 'Show layer';
     }
 
+    function syncLayerControlState() {
+        if (!layerPanel) return;
+
+        const enabled = currentView === 'layers';
+        for (const button of layerPanel.querySelectorAll('.gerber-layer-toggle')) {
+            button.classList.toggle('disabled', !enabled);
+            button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+            const action = button.classList.contains('active') ? 'Hide layer' : 'Show layer';
+            button.setAttribute('aria-label', enabled ? action : 'Switch to Layers to change layer visibility');
+        }
+    }
+
     function buildLayerPanel(layers) {
         if (!layerPanel) return;
 
         layerPanel.replaceChildren();
 
         for (const group of layerGroups) {
-            const groupLayers = layers.filter((layer) => getLayerGroup(layer) === group.key);
+            const groupLayers = layers
+                .filter((layer) => getLayerGroup(layer) === group.key)
+                .slice()
+                .sort((a, b) => getLayerSortWeight(a) - getLayerSortWeight(b));
             if (groupLayers.length === 0) continue;
 
             const section = document.createElement('div');
@@ -207,41 +381,43 @@
             section.appendChild(heading);
 
             for (const layer of groupLayers) {
+                const id = getLayerId(layer);
                 const entry = fileEntriesByName.get((layer.filename || '').toLowerCase());
+                const tooltip = [entry?.name || layer.filename, entry?.sizeLabel]
+                    .filter((value) => value && String(value).trim().length > 0)
+                    .join(' - ');
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'gerber-layer-toggle active';
-                button.dataset.layerId = layer.id;
+                button.dataset.layerId = id;
                 button.style.setProperty('--gerber-layer-color', getLayerColor(layer));
                 button.setAttribute('aria-pressed', 'true');
+                button.setAttribute('aria-disabled', currentView === 'layers' ? 'false' : 'true');
+                button.classList.toggle('disabled', currentView !== 'layers');
+                button.title = tooltip || getLayerLabel(layer);
+                button.setAttribute('aria-label', 'Hide layer');
 
                 const label = document.createElement('span');
-                label.className = 'gerber-layer-name';
+                label.className = 'gerber-layer-name text-truncate';
                 label.textContent = getLayerLabel(layer);
-
-                const fileName = document.createElement('span');
-                fileName.className = 'gerber-layer-file text-truncate';
-                fileName.textContent = layer.filename || entry?.name || '';
-
-                const meta = document.createElement('span');
-                meta.className = 'gerber-layer-meta';
-                meta.textContent = entry?.sizeLabel || '';
 
                 const icon = document.createElement('span');
                 icon.className = 'gerber-layer-eye';
                 icon.innerHTML = createEyeIcon();
 
-                button.append(label, fileName, meta, icon);
+                button.append(label, icon);
                 button.addEventListener('click', () => {
-                    const isVisible = visibleLayerIds.has(layer.id);
+                    if (currentView !== 'layers') return;
+
+                    const isVisible = visibleLayerIds.has(id);
                     if (isVisible) {
-                        visibleLayerIds.delete(layer.id);
+                        visibleLayerIds.delete(id);
                     } else {
-                        visibleLayerIds.add(layer.id);
+                        visibleLayerIds.add(id);
                     }
 
                     updateLayerButton(button, !isVisible);
-                    renderLayerBoard();
+                    renderBoard();
                 });
 
                 section.appendChild(button);
@@ -249,6 +425,8 @@
 
             layerPanel.appendChild(section);
         }
+
+        syncLayerControlState();
     }
 
     async function fetchFile(file, index, total) {
@@ -258,12 +436,14 @@
             throw new Error(`${file.name}: HTTP ${response.status}`);
         }
 
-        const text = await response.text();
-        return new File([text], file.name, { type: 'text/plain' });
+        return {
+            filename: file.name,
+            gerber: await response.text(),
+        };
     }
 
     async function render() {
-        if (!window.TracespaceCore) {
+        if (!window.pcbStackup) {
             throw new Error('Tracespace renderer did not load.');
         }
 
@@ -273,30 +453,26 @@
         }
         fileEntriesByName = new Map(entries.map((entry) => [(entry.name || '').toLowerCase(), entry]));
 
-        const files = [];
+        const layers = [];
         for (let i = 0; i < entries.length; i += 1) {
-            files.push(await fetchFile(entries[i], i, entries.length));
+            layers.push(await fetchFile(entries[i], i, entries.length));
         }
 
         setStatus('Rendering board...', 'alert-secondary');
 
-        tracespaceCore = window.TracespaceCore;
-        const readResult = await tracespaceCore.read(files);
-        const plotResult = tracespaceCore.plot(readResult);
-        renderedLayers = tracespaceCore.renderLayers(plotResult);
-        renderedFragments = tracespaceCore.renderFragments(plotResult);
+        stackup = await window.pcbStackup(layers, {
+            attributes: { class: 'w-100 h-100' },
+        });
 
         visibleLayerIds.clear();
-        for (const layer of renderedLayers.layers) {
-            visibleLayerIds.add(layer.id);
+        for (const layer of stackup.layers || []) {
+            visibleLayerIds.add(getLayerId(layer));
         }
-
-        buildLayerPanel(renderedLayers.layers);
-        renderLayerBoard();
 
         if (layout) layout.hidden = false;
         if (stage) stage.hidden = false;
         setStatus('', 'alert-success');
+        buildLayerPanel(stackup.layers || []);
         showSide('top');
     }
 
@@ -304,13 +480,55 @@
         button.addEventListener('click', () => showSide(button.dataset.gerberSide));
     }
 
-    xrayButton?.addEventListener('click', () => {
-        xrayEnabled = !xrayEnabled;
-        updateXrayState(true);
+    stage?.addEventListener('wheel', (event) => {
+        if (!stackup) return;
+        event.preventDefault();
+        zoomAt(event.clientX, event.clientY, -event.deltaY * 0.0015);
+    }, { passive: false });
+
+    stage?.addEventListener('pointerdown', (event) => {
+        if (!stackup || event.button !== 0) return;
+        panStart = {
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            panX: viewport.panX,
+            panY: viewport.panY,
+        };
+        stage.setPointerCapture(event.pointerId);
+        stage.classList.add('is-panning');
     });
 
-    opacityInput?.addEventListener('input', () => updateXrayState(false));
-    updateXrayState();
+    stage?.addEventListener('pointermove', (event) => {
+        if (!panStart || panStart.pointerId !== event.pointerId) return;
+
+        const visible = getVisibleBoardEntry();
+        const svg = visible?.[1].querySelector('svg');
+        if (!svg) return;
+
+        const rect = svg.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        viewport = {
+            ...viewport,
+            panX: panStart.panX - ((event.clientX - panStart.clientX) / rect.width / viewport.zoom),
+            panY: panStart.panY - ((event.clientY - panStart.clientY) / rect.height / viewport.zoom),
+        };
+        applyViewportViewBox();
+    });
+
+    function stopPan(event) {
+        if (!panStart || panStart.pointerId !== event.pointerId) return;
+        panStart = null;
+        stage?.classList.remove('is-panning');
+    }
+
+    stage?.addEventListener('pointerup', stopPan);
+    stage?.addEventListener('pointercancel', stopPan);
+    stage?.addEventListener('dblclick', resetViewport);
+
+    opacityInput?.addEventListener('input', () => updateViewState(false));
+    updateViewState(false);
 
     render().catch((err) => {
         if (layout) layout.hidden = true;
