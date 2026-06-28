@@ -76,7 +76,7 @@ builder.Services
         };
         o.Events.OnRedirectToLogin = context =>
         {
-            if (context.Request.Path.StartsWithSegments("/mcp"))
+            if (IsApiRequest(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return Task.CompletedTask;
@@ -87,7 +87,7 @@ builder.Services
         };
         o.Events.OnRedirectToAccessDenied = context =>
         {
-            if (context.Request.Path.StartsWithSegments("/mcp"))
+            if (IsApiRequest(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
@@ -278,9 +278,9 @@ app.UseAuthentication();
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/mcp")
+    if (IsApiRequest(context.Request.Path)
         && !(context.User.Identity?.IsAuthenticated ?? false)
-        && TryAuthenticateMcpApiToken(context, out var principal))
+        && TryAuthenticateApiToken(context, out var principal))
     {
         context.User = principal;
     }
@@ -310,6 +310,22 @@ app.Use(async (context, next) =>
 
 app.MapStaticAssets();
 app.MapMcp("/mcp").RequireAuthorization();
+app.MapGet("/api/repositories", (RepositoryService repositories, AccessService access, HttpContext context) =>
+{
+    var userId = AccessService.GetUserIdFromClaimsPrincipal(context.User);
+    if (userId is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var names = repositories.List()
+        .Where(r => access.GetAccess(userId.Value, r.Id, "/") >= AccessLevel.Read)
+        .Select(r => r.Name)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    return Results.Ok(names);
+}).RequireAuthorization();
 app.MapRazorPages().WithStaticAssets();
 
 IResult GetFavicon(BrandingService branding, IWebHostEnvironment environment, HttpContext context)
@@ -341,7 +357,13 @@ app.MapGet("/health", () => Results.Ok("ok"));
 
 app.Run();
 
-static bool TryAuthenticateMcpApiToken(HttpContext context, out ClaimsPrincipal principal)
+static bool IsApiRequest(PathString path)
+{
+    return path.StartsWithSegments("/mcp")
+        || path.StartsWithSegments("/api");
+}
+
+static bool TryAuthenticateApiToken(HttpContext context, out ClaimsPrincipal principal)
 {
     principal = new ClaimsPrincipal(new ClaimsIdentity());
 
