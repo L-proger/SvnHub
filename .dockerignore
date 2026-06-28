@@ -6,8 +6,5 @@
 **/bin
 **/obj
 data
-deploy/*
-!deploy/docker/
-!deploy/docker/**
 *.user
 *.suo
