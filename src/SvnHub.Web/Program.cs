@@ -107,7 +107,7 @@ builder.Services
         {
             Name = "SvnHub",
             Title = "SvnHub",
-            Version = "1.0.0",
+            Version = SvnHubVersion.ProductVersion,
             Description = "Read-only access to repositories visible to the authenticated SvnHub user.",
         };
         o.ServerInstructions =

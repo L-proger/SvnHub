@@ -16,10 +16,46 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NuGetAudit>false</NuGetAudit>
     <NoWarn>$(NoWarn);NU1510;NU1603;NU1902</NoWarn>
   </PropertyGroup>
+
+  <Target Name="ResolveSvnHubBuildVersion" BeforeTargets="GetAssemblyVersion">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)/../..&quot; describe --tags --dirty --always"
+          ConsoleToMsBuild="true"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SvnHubGitDescribe" />
+    </Exec>
+
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)/../..&quot; rev-parse HEAD"
+          ConsoleToMsBuild="true"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SvnHubGitCommit" />
+    </Exec>
+
+    <PropertyGroup>
+      <SvnHubGitDescribe Condition="'$(SvnHubGitDescribe)' == ''">unknown</SvnHubGitDescribe>
+      <SvnHubGitCommit Condition="'$(SvnHubGitCommit)' == ''">unknown</SvnHubGitCommit>
+      <InformationalVersion>$(SvnHubGitDescribe)</InformationalVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>SvnHubGitDescribe</_Parameter1>
+        <_Parameter2>$(SvnHubGitDescribe)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>SvnHubGitCommit</_Parameter1>
+        <_Parameter2>$(SvnHubGitCommit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 
 </Project>

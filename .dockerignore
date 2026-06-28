@@ -1,4 +1,6 @@
 **/.git
+!.git
+!.git/**
 **/.vs
 **/.vscode
 **/bin
