@@ -353,6 +353,120 @@
   width: 1%;
 }
 
+.label-editor-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: calc(1.5em + 0.75rem + 2px);
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--sp-surface);
+  color: var(--bs-body-color);
+}
+
+.label-editor-control:focus-within {
+  border-color: var(--sp-focus-border);
+  box-shadow: 0 0 0 0.15rem var(--sp-focus-shadow);
+}
+
+.label-editor {
+  position: relative;
+}
+
+.label-editor-tokens {
+  display: contents;
+}
+
+.label-editor-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.2rem 0.35rem 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bs-secondary-bg);
+  color: var(--bs-emphasis-color);
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.label-editor-token-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label-editor-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  line-height: 1;
+}
+
+.label-editor-remove:hover,
+.label-editor-remove:focus {
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-emphasis-color);
+}
+
+.label-editor-input {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--bs-body-color);
+}
+
+.label-editor-input::placeholder {
+  color: var(--bs-secondary-color);
+}
+
+.label-editor-error {
+  min-height: 1.25rem;
+  color: var(--bs-danger);
+}
+
+.label-editor-suggestions {
+  position: absolute;
+  z-index: 1080;
+  top: calc(100% - 1.15rem);
+  left: 0;
+  right: 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.25rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--sp-surface);
+  box-shadow: var(--bs-box-shadow-sm);
+}
+
+.label-editor-suggestion {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.55rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.label-editor-suggestion:hover,
+.label-editor-suggestion.active {
+  background: var(--sp-row-hover);
+  color: var(--bs-emphasis-color);
+}
+
 .footer {
   border-top-color: var(--bs-border-color) !important;
 }

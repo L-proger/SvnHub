@@ -1,0 +1,21 @@
+@model SvnHub.Web.Support.RepositoryContextSidebarModel
+
+@if (Model.HasContent)
+{
+    <aside class="repo-context-sidebar">
+        @if (Model.Labels.Count > 0)
+        {
+            <section class="repo-context-section">
+                <div class="repo-context-title">Repository labels</div>
+                <div class="repo-labels d-flex flex-wrap gap-1">
+                    @foreach (var label in Model.Labels)
+                    {
+                        <a class="badge rounded-pill text-bg-secondary text-decoration-none"
+                           asp-page="/Repos/Index"
+                           asp-route-label="@label">@label</a>
+                    }
+                </div>
+            </section>
+        }
+    </aside>
+}

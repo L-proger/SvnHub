@@ -38,6 +38,37 @@
 
 <hr class="mt-4" />
 
+<h2>Labels</h2>
+<form method="post" asp-page-handler="Labels" class="mt-2" autocomplete="off">
+    <div class="mb-2">
+        <label asp-for="LabelsInput.Labels" class="form-label"></label>
+        <div class="d-flex gap-2 align-items-start">
+            <div class="label-editor flex-grow-1"
+                 data-label-editor
+                 data-label-editor-suggestions="@System.Text.Json.JsonSerializer.Serialize(Model.LabelSuggestions)">
+                <input asp-for="LabelsInput.Labels" type="hidden" data-label-editor-value />
+                <div class="label-editor-control" data-label-editor-control>
+                    <div class="label-editor-tokens" data-label-editor-tokens></div>
+                    <input class="label-editor-input"
+                           type="text"
+                           data-label-editor-input
+                           placeholder="Add label"
+                           role="combobox"
+                           aria-expanded="false"
+                           aria-label="Add label" />
+                </div>
+                <div class="label-editor-suggestions" data-label-editor-suggestions-list hidden></div>
+                <div class="form-text label-editor-error" data-label-editor-error></div>
+            </div>
+            <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+        <span asp-validation-for="LabelsInput.Labels" class="text-danger"></span>
+        <div class="form-text">Press Enter or comma to add a label. Labels are used for repository grouping and filtering.</div>
+    </div>
+</form>
+
+<hr class="mt-4" />
+
 <h2>Default access</h2>
 <form method="post" asp-page-handler="DefaultAccess" class="mt-2" autocomplete="off">
     <div class="mb-3">

@@ -37,6 +37,7 @@ public sealed partial class SvnHubMcpTools
             .Select(r => new McpRepositoryInfo(
                 r.Name,
                 r.CreatedAt,
+                SvnHub.App.Support.RepositoryLabels.Normalize(r.Labels),
                 access.GetAccess(userId, r.Id, "/").ToString(),
                 r.AuthenticatedDefaultAccess?.ToString()))
             .ToArray();
@@ -351,6 +352,7 @@ public sealed partial class SvnHubMcpTools
 public sealed record McpRepositoryInfo(
     string Name,
     DateTimeOffset CreatedAt,
+    IReadOnlyList<string> Labels,
     string RootAccess,
     string? AuthenticatedDefaultAccess);
 

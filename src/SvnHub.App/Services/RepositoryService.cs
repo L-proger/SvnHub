@@ -199,6 +199,62 @@ public sealed class RepositoryService
         return OperationResult<Repository>.Ok(updated);
     }
 
+    public Task<OperationResult<Repository>> SetLabelsAsync(
+        Guid actorUserId,
+        Guid repositoryId,
+        string? labelsText,
+        CancellationToken cancellationToken = default
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!RepositoryLabels.TryParse(labelsText, out var labels, out var labelError))
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail(labelError ?? "Invalid labels."));
+        }
+
+        var state = _store.Read();
+        if (!CanManageRepositories(state, actorUserId))
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail("You don't have permission to manage repositories."));
+        }
+
+        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
+        if (repo is null || repo.IsArchived)
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail("Repository not found."));
+        }
+
+        var currentLabels = RepositoryLabels.Normalize(repo.Labels);
+        if (currentLabels.SequenceEqual(labels, StringComparer.Ordinal))
+        {
+            return Task.FromResult(OperationResult<Repository>.Ok(repo));
+        }
+
+        var updated = repo with { Labels = labels };
+        var newRepos = state.Repositories.Select(r => r.Id == repositoryId ? updated : r).ToList();
+        var newState = state with
+        {
+            Repositories = newRepos,
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "repo.labels",
+                    Target: repo.Name,
+                    Success: true,
+                    Details: labels.Count == 0 ? "cleared" : string.Join(", ", labels)
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+        return Task.FromResult(OperationResult<Repository>.Ok(updated));
+    }
+
     public async Task<OperationResult<Repository>> RenameAsync(
         Guid actorUserId,
         Guid repositoryId,

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
+using SvnHub.App.Support;
 using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Repos;
@@ -49,11 +50,15 @@ public sealed class SettingsModel : PageModel
     public DefaultAccessInputModel DefaultAccessInput { get; set; } = new();
 
     [BindProperty]
+    public LabelsInputModel LabelsInput { get; set; } = new();
+
+    [BindProperty]
     public AddAccessRuleInputModel AccessRuleInput { get; set; } = new();
 
     public IReadOnlyList<PermissionRow> AccessRules { get; private set; } = [];
     public IReadOnlyList<PortalUser> UserOptions { get; private set; } = [];
     public IReadOnlyList<Group> GroupOptions { get; private set; } = [];
+    public IReadOnlyList<string> LabelSuggestions { get; private set; } = [];
 
     public string? Error { get; private set; }
     public string? Success { get; private set; }
@@ -100,6 +105,39 @@ public sealed class SettingsModel : PageModel
         }
 
         return RedirectToPage("/Repos/Tree", new { repoName = result.Value.Name });
+    }
+
+    public async Task<IActionResult> OnPostLabelsAsync(string repoName, CancellationToken cancellationToken)
+    {
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        Load(repo, resetLabelsInput: false);
+
+        ModelState.Clear();
+        if (!TryValidateModel(LabelsInput, nameof(LabelsInput)))
+        {
+            return Page();
+        }
+
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
+        {
+            return Forbid();
+        }
+
+        var result = await _repos.SetLabelsAsync(actorId, repo.Id, LabelsInput.Labels, cancellationToken);
+        if (!result.Success || result.Value is null)
+        {
+            Error = result.Error ?? "Failed to update labels.";
+            return Page();
+        }
+
+        Load(result.Value);
+        Success = "Repository labels updated.";
+        return Page();
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(string repoName, CancellationToken cancellationToken)
@@ -281,7 +319,8 @@ public sealed class SettingsModel : PageModel
     private void Load(
         Repository repo,
         bool resetRenameInput = true,
-        bool resetDefaultAccessInput = true)
+        bool resetDefaultAccessInput = true,
+        bool resetLabelsInput = true)
     {
         RepoName = repo.Name;
         RepoId = repo.Id;
@@ -297,6 +336,13 @@ public sealed class SettingsModel : PageModel
         {
             DefaultAccessInput.DefaultAuthenticatedAccess = FormatDefaultAccess(repo.AuthenticatedDefaultAccess);
         }
+
+        if (resetLabelsInput)
+        {
+            LabelsInput.Labels = string.Join(", ", RepositoryLabels.Normalize(repo.Labels));
+        }
+
+        LabelSuggestions = RepositoryLabels.Collect(_repos.List());
 
         UserOptions = _users.ListUsers();
         GroupOptions = _groups.ListGroups();
@@ -336,6 +382,12 @@ public sealed class SettingsModel : PageModel
         [Required]
         [Display(Name = "Default access for authenticated users")]
         public string DefaultAuthenticatedAccess { get; set; } = "Inherit";
+    }
+
+    public sealed class LabelsInputModel
+    {
+        [Display(Name = "Labels")]
+        public string Labels { get; set; } = "";
     }
 
     public sealed record PermissionRow(PermissionRule Rule, string SubjectDisplay)

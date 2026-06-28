@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
+using SvnHub.App.Support;
 using SvnHub.App.System;
 using SvnHub.Domain;
 using SvnHub.Web.Support;
@@ -41,6 +42,8 @@ public sealed class IndexModel : PageModel
     public int ToIndex { get; private set; }
 
     public string? SearchQuery { get; private set; }
+    public string? LabelFilter { get; private set; }
+    public IReadOnlyList<string> LabelOptions { get; private set; } = [];
 
     public IReadOnlyDictionary<string, DateTimeOffset?> UpdatedAtByRepoName { get; private set; } =
         new Dictionary<string, DateTimeOffset?>(StringComparer.OrdinalIgnoreCase);
@@ -49,7 +52,7 @@ public sealed class IndexModel : PageModel
 
     public string? GetCheckoutUrl(string repoName) => SvnCheckoutUrl.Build(SvnBaseUrl, repoName, "/");
 
-    public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null)
+    public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null, string? label = null)
     {
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -62,15 +65,27 @@ public sealed class IndexModel : PageModel
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);
+        LabelFilter = NormalizeSearchQuery(label);
 
         var accessible = _repos.List()
             .Where(r => _access.GetAccess(userId.Value, r.Id, "/") >= AccessLevel.Read)
             .ToArray();
 
+        LabelOptions = RepositoryLabels.Collect(accessible);
+
         if (!string.IsNullOrWhiteSpace(SearchQuery))
         {
             accessible = accessible
-                .Where(r => r.Name.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase))
+                .Where(r =>
+                    r.Name.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                    RepositoryLabels.Normalize(r.Labels).Any(l => l.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+        }
+
+        if (!string.IsNullOrWhiteSpace(LabelFilter))
+        {
+            accessible = accessible
+                .Where(r => RepositoryLabels.Contains(r.Labels, LabelFilter))
                 .ToArray();
         }
 
@@ -98,7 +113,7 @@ public sealed class IndexModel : PageModel
         UpdatedAtByRepoName = await LoadUpdatedDatesAsync(Repositories, HttpContext.RequestAborted);
     }
 
-    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, string? label = null, CancellationToken cancellationToken = default)
     {
         if (!(User?.IsInRole("AdminRepo") ?? false))
         {
@@ -115,11 +130,11 @@ public sealed class IndexModel : PageModel
         if (!result.Success)
         {
             Message = result.Error ?? "Discover failed.";
-            return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q });
+            return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, label });
         }
 
         Message = result.Value == 0 ? "No new repositories found." : $"Discovered {result.Value} repository(ies).";
-        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q });
+        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, label });
     }
 
     public static string FormatUpdatedAgo(DateTimeOffset updatedAt, DateTimeOffset now)

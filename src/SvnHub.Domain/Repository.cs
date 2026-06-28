@@ -6,5 +6,6 @@ public sealed record Repository(
     string LocalPath,
     DateTimeOffset CreatedAt,
     bool IsArchived,
-    AccessLevel? AuthenticatedDefaultAccess = null
+    AccessLevel? AuthenticatedDefaultAccess = null,
+    IReadOnlyList<string>? Labels = null
 );

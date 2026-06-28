@@ -1,0 +1,155 @@
+@model SvnHub.Web.Pages.Repos.FileModel
+@{
+    var gerberPreviewFiles = Model.GerberPreviewFiles
+        .Select(f => new
+        {
+            name = f.Name,
+            kind = f.Kind,
+            sizeLabel = f.SizeLabel,
+            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+        })
+        .ToArray();
+    var modelPreviewFiles = Model.ModelPreviewFiles
+        .Select(f => new
+        {
+            name = f.Name,
+            kind = f.Kind,
+            sizeLabel = f.SizeLabel,
+            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+        })
+        .ToArray();
+    var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
+    var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.PreviewUnavailableMessage))
+{
+    <div class="alert alert-secondary mb-0">@Model.PreviewUnavailableMessage</div>
+}
+else if (Model.IsImage)
+{
+    <div class="text-center">
+        <img class="img-fluid border rounded d-inline-block"
+             alt="@Model.Path"
+             src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)" />
+    </div>
+}
+else if (Model.IsPdf)
+{
+    <iframe class="file-pdf-preview"
+            title="@System.IO.Path.GetFileName(Model.Path)"
+            src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
+    </iframe>
+}
+else if (Model.IsGerberPreview)
+{
+    <div class="gerber-preview" data-gerber-preview>
+        <div class="gerber-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+            <div>
+                <div class="fw-semibold">PCB fabrication preview</div>
+                <div class="text-muted small">@Model.GerberPreviewFiles.Count CAM files in this directory</div>
+            </div>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="gerber-opacity-control" data-gerber-opacity-control hidden>
+                    <label class="form-label small text-muted mb-0" for="gerberLayerOpacity">Opacity</label>
+                    <input class="form-range"
+                           id="gerberLayerOpacity"
+                           type="range"
+                           min="5"
+                           max="100"
+                           value="50"
+                           data-gerber-opacity />
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                    <button type="button" class="btn btn-outline-secondary" data-gerber-side="layers">Layers</button>
+                    <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
+                    <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
+                </div>
+            </div>
+        </div>
+        <div class="gerber-preview-status alert alert-secondary mb-3" data-gerber-status>
+            Loading board preview...
+        </div>
+        <div class="gerber-preview-layout" data-gerber-layout hidden>
+            <div class="gerber-layer-panel" data-gerber-layer-panel aria-label="PCB layers"></div>
+            <div class="gerber-preview-stage" data-gerber-stage>
+                <div class="gerber-preview-board" data-gerber-board="layers" hidden></div>
+                <div class="gerber-preview-board" data-gerber-board="top"></div>
+                <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
+            </div>
+        </div>
+    </div>
+    <script type="application/json" id="gerber-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(gerberPreviewFiles))</script>
+}
+else if (Model.IsModelPreview)
+{
+    <div class="model-preview" data-model-preview>
+        <div class="model-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+            <div>
+                <div class="fw-semibold">3D model preview</div>
+                <div class="text-muted small">@Model.ModelPreviewFiles.Count model files/assets in this directory</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-model-reset>Reset view</button>
+        </div>
+        <div class="model-preview-status alert alert-secondary mb-3" data-model-status>
+            Loading model preview...
+        </div>
+        <div class="model-preview-stage" data-model-stage></div>
+        <div class="model-preview-files mt-3">
+            @foreach (var file in Model.ModelPreviewFiles)
+            {
+                <div class="model-preview-file">
+                    <span class="text-truncate">@file.Name</span>
+                    <span class="text-muted">@file.Kind</span>
+                    <span class="text-muted">@file.SizeLabel</span>
+                </div>
+            }
+        </div>
+    </div>
+    <script type="application/json" id="model-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(modelPreviewFiles))</script>
+}
+else if (Model.IsAltiumPreview)
+{
+    <div class="altium-preview" data-altium-preview>
+        <div class="altium-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+            <div>
+                <div class="fw-semibold">@Model.AltiumPreviewLabel</div>
+                <div class="text-muted small">@System.IO.Path.GetFileName(Model.Path)</div>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-altium-reset>Reset view</button>
+                @if (Model.IsAltiumPcbDocument)
+                {
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                        <button type="button"
+                                class="btn btn-outline-secondary active"
+                                data-altium-side="top"
+                                data-altium-url="@altiumTopUrl">Top</button>
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                data-altium-side="bottom"
+                                data-altium-url="@altiumBottomUrl">Bottom</button>
+                    </div>
+                }
+            </div>
+        </div>
+        <iframe class="altium-preview-frame"
+                title="@System.IO.Path.GetFileName(Model.Path)"
+                sandbox="allow-same-origin"
+                src="@altiumTopUrl">
+        </iframe>
+    </div>
+}
+else if (Model.IsMarkdown)
+{
+    <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
+}
+else
+{
+    <div class="code-with-lines">
+        <pre class="code-ln" aria-hidden="true">@Model.LineNumbers</pre>
+        <div class="code-src">
+            <pre class="mb-0"><code class="language-@Model.Language">@Model.Contents</code></pre>
+        </div>
+    </div>
+}

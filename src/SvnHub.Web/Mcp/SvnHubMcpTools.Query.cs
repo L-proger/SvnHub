@@ -24,10 +24,12 @@ public sealed partial class SvnHubMcpTools
         "This tool does not read file contents, file sizes, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
         "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?, offset?}. " +
         "scan supports repositoryNames and repositoryNameContains. " +
+        "Repository labels are available on every source as repository.labels. Aliases label and labels are accepted; eq/in match any label in the repository label list. " +
         "Pagination: default limit is 100, maximum limit is 1000, default offset is 0. If truncated=true, matchedRows is the real total count; repeat the same query with a higher limit or with offset=previous offset+limit until truncated=false. For all rows over 1000, use multiple pages with a stable orderBy. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Aliases are accepted as standalone fields: repositoryName, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Do not combine aliases with slash characters. " +
+        "Aliases are accepted as standalone fields: repositoryName, label, labels, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Do not combine aliases with slash characters. " +
         "Example repositories where latest indexed commit is by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"indexed.remainingRevisions\"]}. " +
+        "Example repositories with label PewCB: {\"from\":\"repositories\",\"where\":[{\"field\":\"label\",\"op\":\"eq\",\"value\":\"PewCB\"}],\"select\":[\"repositoryName\",\"labels\",\"revision\",\"author\"]}. " +
         "Example repositories where user participated: {\"from\":\"commits\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\",\"latest.commit.message\"]}. " +
         "Example changed paths by user: {\"from\":\"changedPaths\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"date\",\"author\",\"action\",\"path\"]}. " +
         "Example repositories with README.md in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"README.md\"}],\"select\":[\"repositoryName\",\"path\",\"isDirectory\"]}. " +
@@ -39,14 +41,14 @@ public sealed partial class SvnHubMcpTools
         [Description(
             "Index query object. Sources: repositories, commits, changedPaths, tree, properties, externals. " +
             "Use limit and offset for pagination. Default limit is 100, max limit is 1000. If the result has truncated=true, use matchedRows to know the total and request the next page with offset += limit. For datasets over 1000 rows, make multiple calls with the same where/select/orderBy and increasing offset. " +
-            "Common fields: repository.name, repository.createdAt, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
+            "Common fields: repository.name, repository.createdAt, repository.labels, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
             "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. tree.extension returns values with a leading dot, for example .pri; filters accept pri or .pri. " +
             "properties fields: property.snapshotRevision, property.path, property.nodeKind, property.name, property.value. Properties are indexed only on root and directories. " +
             "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.isPinned, external.raw. " +
-            "Aliases, each used as its own field string: repositoryName, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Never send repositoryName/name.")]
+            "Aliases, each used as its own field string: repositoryName, label, labels, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. label/labels match repository.labels. Never send repositoryName/name.")]
         RepositoryIndexQueryRequest query,
         RepositoryIndexQueryService indexQuery,
         IHttpContextAccessor httpContextAccessor,
@@ -76,6 +78,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -97,6 +100,8 @@ public sealed partial class SvnHubMcpTools
                     {
                         ["name"] = "repository.name",
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["revision"] = "latest.revision",
                         ["author"] = "latest.author",
                         ["date"] = "latest.date",
@@ -116,6 +121,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -136,6 +142,8 @@ public sealed partial class SvnHubMcpTools
                     {
                         ["name"] = "repository.name",
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["revision"] = "commit.revision",
                         ["author"] = "commit.author",
                         ["date"] = "commit.date",
@@ -150,6 +158,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -170,6 +179,8 @@ public sealed partial class SvnHubMcpTools
                     {
                         ["name"] = "repository.name",
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["revision"] = "commit.revision",
                         ["author"] = "commit.author",
                         ["date"] = "commit.date",
@@ -184,6 +195,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -202,6 +214,8 @@ public sealed partial class SvnHubMcpTools
                     Aliases: new Dictionary<string, string>
                     {
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["revision"] = "tree.revision",
                         ["snapshotRevision"] = "tree.revision",
                         ["path"] = "tree.path",
@@ -220,6 +234,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -242,6 +257,8 @@ public sealed partial class SvnHubMcpTools
                     Aliases: new Dictionary<string, string>
                     {
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["snapshotRevision"] = "external.snapshotRevision",
                         ["parentPath"] = "external.parentPath",
                         ["targetPath"] = "external.targetPath",
@@ -264,6 +281,7 @@ public sealed partial class SvnHubMcpTools
                     [
                         "repository.name",
                         "repository.createdAt",
+                        "repository.labels",
                         "repository.rootAccess",
                         "repository.authenticatedDefaultAccess",
                         "indexed.headRevision",
@@ -282,6 +300,8 @@ public sealed partial class SvnHubMcpTools
                     Aliases: new Dictionary<string, string>
                     {
                         ["repositoryName"] = "repository.name",
+                        ["label"] = "repository.labels",
+                        ["labels"] = "repository.labels",
                         ["snapshotRevision"] = "property.snapshotRevision",
                         ["path"] = "property.path",
                         ["nodeKind"] = "property.nodeKind",
@@ -304,6 +324,14 @@ public sealed partial class SvnHubMcpTools
                         From = "repositories",
                         Where = [new RepositoryIndexQueryCondition { Field = "author", Op = "eq", Value = "sergey.serb" }],
                         Select = ["repositoryName", "revision", "author", "date", "message", "indexed.remainingRevisions"],
+                    }),
+                new McpIndexQueryExample(
+                    "Repositories with label PewCB",
+                    new RepositoryIndexQueryRequest
+                    {
+                        From = "repositories",
+                        Where = [new RepositoryIndexQueryCondition { Field = "label", Op = "eq", Value = "PewCB" }],
+                        Select = ["repositoryName", "labels", "revision", "author"],
                     }),
                 new McpIndexQueryExample(
                     "Repositories where sergey.serb has any indexed commits",

@@ -1,0 +1,87 @@
+@model IReadOnlyList<SvnHub.Web.Support.RepositoryObjectActionModel>
+
+@foreach (var action in Model)
+{
+    if (action.IsDropdown)
+    {
+        <div class="dropdown">
+            <button class="btn btn-sm @action.ButtonClass dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                @action.Text
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                @foreach (var item in action.Items!)
+                {
+                    if (item.Text == "-")
+                    {
+                        <li><hr class="dropdown-divider" /></li>
+                    }
+                    else if (item.IsCopy)
+                    {
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item"
+                                    data-copy-text="@item.CopyText"
+                                    data-copy-from="@item.CopyFrom"
+                                    data-copy-msg="@item.CopyMessageTarget">
+                                @item.Text
+                            </button>
+                        </li>
+                    }
+                    else if (item.IsUploadOpenButton)
+                    {
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item"
+                                    data-upload-open="@item.UploadOpenTarget">
+                                @item.Text
+                            </button>
+                        </li>
+                    }
+                    else
+                    {
+                        <li>
+                            <a class="dropdown-item" href="@item.Href">@item.Text</a>
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+    }
+    else if (action.IsForm)
+    {
+        <form method="post" action="@action.FormAction" class="d-inline">
+            @Html.AntiForgeryToken()
+            @foreach (var field in action.HiddenFields ?? new Dictionary<string, string?>())
+            {
+                <input type="hidden" name="@field.Key" value="@field.Value" />
+            }
+            <button type="submit"
+                    class="btn btn-sm @action.ButtonClass"
+                    onclick="@(string.IsNullOrWhiteSpace(action.Confirm) ? null : $"return confirm('{action.Confirm}');")">
+                @action.Text
+            </button>
+        </form>
+    }
+    else if (action.IsCopy)
+    {
+        <button type="button"
+                class="btn btn-sm @action.ButtonClass"
+                data-copy-text="@action.CopyText"
+                data-copy-from="@action.CopyFrom"
+                data-copy-msg="@action.CopyMessageTarget">
+            @action.Text
+        </button>
+    }
+    else
+    {
+        <a class="btn btn-sm @action.ButtonClass"
+           href="@action.Href"
+           target="@(action.OpenInNewTab ? "_blank" : null)"
+           rel="@(action.OpenInNewTab ? "noopener" : null)">
+            @action.Text
+        </a>
+    }
+}

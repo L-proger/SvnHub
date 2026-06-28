@@ -152,6 +152,245 @@
         }
     });
 
+    function normalizeLabel(value) {
+        return String(value || '').trim().split(/\s+/).filter(Boolean).join(' ');
+    }
+
+    function splitLabels(value) {
+        return String(value || '')
+            .split(/[,\n\r;]+/)
+            .map(normalizeLabel)
+            .filter(Boolean);
+    }
+
+    function initLabelEditor(editor) {
+        const hidden = editor.querySelector('[data-label-editor-value]');
+        const input = editor.querySelector('[data-label-editor-input]');
+        const tokensEl = editor.querySelector('[data-label-editor-tokens]');
+        const errorEl = editor.querySelector('[data-label-editor-error]');
+        const suggestionsEl = editor.querySelector('[data-label-editor-suggestions-list]');
+        if (!hidden || !input || !tokensEl) return;
+
+        let labels = [];
+        let suggestions = [];
+        let visibleSuggestions = [];
+        let activeSuggestionIndex = -1;
+        let suggestionsOpen = false;
+
+        try {
+            suggestions = JSON.parse(editor.getAttribute('data-label-editor-suggestions') || '[]')
+                .map(normalizeLabel)
+                .filter(Boolean);
+        } catch {
+            suggestions = [];
+        }
+
+        function setError(message) {
+            if (errorEl) errorEl.textContent = message || '';
+        }
+
+        function sync() {
+            hidden.value = labels.join(', ');
+        }
+
+        function render() {
+            tokensEl.replaceChildren();
+            for (const label of labels) {
+                const token = document.createElement('span');
+                token.className = 'label-editor-token';
+
+                const text = document.createElement('span');
+                text.className = 'label-editor-token-text';
+                text.textContent = label;
+                token.appendChild(text);
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'label-editor-remove';
+                remove.setAttribute('aria-label', `Remove ${label}`);
+                remove.textContent = 'x';
+                remove.addEventListener('click', () => {
+                    labels = labels.filter(item => item !== label);
+                    sync();
+                    render();
+                    input.focus();
+                });
+                token.appendChild(remove);
+                tokensEl.appendChild(token);
+            }
+            if (suggestionsOpen) {
+                renderSuggestions();
+            }
+        }
+
+        function hideSuggestions() {
+            suggestionsOpen = false;
+            visibleSuggestions = [];
+            activeSuggestionIndex = -1;
+            input.setAttribute('aria-expanded', 'false');
+            if (suggestionsEl) {
+                suggestionsEl.hidden = true;
+                suggestionsEl.replaceChildren();
+            }
+        }
+
+        function renderSuggestions() {
+            if (!suggestionsEl) return;
+            suggestionsOpen = true;
+
+            const query = normalizeLabel(input.value).toLowerCase();
+            visibleSuggestions = suggestions
+                .filter(label => !labels.some(item => item.toLowerCase() === label.toLowerCase()))
+                .filter(label => query.length === 0 || label.toLowerCase().includes(query))
+                .slice(0, 8);
+
+            suggestionsEl.replaceChildren();
+            activeSuggestionIndex = visibleSuggestions.length > 0
+                ? Math.min(Math.max(activeSuggestionIndex, 0), visibleSuggestions.length - 1)
+                : -1;
+
+            if (visibleSuggestions.length === 0) {
+                hideSuggestions();
+                return;
+            }
+
+            visibleSuggestions.forEach((label, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `label-editor-suggestion${index === activeSuggestionIndex ? ' active' : ''}`;
+                button.textContent = label;
+                button.addEventListener('mousedown', event => event.preventDefault());
+                button.addEventListener('click', () => {
+                    if (addFromSuggestion(label)) {
+                        input.focus();
+                    }
+                });
+                suggestionsEl.appendChild(button);
+            });
+
+            suggestionsEl.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+        }
+
+        function canAdd(label) {
+            if (!label) return false;
+            if (label.length > 40) {
+                setError('Label is too long. Use at most 40 characters.');
+                return false;
+            }
+            if (/[\\/,;]/.test(label) || Array.from(label).some(ch => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
+                setError('Label contains unsupported characters.');
+                return false;
+            }
+            if (labels.some(item => item.toLowerCase() === label.toLowerCase())) {
+                setError('');
+                return false;
+            }
+            if (labels.length >= 20) {
+                setError('Use at most 20 labels.');
+                return false;
+            }
+            return true;
+        }
+
+        function addFromSuggestion(label) {
+            if (!canAdd(label)) return false;
+            labels.push(label);
+            input.value = '';
+            setError('');
+            sync();
+            render();
+            hideSuggestions();
+            return true;
+        }
+
+        function addFromText(value) {
+            let changed = false;
+            for (const raw of splitLabels(value)) {
+                const label = normalizeLabel(raw);
+                if (canAdd(label)) {
+                    labels.push(label);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                setError('');
+                sync();
+                render();
+            }
+            return changed;
+        }
+
+        labels = [];
+        addFromText(hidden.value);
+        input.value = '';
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown' && visibleSuggestions.length > 0) {
+                event.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex + 1) % visibleSuggestions.length;
+                renderSuggestions();
+                return;
+            }
+
+            if (event.key === 'ArrowUp' && visibleSuggestions.length > 0) {
+                event.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex - 1 + visibleSuggestions.length) % visibleSuggestions.length;
+                renderSuggestions();
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                hideSuggestions();
+                return;
+            }
+
+            if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
+                event.preventDefault();
+                if (event.key === 'Enter' && visibleSuggestions.length > 0 && activeSuggestionIndex >= 0) {
+                    addFromSuggestion(visibleSuggestions[activeSuggestionIndex]);
+                } else if (addFromText(input.value)) {
+                    input.value = '';
+                }
+            } else if (event.key === 'Backspace' && input.value === '' && labels.length > 0) {
+                labels.pop();
+                sync();
+                render();
+            }
+        });
+
+        input.addEventListener('input', renderSuggestions);
+        input.addEventListener('focus', renderSuggestions);
+
+        input.addEventListener('blur', () => {
+            if (addFromText(input.value)) {
+                input.value = '';
+            }
+            window.setTimeout(hideSuggestions, 120);
+        });
+
+        input.addEventListener('paste', (event) => {
+            const text = event.clipboardData?.getData('text');
+            if (!text || !/[,\n\r;]/.test(text)) return;
+            event.preventDefault();
+            if (addFromText(text)) {
+                input.value = '';
+            }
+        });
+
+        const form = editor.closest('form');
+        if (form) {
+            form.addEventListener('submit', () => {
+                if (addFromText(input.value)) {
+                    input.value = '';
+                }
+                sync();
+            });
+        }
+    }
+
+    document.querySelectorAll('[data-label-editor]').forEach(initLabelEditor);
+
     // Run after the DOM is ready; site.js is loaded at the end of <body> so this is effectively immediate.
     highlightAllCode();
 })();

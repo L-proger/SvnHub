@@ -1,0 +1,24 @@
+@model SvnHub.Web.Support.RepositoryObjectCardModel
+
+<div class="card file-viewer">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        @await Html.PartialAsync("Shared/_RepositoryObjectTitle", Model.Title)
+        <div class="d-flex align-items-center gap-2">
+            @await Html.PartialAsync("Shared/_RepositoryObjectActions", Model.Actions)
+            @if (!string.IsNullOrWhiteSpace(Model.CopyMessageElementId))
+            {
+                <span class="text-muted small" id="@Model.CopyMessageElementId"></span>
+            }
+        </div>
+    </div>
+    @if (Model.WrapBodyInCardBody)
+    {
+        <div class="card-body">
+            @await Html.PartialAsync(Model.BodyPartialName, Model.BodyModel)
+        </div>
+    }
+    else
+    {
+        @await Html.PartialAsync(Model.BodyPartialName, Model.BodyModel)
+    }
+</div>

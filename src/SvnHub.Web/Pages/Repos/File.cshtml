@@ -2,27 +2,57 @@
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
-    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsModelPreview && !Model.IsAltiumPreview && !Model.IsMarkdown ? Model.LineCount : null;
-    var gerberPreviewFiles = Model.GerberPreviewFiles
-        .Select(f => new
-        {
-            name = f.Name,
-            kind = f.Kind,
-            sizeLabel = f.SizeLabel,
-            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
-        })
-        .ToArray();
-    var modelPreviewFiles = Model.ModelPreviewFiles
-        .Select(f => new
-        {
-            name = f.Name,
-            kind = f.Kind,
-            sizeLabel = f.SizeLabel,
-            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
-        })
-        .ToArray();
-    var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
-    var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
+    var lineCount = !Model.IsImage &&
+        !Model.IsPdf &&
+        !Model.IsGerberPreview &&
+        !Model.IsModelPreview &&
+        !Model.IsAltiumPreview &&
+        !Model.IsMarkdown
+            ? Model.LineCount
+            : null;
+
+    var fileActions = new List<RepositoryObjectActionModel>();
+    if (Model.CanEdit)
+    {
+        fileActions.Add(new RepositoryObjectActionModel(
+            "Edit",
+            Href: Url.Page("/Repos/Edit", null, new { repoName = Model.RepoName, path = Model.Path })));
+    }
+
+    if (Model.CanServeFile)
+    {
+        fileActions.Add(new RepositoryObjectActionModel(
+            "Raw",
+            Href: Url.Page("/Repos/File", "Raw", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }),
+            OpenInNewTab: true));
+        fileActions.Add(new RepositoryObjectActionModel(
+            "Download",
+            Href: Url.Page("/Repos/File", "Download", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision })));
+    }
+
+    fileActions.Add(new RepositoryObjectActionModel(
+        "History",
+        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path })));
+
+    if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
+    {
+        fileActions.Add(new RepositoryObjectActionModel("Copy SVN URL", CopyText: Model.CheckoutUrl, CopyMessageTarget: "#copyMsg"));
+    }
+
+    if (Model.CanCopyContent)
+    {
+        fileActions.Add(new RepositoryObjectActionModel("Copy content", CopyFrom: "#copySrc", CopyMessageTarget: "#copyMsg"));
+    }
+
+    if (Model.CanEdit)
+    {
+        fileActions.Add(new RepositoryObjectActionModel(
+            "Delete",
+            ButtonClass: "btn-outline-danger",
+            FormAction: Url.Page("/Repos/File", "Delete", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path) }),
+            Confirm: "Delete this file from SVN? This will create a new revision.",
+            HiddenFields: new Dictionary<string, string?> { ["path"] = Model.Path }));
+    }
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -34,7 +64,7 @@
 </div>
 <div class="text-muted">r@(Model.Revision)</div>
 
-@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
+@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
 
 @if (!string.IsNullOrWhiteSpace(Model.FlashError))
 {
@@ -47,209 +77,23 @@
 }
 else
 {
-    <div class="card file-viewer mt-3">
-        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-            @await Html.PartialAsync("Shared/_FilePreviewTitle", new SvnHub.Web.Support.FilePreviewTitleModel(Model.Path, Model.FileSizeLabel, lineCount))
-            <div class="d-flex align-items-center gap-2">
-                @if (Model.CanEdit)
-                {
-                    <a class="btn btn-sm btn-outline-secondary"
-                       asp-page="/Repos/Edit"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.Path">Edit</a>
-                }
-                @if (Model.CanServeFile)
-                {
-                    <a class="btn btn-sm btn-outline-secondary"
-                       target="_blank"
-                       rel="noopener"
-                       asp-page="/Repos/File"
-                       asp-page-handler="Raw"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
-                       asp-route-rev="@Model.ViewRevision">Raw</a>
-                    <a class="btn btn-sm btn-outline-secondary"
-                       asp-page="/Repos/File"
-                       asp-page-handler="Download"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
-                       asp-route-rev="@Model.ViewRevision">Download</a>
-                }
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/History"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@Model.Path">History</a>
-                @if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            data-copy-text="@Model.CheckoutUrl"
-                            data-copy-msg="#copyMsg">
-                        Copy SVN URL
-                    </button>
-                }
-                @if (Model.CanCopyContent)
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            data-copy-from="#copySrc"
-                            data-copy-msg="#copyMsg">
-                        Copy content
-                    </button>
-                }
-                @if (Model.CanEdit)
-                {
-                    <form method="post" asp-page-handler="Delete" class="d-inline">
-                        <input type="hidden" name="path" value="@Model.Path" />
-                        <button type="submit"
-                                class="btn btn-sm btn-outline-danger"
-                                onclick="return confirm('Delete this file from SVN? This will create a new revision.');">
-                            Delete
-                        </button>
-                    </form>
-                }
-                <span class="text-muted small" id="copyMsg"></span>
-            </div>
-        </div>
-        <div class="card-body">
-            @if (!string.IsNullOrWhiteSpace(Model.PreviewUnavailableMessage))
-            {
-                <div class="alert alert-secondary mb-0">@Model.PreviewUnavailableMessage</div>
-            }
-            else if (Model.IsImage)
-            {
-                <div class="text-center">
-                    <img class="img-fluid border rounded d-inline-block"
-                         alt="@Model.Path"
-                         src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)" />
-                </div>
-            }
-            else if (Model.IsPdf)
-            {
-                <iframe class="file-pdf-preview"
-                        title="@System.IO.Path.GetFileName(Model.Path)"
-                        src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
-                </iframe>
-            }
-            else if (Model.IsGerberPreview)
-            {
-                <div class="gerber-preview" data-gerber-preview>
-                    <div class="gerber-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
-                        <div>
-                            <div class="fw-semibold">PCB fabrication preview</div>
-                            <div class="text-muted small">@Model.GerberPreviewFiles.Count CAM files in this directory</div>
-                        </div>
-                        <div class="d-flex align-items-center gap-3 flex-wrap">
-                            <div class="gerber-opacity-control" data-gerber-opacity-control hidden>
-                                <label class="form-label small text-muted mb-0" for="gerberLayerOpacity">Opacity</label>
-                                <input class="form-range"
-                                       id="gerberLayerOpacity"
-                                       type="range"
-                                       min="5"
-                                       max="100"
-                                       value="50"
-                                       data-gerber-opacity />
-                            </div>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
-                                <button type="button" class="btn btn-outline-secondary" data-gerber-side="layers">Layers</button>
-                                <button type="button" class="btn btn-outline-secondary active" data-gerber-side="top">Top</button>
-                                <button type="button" class="btn btn-outline-secondary" data-gerber-side="bottom">Bottom</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="gerber-preview-status alert alert-secondary mb-3" data-gerber-status>
-                        Loading board preview...
-                    </div>
-                    <div class="gerber-preview-layout" data-gerber-layout hidden>
-                        <div class="gerber-layer-panel" data-gerber-layer-panel aria-label="PCB layers"></div>
-                        <div class="gerber-preview-stage" data-gerber-stage>
-                            <div class="gerber-preview-board" data-gerber-board="layers" hidden></div>
-                            <div class="gerber-preview-board" data-gerber-board="top"></div>
-                            <div class="gerber-preview-board" data-gerber-board="bottom" hidden></div>
-                        </div>
-                    </div>
-                </div>
-                <script type="application/json" id="gerber-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(gerberPreviewFiles))</script>
-            }
-            else if (Model.IsModelPreview)
-            {
-                <div class="model-preview" data-model-preview>
-                    <div class="model-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
-                        <div>
-                            <div class="fw-semibold">3D model preview</div>
-                            <div class="text-muted small">@Model.ModelPreviewFiles.Count model files/assets in this directory</div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" data-model-reset>Reset view</button>
-                    </div>
-                    <div class="model-preview-status alert alert-secondary mb-3" data-model-status>
-                        Loading model preview...
-                    </div>
-                    <div class="model-preview-stage" data-model-stage></div>
-                    <div class="model-preview-files mt-3">
-                        @foreach (var file in Model.ModelPreviewFiles)
-                        {
-                            <div class="model-preview-file">
-                                <span class="text-truncate">@file.Name</span>
-                                <span class="text-muted">@file.Kind</span>
-                                <span class="text-muted">@file.SizeLabel</span>
-                            </div>
-                        }
-                    </div>
-                </div>
-                <script type="application/json" id="model-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(modelPreviewFiles))</script>
-            }
-            else if (Model.IsAltiumPreview)
-            {
-                <div class="altium-preview" data-altium-preview>
-                    <div class="altium-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
-                        <div>
-                            <div class="fw-semibold">@Model.AltiumPreviewLabel</div>
-                            <div class="text-muted small">@System.IO.Path.GetFileName(Model.Path)</div>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-altium-reset>Reset view</button>
-                            @if (Model.IsAltiumPcbDocument)
-                            {
-                                <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
-                                    <button type="button"
-                                            class="btn btn-outline-secondary active"
-                                            data-altium-side="top"
-                                            data-altium-url="@altiumTopUrl">Top</button>
-                                    <button type="button"
-                                            class="btn btn-outline-secondary"
-                                            data-altium-side="bottom"
-                                            data-altium-url="@altiumBottomUrl">Bottom</button>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                    <iframe class="altium-preview-frame"
-                            title="@System.IO.Path.GetFileName(Model.Path)"
-                            sandbox="allow-same-origin"
-                            src="@altiumTopUrl">
-                    </iframe>
-                </div>
-            }
-            else if (Model.IsMarkdown)
-            {
-                <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
-            }
-            else
-            {
-                <div class="code-with-lines">
-                    <pre class="code-ln" aria-hidden="true">@Model.LineNumbers</pre>
-                    <div class="code-src">
-                        <pre class="mb-0"><code class="language-@Model.Language">@Model.Contents</code></pre>
-                    </div>
-                </div>
-            }
-        </div>
-    </div>
+    <div class="repo-object-layout mt-3 @(Model.Labels.Count > 0 ? "has-context" : "")">
+        <div class="repo-object-main">
+            @await Html.PartialAsync("Shared/_RepositoryObjectCard", new RepositoryObjectCardModel(
+                new FilePreviewTitleModel(Model.Path, Model.FileSizeLabel, lineCount).ToRepositoryObjectTitle(),
+                fileActions,
+                "Shared/_RepositoryFilePreviewBody",
+                Model,
+                WrapBodyInCardBody: true,
+                CopyMessageElementId: "copyMsg"))
 
-    @if (Model.IsTruncated)
-    {
-        <div class="text-muted mt-2">Output truncated.</div>
-    }
+            @if (Model.IsTruncated)
+            {
+                <div class="text-muted mt-2">Output truncated.</div>
+            }
+        </div>
+        @await Html.PartialAsync("Shared/_RepositoryContextSidebar", new RepositoryContextSidebarModel(Model.Labels))
+    </div>
 }
 
 @if (Model.CanCopyContent)

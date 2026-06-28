@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Configuration;
 using SvnHub.App.Services;
+using SvnHub.App.Support;
 using SvnHub.App.System;
 using SvnHub.Domain;
 using SvnHub.Web.Support;
@@ -53,6 +54,7 @@ public sealed class FileModel : PageModel
     public long HeadRevision { get; private set; }
     public long Revision { get; private set; }
     public long? ViewRevision { get; private set; }
+    public IReadOnlyList<string> Labels { get; private set; } = [];
     public string Contents { get; private set; } = "";
     public bool IsTruncated { get; private set; }
     public string? Error { get; private set; }
@@ -118,6 +120,8 @@ public sealed class FileModel : PageModel
         {
             return NotFound();
         }
+
+        Labels = RepositoryLabels.Normalize(repo.Labels);
 
         if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
         {

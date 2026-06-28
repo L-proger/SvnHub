@@ -1,5 +1,6 @@
 using System.Globalization;
 using SvnHub.App.Indexing;
+using SvnHub.App.Support;
 using SvnHub.Domain;
 
 namespace SvnHub.App.Services;
@@ -439,6 +440,7 @@ public sealed class RepositoryIndexQueryService
         {
             ["repository.name"] = repo.Name,
             ["repository.createdAt"] = repo.CreatedAt,
+            ["repository.labels"] = RepositoryLabels.Normalize(repo.Labels).ToArray(),
             ["repository.rootAccess"] = rootAccess.ToString(),
             ["repository.authenticatedDefaultAccess"] = repo.AuthenticatedDefaultAccess?.ToString(),
             ["indexed.headRevision"] = youngestRevision,
@@ -547,6 +549,11 @@ public sealed class RepositoryIndexQueryService
             IsAllowedField(from, normalized))
         {
             return normalized;
+        }
+
+        if (normalized is "label" or "labels" or "repositorylabel" or "repositorylabels")
+        {
+            return "repository.labels";
         }
 
         return from switch
@@ -777,6 +784,13 @@ public sealed class RepositoryIndexQueryService
                 : 1;
         }
 
+        if (actual is IEnumerable<string> actualStrings)
+        {
+            return actualStrings.Any(value => string.Equals(value, expected, StringComparison.OrdinalIgnoreCase))
+                ? 0
+                : 1;
+        }
+
         return string.Compare(
             Convert.ToString(actual, CultureInfo.InvariantCulture),
             expected,
@@ -786,13 +800,22 @@ public sealed class RepositoryIndexQueryService
     private static bool ContainsValue(object? actual, string? expected) =>
         actual is not null &&
         !string.IsNullOrEmpty(expected) &&
-        Convert.ToString(actual, CultureInfo.InvariantCulture)?.Contains(expected, StringComparison.OrdinalIgnoreCase) == true;
+        (actual is IEnumerable<string> actualStrings
+            ? actualStrings.Any(value => value.Contains(expected, StringComparison.OrdinalIgnoreCase))
+            : Convert.ToString(actual, CultureInfo.InvariantCulture)?.Contains(expected, StringComparison.OrdinalIgnoreCase) == true);
 
     private static bool StartsOrEndsWith(object? actual, string? expected, bool starts)
     {
         if (actual is null || string.IsNullOrEmpty(expected))
         {
             return false;
+        }
+
+        if (actual is IEnumerable<string> actualStrings)
+        {
+            return starts
+                ? actualStrings.Any(value => value.StartsWith(expected, StringComparison.OrdinalIgnoreCase))
+                : actualStrings.Any(value => value.EndsWith(expected, StringComparison.OrdinalIgnoreCase));
         }
 
         var text = Convert.ToString(actual, CultureInfo.InvariantCulture) ?? "";
@@ -912,7 +935,7 @@ public sealed class RepositoryIndexQueryService
             "tree" => ["repository.name", "tree.path", "tree.name", "tree.extension", "tree.isDirectory", "tree.revision"],
             "properties" => ["repository.name", "property.path", "property.nodeKind", "property.name", "property.value", "property.snapshotRevision"],
             "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.revision", "external.isPinned"],
-            _ => ["repository.name", "latest.revision", "latest.author", "latest.date", "latest.message", "indexed.remainingRevisions"],
+            _ => ["repository.name", "repository.labels", "latest.revision", "latest.author", "latest.date", "latest.message", "indexed.remainingRevisions"],
         };
     }
 
@@ -1020,7 +1043,8 @@ public sealed class RepositoryIndexQueryService
 
     private static bool IsAllowedField(string from, string field)
     {
-        if (field is "repository.name" or "repository.createdat" or "repository.rootaccess" or "repository.authenticateddefaultaccess" or
+        if (field is "repository.name" or "repository.createdat" or "repository.labels" or
+            "repository.rootaccess" or "repository.authenticateddefaultaccess" or
             "indexed.headrevision" or "indexed.revision" or "indexed.headtreerevision" or "indexed.propertiesrevision" or "indexed.externalsrevision" or
             "indexed.remainingrevisions" or "indexed.complete" or
             "indexed.lastsuccessat" or "indexed.lasterror" or "indexed.ismissing")

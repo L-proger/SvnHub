@@ -14,6 +14,71 @@
     }
 
     var checkoutUrl = Model.GetCheckoutUrl(Model.Path);
+    var tortoiseCheckoutUrl = TortoiseSvnCommandUrl.BuildCheckoutUrl(checkoutUrl);
+    var treeActions = new List<RepositoryObjectActionModel>();
+    if (Model.CanWriteActions && Model.Path != "/")
+    {
+        treeActions.Add(new RepositoryObjectActionModel(
+            "Delete",
+            ButtonClass: "btn-outline-danger",
+            FormAction: Url.Page("/Repos/Tree", "DeleteEntry", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.ParentPath) }),
+            Confirm: "Delete this folder from SVN? This will create a new revision.",
+            HiddenFields: new Dictionary<string, string?> { ["targetPath"] = Model.Path }));
+    }
+
+    if (Model.CanWriteActions)
+    {
+        treeActions.Add(new RepositoryObjectActionModel(
+            "Add",
+            Items:
+            [
+                new RepositoryObjectActionModel(
+                    "Add file",
+                    Href: Url.Page("/Repos/Edit", "New", new { repoName = Model.RepoName, parentPath = Model.Path, isDirectory = false })),
+                new RepositoryObjectActionModel(
+                    "Add folder",
+                    Href: Url.Page("/Repos/Edit", "New", new { repoName = Model.RepoName, parentPath = Model.Path, isDirectory = true })),
+                new RepositoryObjectActionModel("-"),
+                new RepositoryObjectActionModel("Upload files...", UploadOpenTarget: "files"),
+                new RepositoryObjectActionModel("Upload folder...", UploadOpenTarget: "folder"),
+            ]));
+    }
+
+    if (Model.CanWriteActions && Model.Path != "/")
+    {
+        treeActions.Add(new RepositoryObjectActionModel(
+            "Edit",
+            Href: Url.Page("/Repos/Edit", null, new { repoName = Model.RepoName, path = Model.Path })));
+    }
+
+    treeActions.Add(new RepositoryObjectActionModel(
+        "History",
+        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path == "/" ? null : Model.Path })));
+    treeActions.Add(new RepositoryObjectActionModel(
+        "Download ZIP",
+        Href: Url.Page("/Repos/Tree", "Zip", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision })));
+
+    if (!string.IsNullOrWhiteSpace(tortoiseCheckoutUrl))
+    {
+        treeActions.Add(new RepositoryObjectActionModel("Checkout", Href: tortoiseCheckoutUrl));
+    }
+
+    if (!string.IsNullOrWhiteSpace(checkoutUrl))
+    {
+        treeActions.Add(new RepositoryObjectActionModel("Copy SVN URL", CopyText: checkoutUrl, CopyMessageTarget: "#treeCopyMsg"));
+    }
+
+    var readmeActions = new List<RepositoryObjectActionModel>();
+    if (Model.CanEditReadme)
+    {
+        readmeActions.Add(new RepositoryObjectActionModel(
+            "Edit",
+            Href: Url.Page("/Repos/Edit", null, new { repoName = Model.RepoName, path = Model.ReadmePath })));
+    }
+
+    readmeActions.Add(new RepositoryObjectActionModel(
+        "Open",
+        Href: Url.Page("/Repos/File", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.ReadmePath), rev = Model.ViewRevision })));
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -51,133 +116,32 @@
 }
 else
 {
-    <div class="card file-viewer mt-3">
-        <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-            @await Html.PartialAsync("Shared/_RepositoryObjectTitle", new SvnHub.Web.Support.RepositoryObjectTitleModel(Model.Path, IsDirectory: true, treeTitleMetadata))
-            <div class="d-flex align-items-center gap-2">
-                @if (Model.CanWriteActions && Model.Path != "/")
-                {
-                    <form method="post"
-                          asp-page-handler="DeleteEntry"
-                          asp-route-repoName="@Model.RepoName"
-                          asp-route-path="@RepositoryPath.ToRouteValue(Model.ParentPath)"
-                          class="d-inline">
-                        <input type="hidden" name="targetPath" value="@Model.Path" />
-                        <button type="submit"
-                                class="btn btn-sm btn-outline-danger"
-                                onclick="return confirm('Delete this folder from SVN? This will create a new revision.');">
-                            Delete
-                        </button>
-                    </form>
-                }
-                @if (Model.CanWriteActions)
-                {
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
-                                type="button"
-                                data-bs-toggle="dropdown"
-                                aria-expanded="false">
-                            Add
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li>
-                                <a class="dropdown-item"
-                                   asp-page="/Repos/Edit"
-                                   asp-page-handler="New"
-                                   asp-route-repoName="@Model.RepoName"
-                                   asp-route-parentPath="@Model.Path"
-                                   asp-route-isDirectory="false">
-                                    Add file
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item"
-                                   asp-page="/Repos/Edit"
-                                   asp-page-handler="New"
-                                   asp-route-repoName="@Model.RepoName"
-                                   asp-route-parentPath="@Model.Path"
-                                   asp-route-isDirectory="true">
-                                    Add folder
-                                </a>
-                            </li>
-                            <li><hr class="dropdown-divider" /></li>
-                            <li>
-                                <button type="button" class="dropdown-item" data-upload-open="files">
-                                    Upload files...
-                                </button>
-                            </li>
-                            <li>
-                                <button type="button" class="dropdown-item" data-upload-open="folder">
-                                    Upload folder...
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
-                }
-                @if (Model.CanWriteActions && Model.Path != "/")
-                {
-                    <a class="btn btn-sm btn-outline-secondary"
-                       asp-page="/Repos/Edit"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.Path">Edit</a>
-                }
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/History"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
-                    History
-                </a>
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/Tree"
-                   asp-page-handler="Zip"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
-                   asp-route-rev="@Model.ViewRevision">
-                    Download ZIP
-                </a>
-                @if (!string.IsNullOrWhiteSpace(checkoutUrl))
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            data-copy-text="@checkoutUrl"
-                            data-copy-msg="#treeCopyMsg">
-                        Copy SVN URL
-                    </button>
-                }
-                <span class="text-muted small" id="treeCopyMsg"></span>
-            </div>
-        </div>
+    <div class="repo-object-layout mt-3 @(Model.Labels.Count > 0 ? "has-context" : "")">
+        <div class="repo-object-main">
+            @await Html.PartialAsync("Shared/_RepositoryObjectCard", new RepositoryObjectCardModel(
+                new RepositoryObjectTitleModel(Model.Path, IsDirectory: true, treeTitleMetadata),
+                treeActions,
+                "Shared/_RepositoryTreeCardBody",
+                Model,
+                WrapBodyInCardBody: false,
+                CopyMessageElementId: "treeCopyMsg"))
 
-        @await Html.PartialAsync("Shared/_RepositoryTreeList", Model)
-    </div>
+            @await Html.PartialAsync("Shared/_RepositoryUploadModal", Model)
 
-    @await Html.PartialAsync("Shared/_RepositoryUploadModal", Model)
-
-    @if (Model.HasReadme)
-    {
-        <div class="card file-viewer mt-3">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                @await Html.PartialAsync("Shared/_FilePreviewTitle", new SvnHub.Web.Support.FilePreviewTitleModel(Model.ReadmePath))
-                <div class="d-flex align-items-center gap-2">
-                    @if (Model.CanEditReadme)
-                    {
-                        <a class="btn btn-sm btn-outline-secondary"
-                           asp-page="/Repos/Edit"
-                           asp-route-repoName="@Model.RepoName"
-                           asp-route-path="@Model.ReadmePath">Edit</a>
-                    }
-                    <a class="btn btn-sm btn-outline-secondary"
-                       asp-page="/Repos/File"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@RepositoryPath.ToRouteValue(Model.ReadmePath)"
-                       asp-route-rev="@Model.ViewRevision">Open</a>
+            @if (Model.HasReadme)
+            {
+                <div class="mt-3">
+                    @await Html.PartialAsync("Shared/_RepositoryObjectCard", new RepositoryObjectCardModel(
+                        new FilePreviewTitleModel(Model.ReadmePath).ToRepositoryObjectTitle(),
+                        readmeActions,
+                        "Shared/_RepositoryMarkdownBody",
+                        Model.ReadmeHtml,
+                        WrapBodyInCardBody: true))
                 </div>
-            </div>
-            <div class="card-body">
-                <div class="md">@Html.Raw(Model.ReadmeHtml)</div>
-            </div>
+            }
         </div>
-    }
+        @await Html.PartialAsync("Shared/_RepositoryContextSidebar", new RepositoryContextSidebarModel(Model.Labels))
+    </div>
 }
 
 @section Scripts

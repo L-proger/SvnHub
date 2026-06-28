@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
+using SvnHub.App.Support;
 using SvnHub.App.System;
 using SvnHub.App.Configuration;
 using SvnHub.Domain;
@@ -60,6 +61,7 @@ public sealed class TreeModel : PageModel
     public long HeadRevision { get; private set; }
     public long Revision { get; private set; }
     public long? ViewRevision { get; private set; }
+    public IReadOnlyList<string> Labels { get; private set; } = [];
     public IReadOnlyList<SvnTreeEntry> Entries { get; private set; } = [];
     public IReadOnlyList<TreeRow> Rows { get; private set; } = [];
     public ISet<string> DeletablePaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
@@ -108,6 +110,8 @@ public sealed class TreeModel : PageModel
         {
             return NotFound();
         }
+
+        Labels = RepositoryLabels.Normalize(repo.Labels);
 
         if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
         {
