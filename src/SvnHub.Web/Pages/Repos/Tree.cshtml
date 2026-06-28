@@ -12,6 +12,8 @@
     {
         treeTitleMetadata.Add($"{Model.ExternalCount} {(Model.ExternalCount == 1 ? "external" : "externals")}");
     }
+
+    var checkoutUrl = Model.GetCheckoutUrl(Model.Path);
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -55,25 +57,19 @@ else
             <div class="d-flex align-items-center gap-2">
                 @if (Model.CanWriteActions && Model.Path != "/")
                 {
-                    <a class="btn btn-sm btn-outline-secondary"
-                       asp-page="/Repos/Edit"
-                       asp-route-repoName="@Model.RepoName"
-                       asp-route-path="@Model.Path">Edit</a>
+                    <form method="post"
+                          asp-page-handler="DeleteEntry"
+                          asp-route-repoName="@Model.RepoName"
+                          asp-route-path="@RepositoryPath.ToRouteValue(Model.ParentPath)"
+                          class="d-inline">
+                        <input type="hidden" name="targetPath" value="@Model.Path" />
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger"
+                                onclick="return confirm('Delete this folder from SVN? This will create a new revision.');">
+                            Delete
+                        </button>
+                    </form>
                 }
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/History"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
-                    History
-                </a>
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-page="/Repos/Tree"
-                   asp-page-handler="Zip"
-                   asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
-                   asp-route-rev="@Model.ViewRevision">
-                    Download ZIP
-                </a>
                 @if (Model.CanWriteActions)
                 {
                     <div class="dropdown">
@@ -120,19 +116,35 @@ else
                 }
                 @if (Model.CanWriteActions && Model.Path != "/")
                 {
-                    <form method="post"
-                          asp-page-handler="DeleteEntry"
-                          asp-route-repoName="@Model.RepoName"
-                          asp-route-path="@RepositoryPath.ToRouteValue(Model.ParentPath)"
-                          class="d-inline">
-                        <input type="hidden" name="targetPath" value="@Model.Path" />
-                        <button type="submit"
-                                class="btn btn-sm btn-outline-danger"
-                                onclick="return confirm('Delete this folder from SVN? This will create a new revision.');">
-                            Delete
-                        </button>
-                    </form>
+                    <a class="btn btn-sm btn-outline-secondary"
+                       asp-page="/Repos/Edit"
+                       asp-route-repoName="@Model.RepoName"
+                       asp-route-path="@Model.Path">Edit</a>
                 }
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/History"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@(Model.Path == "/" ? null : Model.Path)">
+                    History
+                </a>
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-page="/Repos/Tree"
+                   asp-page-handler="Zip"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-path="@RepositoryPath.ToRouteValue(Model.Path)"
+                   asp-route-rev="@Model.ViewRevision">
+                    Download ZIP
+                </a>
+                @if (!string.IsNullOrWhiteSpace(checkoutUrl))
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-copy-text="@checkoutUrl"
+                            data-copy-msg="#treeCopyMsg">
+                        Copy SVN URL
+                    </button>
+                }
+                <span class="text-muted small" id="treeCopyMsg"></span>
             </div>
         </div>
 

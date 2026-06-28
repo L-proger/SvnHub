@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>OriginalCircuit.Eda.Rendering.Svg</PackageId>
+    <Description>SVG vector rendering backend for EDA file visualization</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OriginalCircuit.Eda.Rendering.Core\OriginalCircuit.Eda.Rendering.Core.csproj" />
+  </ItemGroup>
+
+</Project>

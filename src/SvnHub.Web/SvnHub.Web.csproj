@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\SvnHub.App\SvnHub.App.csproj" />
     <ProjectReference Include="..\SvnHub.Infrastructure\SvnHub.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\third_party\AltiumSharp\shared\OriginalCircuit.Eda.Rendering\src\OriginalCircuit.Eda.Rendering.Core\OriginalCircuit.Eda.Rendering.Core.csproj" />
+    <ProjectReference Include="..\..\third_party\AltiumSharp\src\OriginalCircuit.Altium.Rendering.Svg\OriginalCircuit.Altium.Rendering.Svg.csproj" />
   </ItemGroup>
 
   <ItemGroup>

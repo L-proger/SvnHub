@@ -21,6 +21,7 @@ public sealed class FileModel : PageModel
     private readonly ISvnRepositoryWriter _svnWriter;
     private readonly SettingsService _settings;
     private readonly SvnHubOptions _options;
+    private readonly AltiumPreviewRenderer _altiumPreview;
 
     public FileModel(
         RepositoryService repos,
@@ -28,7 +29,8 @@ public sealed class FileModel : PageModel
         ISvnLookClient svnlook,
         ISvnRepositoryWriter svnWriter,
         SettingsService settings,
-        SvnHubOptions options)
+        SvnHubOptions options,
+        AltiumPreviewRenderer altiumPreview)
     {
         _repos = repos;
         _access = access;
@@ -36,6 +38,7 @@ public sealed class FileModel : PageModel
         _svnWriter = svnWriter;
         _settings = settings;
         _options = options;
+        _altiumPreview = altiumPreview;
     }
 
     [TempData]
@@ -60,6 +63,9 @@ public sealed class FileModel : PageModel
     public bool IsPdf { get; private set; }
     public bool IsGerberPreview { get; private set; }
     public bool IsModelPreview { get; private set; }
+    public bool IsAltiumPreview { get; private set; }
+    public bool IsAltiumPcbDocument { get; private set; }
+    public string AltiumPreviewLabel { get; private set; } = "";
     public string ImageContentType { get; private set; } = "application/octet-stream";
     public string Language { get; private set; } = "plaintext";
     public string LineNumbers { get; private set; } = "";
@@ -81,6 +87,7 @@ public sealed class FileModel : PageModel
         !IsPdf &&
         !IsGerberPreview &&
         !IsModelPreview &&
+        !IsAltiumPreview &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -197,6 +204,16 @@ public sealed class FileModel : PageModel
                 }
             }
 
+            if (AltiumPreviewFileClassifier.IsPreviewablePath(Path))
+            {
+                var altiumKind = AltiumPreviewFileClassifier.GetKind(Path);
+                ClearTextPreviewState();
+                IsAltiumPreview = true;
+                IsAltiumPcbDocument = altiumKind == AltiumPreviewKind.PcbDocument;
+                AltiumPreviewLabel = AltiumPreviewFileClassifier.Describe(altiumKind);
+                return Page();
+            }
+
             if (IsImage)
             {
                 // Render via Raw handler (binary); don't try to read it as text.
@@ -283,6 +300,9 @@ public sealed class FileModel : PageModel
         IsMarkdown = false;
         IsGerberPreview = false;
         IsModelPreview = false;
+        IsAltiumPreview = false;
+        IsAltiumPcbDocument = false;
+        AltiumPreviewLabel = "";
         LineNumbers = "";
         LineCount = null;
     }
@@ -461,6 +481,70 @@ public sealed class FileModel : PageModel
 
         TempData["Message"] = $"Deleted {System.IO.Path.GetFileName(Path)}";
         return RedirectToPage("/Repos/Tree", new { repoName, path = RepositoryPath.ToRouteValue(ParentPath) });
+    }
+
+    public async Task<IActionResult> OnGetAltiumPreviewAsync(
+        string repoName,
+        string? path,
+        long? rev,
+        string? side,
+        CancellationToken cancellationToken)
+    {
+        RepoName = repoName;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return NotFound();
+        }
+
+        Path = Normalize(path);
+        if (!AltiumPreviewFileClassifier.IsPreviewablePath(Path))
+        {
+            return NotFound();
+        }
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var headRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            var effectiveRev = ResolveRevision(rev, headRevision);
+            var maxServeBytes = _options.GetEffectiveMaxPreviewBytes();
+            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            if (fileSize > maxServeBytes)
+            {
+                return StatusCode(
+                    StatusCodes.Status413PayloadTooLarge,
+                    BuildFileTooLargeMessage(fileSize, maxServeBytes));
+            }
+
+            var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            var previewSide = string.Equals(side, "bottom", StringComparison.OrdinalIgnoreCase)
+                ? AltiumPreviewSide.Bottom
+                : AltiumPreviewSide.Top;
+            var svg = await _altiumPreview.RenderSvgAsync(bytes, Path, previewSide, cancellationToken);
+
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Content(svg, "image/svg+xml; charset=utf-8");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return BadRequest($"Altium preview failed: {ex.Message}");
+        }
     }
 
     public async Task<IActionResult> OnGetDownloadAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)

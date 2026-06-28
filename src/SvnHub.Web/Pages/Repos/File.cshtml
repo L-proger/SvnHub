@@ -2,7 +2,7 @@
 @model SvnHub.Web.Pages.Repos.FileModel
 @{
     ViewData["Title"] = $"{Model.RepoName} - {Model.Path}";
-    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsModelPreview && !Model.IsMarkdown ? Model.LineCount : null;
+    var lineCount = !Model.IsImage && !Model.IsPdf && !Model.IsGerberPreview && !Model.IsModelPreview && !Model.IsAltiumPreview && !Model.IsMarkdown ? Model.LineCount : null;
     var gerberPreviewFiles = Model.GerberPreviewFiles
         .Select(f => new
         {
@@ -21,6 +21,8 @@
             url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
         })
         .ToArray();
+    var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
+    var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
 }
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -196,6 +198,38 @@ else
                 </div>
                 <script type="application/json" id="model-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(modelPreviewFiles))</script>
             }
+            else if (Model.IsAltiumPreview)
+            {
+                <div class="altium-preview" data-altium-preview>
+                    <div class="altium-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="fw-semibold">@Model.AltiumPreviewLabel</div>
+                            <div class="text-muted small">@System.IO.Path.GetFileName(Model.Path)</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-altium-reset>Reset view</button>
+                            @if (Model.IsAltiumPcbDocument)
+                            {
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Board side">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary active"
+                                            data-altium-side="top"
+                                            data-altium-url="@altiumTopUrl">Top</button>
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            data-altium-side="bottom"
+                                            data-altium-url="@altiumBottomUrl">Bottom</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <iframe class="altium-preview-frame"
+                            title="@System.IO.Path.GetFileName(Model.Path)"
+                            sandbox="allow-same-origin"
+                            src="@altiumTopUrl">
+                    </iframe>
+                </div>
+            }
             else if (Model.IsMarkdown)
             {
                 <div class="md">@Html.Raw(Model.MarkdownHtml)</div>
@@ -243,5 +277,9 @@ else
     {
         <script src="~/lib/online-3d-viewer/o3dv.min.js" asp-append-version="true"></script>
         <script src="~/js/model-preview.js" asp-append-version="true"></script>
+    }
+    @if (Model.IsAltiumPreview)
+    {
+        <script src="~/js/altium-preview.js" asp-append-version="true"></script>
     }
 }

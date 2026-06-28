@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>OriginalCircuit.Eda.Rendering.Raster</PackageId>
+    <Description>Raster (PNG/JPG) rendering backend using SkiaSharp for EDA file visualization</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OriginalCircuit.Eda.Rendering.Core\OriginalCircuit.Eda.Rendering.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+
+</Project>

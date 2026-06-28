@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.0.0-alpha.1</Version>
+    <Authors>Original Circuit</Authors>
+    <Company>Original Circuit</Company>
+    <Product>OriginalCircuit.Eda.Abstractions</Product>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <Description>Shared EDA interfaces and value types for format-agnostic electronic design automation tooling.</Description>
+    <Copyright>Copyright (c) Original Circuit</Copyright>
+  </PropertyGroup>
+</Project>
