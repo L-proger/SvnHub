@@ -15,6 +15,13 @@
     if (Model.CanEdit)
     {
         fileActions.Add(new RepositoryObjectActionModel(
+            "Delete",
+            ButtonClass: "btn-outline-danger",
+            FormAction: Url.Page("/Repos/File", "Delete", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path) }),
+            Confirm: "Delete this file from SVN? This will create a new revision.",
+            HiddenFields: new Dictionary<string, string?> { ["path"] = Model.Path }));
+
+        fileActions.Add(new RepositoryObjectActionModel(
             "Edit",
             Href: Url.Page("/Repos/Edit", null, new { repoName = Model.RepoName, path = Model.Path })));
     }
@@ -34,24 +41,14 @@
         "History",
         Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path })));
 
-    if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
-    {
-        fileActions.Add(new RepositoryObjectActionModel("Copy SVN URL", CopyText: Model.CheckoutUrl, CopyMessageTarget: "#copyMsg"));
-    }
-
     if (Model.CanCopyContent)
     {
         fileActions.Add(new RepositoryObjectActionModel("Copy content", CopyFrom: "#copySrc", CopyMessageTarget: "#copyMsg"));
     }
 
-    if (Model.CanEdit)
+    if (!string.IsNullOrWhiteSpace(Model.CheckoutUrl))
     {
-        fileActions.Add(new RepositoryObjectActionModel(
-            "Delete",
-            ButtonClass: "btn-outline-danger",
-            FormAction: Url.Page("/Repos/File", "Delete", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path) }),
-            Confirm: "Delete this file from SVN? This will create a new revision.",
-            HiddenFields: new Dictionary<string, string?> { ["path"] = Model.Path }));
+        fileActions.Add(new RepositoryObjectActionModel("Copy SVN URL", CopyText: Model.CheckoutUrl, CopyMessageTarget: "#copyMsg"));
     }
 }
 
