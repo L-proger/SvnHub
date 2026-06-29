@@ -40,7 +40,7 @@ public sealed class LoginModel : PageModel
             return Page();
         }
 
-        var result = _users.Authenticate(Input.UserName, Input.Password);
+        var result = await _users.AuthenticateAsync(Input.UserName, Input.Password);
         if (!result.Success || result.Value is null)
         {
             Error = result.Error ?? "Login failed.";

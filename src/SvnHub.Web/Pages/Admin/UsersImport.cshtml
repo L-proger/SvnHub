@@ -1,0 +1,77 @@
+@page "/admin/users/import"
+@model SvnHub.Web.Pages.Admin.UsersImportModel
+@{
+    ViewData["Title"] = "Import users";
+}
+
+<div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Import users</h1>
+    <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Back</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Error))
+{
+    <div class="alert alert-danger mt-3">@Model.Error</div>
+}
+
+@if (Model.Result is not null)
+{
+    <div class="alert alert-success mt-3">
+        Imported @Model.Result.ImportedCount user(s).
+        Skipped @Model.Result.SkippedExistingCount existing,
+        @Model.Result.SkippedDuplicateCount duplicate,
+        @Model.Result.InvalidCount invalid.
+    </div>
+
+    @if (Model.Result.Errors.Count > 0)
+    {
+        <div class="alert alert-warning">
+            <div class="fw-semibold mb-2">Import warnings</div>
+            <ul class="mb-0">
+                @foreach (var error in Model.Result.Errors)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        </div>
+    }
+}
+
+<form method="post" enctype="multipart/form-data" class="mt-3" autocomplete="off">
+    <div class="card">
+        <div class="card-body">
+            <p class="text-muted">
+                Import users from an Apache htpasswd file. Only bcrypt hashes
+                (<code>$2y$</code>, <code>$2a$</code>, <code>$2b$</code>) are accepted.
+                Existing users are skipped. Imported users receive regular user access and no administrator roles.
+            </p>
+
+            <div class="mb-3">
+                <label asp-for="Input.File" class="form-label"></label>
+                <input asp-for="Input.File" type="file" class="form-control" />
+                <div class="form-text">
+                    The file is read once and is not stored. Maximum size is 2 MB.
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Input.Text" class="form-label"></label>
+                <textarea asp-for="Input.Text"
+                          class="form-control font-monospace"
+                          rows="10"
+                          spellcheck="false"
+                          placeholder="username:$2y$..."></textarea>
+            </div>
+
+            <div class="alert alert-info mb-0">
+                Imported users can keep using their old SVN passwords immediately.
+                On first successful SvnHub web login, the UI password hash is migrated automatically.
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Cancel</a>
+        <button class="btn btn-primary" type="submit">Import</button>
+    </div>
+</form>

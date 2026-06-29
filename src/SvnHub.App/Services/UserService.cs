@@ -3,6 +3,7 @@ using SvnHub.App.Storage;
 using SvnHub.App.Support;
 using SvnHub.App.System;
 using SvnHub.Domain;
+using System.Text.RegularExpressions;
 
 namespace SvnHub.App.Services;
 
@@ -19,7 +20,10 @@ public sealed class UserService
         _authFilesWriter = authFilesWriter;
     }
 
-    public OperationResult<PortalUser> Authenticate(string userName, string password)
+    public async Task<OperationResult<PortalUser>> AuthenticateAsync(
+        string userName,
+        string password,
+        CancellationToken cancellationToken = default)
     {
         var state = _store.Read();
         var user = state.Users.FirstOrDefault(u =>
@@ -30,12 +34,61 @@ public sealed class UserService
             return OperationResult<PortalUser>.Fail("Invalid credentials.");
         }
 
-        if (!UiPasswordHasher.Verify(user.UiPasswordHash, password))
+        if (UiPasswordHasher.Verify(user.UiPasswordHash, password))
+        {
+            return OperationResult<PortalUser>.Ok(user);
+        }
+
+        if (!user.RequiresUiPasswordMigration || string.IsNullOrWhiteSpace(user.SvnBcryptHash))
         {
             return OperationResult<PortalUser>.Fail("Invalid credentials.");
         }
 
-        return OperationResult<PortalUser>.Ok(user);
+        bool svnPasswordValid;
+        try
+        {
+            svnPasswordValid = await _htpasswd.VerifyBcryptHashAsync(
+                user.UserName,
+                user.SvnBcryptHash,
+                password,
+                cancellationToken);
+        }
+        catch
+        {
+            return OperationResult<PortalUser>.Fail("Invalid credentials.");
+        }
+
+        if (!svnPasswordValid)
+        {
+            return OperationResult<PortalUser>.Fail("Invalid credentials.");
+        }
+
+        var migrated = user with
+        {
+            UiPasswordHash = UiPasswordHasher.Hash(password),
+            RequiresUiPasswordMigration = false,
+        };
+
+        var newState = state with
+        {
+            Users = state.Users.Select(u => u.Id == migrated.Id ? migrated : u).ToList(),
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: migrated.Id,
+                    Action: "user.migrate_ui_password",
+                    Target: migrated.UserName,
+                    Success: true,
+                    Details: "Migrated from imported htpasswd bcrypt hash."
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+        return OperationResult<PortalUser>.Ok(migrated);
     }
 
     public IReadOnlyList<PortalUser> ListUsers()
@@ -135,6 +188,140 @@ public sealed class UserService
         return OperationResult<PortalUser>.Ok(user);
     }
 
+    public async Task<OperationResult<HtpasswdImportResult>> ImportHtpasswdUsersAsync(
+        Guid actorUserId,
+        string htpasswdContent,
+        CancellationToken cancellationToken = default)
+    {
+        var state = _store.Read();
+        var actor = GetActiveUser(state, actorUserId);
+        if (actor is null || !actor.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
+        {
+            return OperationResult<HtpasswdImportResult>.Fail("You don't have permission to import users.");
+        }
+
+        if (string.IsNullOrWhiteSpace(htpasswdContent))
+        {
+            return OperationResult<HtpasswdImportResult>.Fail("Import file is empty.");
+        }
+
+        var existingNames = state.Users
+            .Select(u => u.UserName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var importedUsers = new List<PortalUser>();
+        var errors = new List<string>();
+        var skippedExisting = 0;
+        var skippedDuplicate = 0;
+        var invalid = 0;
+
+        var lines = htpasswdContent.Split(['\r', '\n'], StringSplitOptions.None);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var lineNumber = i + 1;
+            var line = lines[i].Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+            {
+                continue;
+            }
+
+            var separatorIndex = line.IndexOf(':', StringComparison.Ordinal);
+            if (separatorIndex <= 0 || separatorIndex == line.Length - 1)
+            {
+                invalid++;
+                AddImportError(errors, lineNumber, "expected username:hash.");
+                continue;
+            }
+
+            var userName = line[..separatorIndex].Trim();
+            var hash = line[(separatorIndex + 1)..].Trim();
+
+            if (!Validation.IsValidUserName(userName))
+            {
+                invalid++;
+                AddImportError(errors, lineNumber, "invalid user name.");
+                continue;
+            }
+
+            if (!IsSupportedBcryptHash(hash))
+            {
+                invalid++;
+                AddImportError(errors, lineNumber, "unsupported password hash. Only bcrypt htpasswd hashes are imported.");
+                continue;
+            }
+
+            if (existingNames.Contains(userName))
+            {
+                skippedExisting++;
+                continue;
+            }
+
+            if (!seenNames.Add(userName))
+            {
+                skippedDuplicate++;
+                continue;
+            }
+
+            importedUsers.Add(new PortalUser(
+                Id: Guid.NewGuid(),
+                UserName: userName,
+                UiPasswordHash: "imported:htpasswd",
+                SvnBcryptHash: hash,
+                IsActive: true,
+                Roles: PortalUserRoles.None,
+                CreatedAt: DateTimeOffset.UtcNow)
+            {
+                RequiresUiPasswordMigration = true,
+            });
+        }
+
+        var result = new HtpasswdImportResult(
+            ImportedCount: importedUsers.Count,
+            SkippedExistingCount: skippedExisting,
+            SkippedDuplicateCount: skippedDuplicate,
+            InvalidCount: invalid,
+            Errors: errors);
+
+        if (importedUsers.Count == 0)
+        {
+            return OperationResult<HtpasswdImportResult>.Ok(result);
+        }
+
+        var newState = state with
+        {
+            Users = [..state.Users, ..importedUsers],
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "user.import_htpasswd",
+                    Target: "users",
+                    Success: true,
+                    Details: $"Imported {importedUsers.Count}; skipped existing {skippedExisting}; skipped duplicate {skippedDuplicate}; invalid {invalid}."
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+
+        try
+        {
+            await _authFilesWriter.WriteHtpasswdAsync(newState.Users, cancellationToken);
+            await _authFilesWriter.WriteAuthzAsync(newState, cancellationToken);
+            await _authFilesWriter.ReloadApacheAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult<HtpasswdImportResult>.Fail(
+                $"Users imported, but failed to update Apache auth files: {ex.Message}");
+        }
+
+        return OperationResult<HtpasswdImportResult>.Ok(result);
+    }
+
     public async Task<OperationResult<PortalUser>> ChangePasswordAsync(
         Guid actorUserId,
         Guid userId,
@@ -184,6 +371,7 @@ public sealed class UserService
         {
             UiPasswordHash = UiPasswordHasher.Hash(newPassword),
             SvnBcryptHash = bcryptHash,
+            RequiresUiPasswordMigration = false,
         };
 
         var newState = state with
@@ -264,6 +452,7 @@ public sealed class UserService
         {
             UiPasswordHash = UiPasswordHasher.Hash(newPassword),
             SvnBcryptHash = bcryptHash,
+            RequiresUiPasswordMigration = false,
         };
 
         var newState = state with
@@ -503,4 +692,25 @@ public sealed class UserService
 
     private static PortalUser? GetActiveUser(PortalState state, Guid userId) =>
         state.Users.FirstOrDefault(u => u.Id == userId && u.IsActive);
+
+    private static bool IsSupportedBcryptHash(string value) =>
+        BcryptHtpasswdHashRegex.IsMatch(value);
+
+    private static void AddImportError(List<string> errors, int lineNumber, string message)
+    {
+        if (errors.Count < 100)
+        {
+            errors.Add($"Line {lineNumber}: {message}");
+        }
+    }
+
+    private static readonly Regex BcryptHtpasswdHashRegex =
+        new(@"^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$", RegexOptions.CultureInvariant);
 }
+
+public sealed record HtpasswdImportResult(
+    int ImportedCount,
+    int SkippedExistingCount,
+    int SkippedDuplicateCount,
+    int InvalidCount,
+    IReadOnlyList<string> Errors);

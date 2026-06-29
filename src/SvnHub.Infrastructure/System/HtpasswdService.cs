@@ -58,5 +58,42 @@ public sealed class HtpasswdService : IHtpasswdService
 
         return hash;
     }
-}
 
+    public async Task<bool> VerifyBcryptHashAsync(
+        string userName,
+        string bcryptHash,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userName) ||
+            string.IsNullOrWhiteSpace(bcryptHash) ||
+            string.IsNullOrEmpty(password))
+        {
+            return false;
+        }
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"svnhub-htpasswd-{Guid.NewGuid():N}");
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, $"{userName}:{bcryptHash}\n", cancellationToken);
+
+            var result = await _runner.RunAsync(
+                _options.HtpasswdCommand,
+                ["-vb", tempPath, userName, password],
+                cancellationToken);
+
+            return result.IsSuccess;
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
+        }
+    }
+}

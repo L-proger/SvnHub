@@ -7,5 +7,11 @@ public interface IHtpasswdService
         string password,
         CancellationToken cancellationToken = default
     );
-}
 
+    Task<bool> VerifyBcryptHashAsync(
+        string userName,
+        string bcryptHash,
+        string password,
+        CancellationToken cancellationToken = default
+    );
+}

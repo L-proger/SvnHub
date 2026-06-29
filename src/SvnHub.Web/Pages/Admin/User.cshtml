@@ -19,6 +19,10 @@
             {
                 <span class="ms-2 badge text-bg-secondary">Inactive</span>
             }
+            @if (Model.TargetUser.RequiresUiPasswordMigration)
+            {
+                <span class="ms-2 badge text-bg-warning">UI password pending</span>
+            }
         </div>
     </div>
     <a class="btn btn-outline-secondary" asp-page="/Admin/Users">Back to Users</a>

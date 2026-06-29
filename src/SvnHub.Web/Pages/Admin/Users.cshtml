@@ -19,6 +19,7 @@
             <input type="hidden" name="p" value="@Model.PageNumber" />
         </form>
 
+        <a class="btn btn-outline-secondary" asp-page="/Admin/UsersImport">Import</a>
         <a class="btn btn-primary" asp-page="/Admin/UsersCreate">Create</a>
     </div>
 </div>
@@ -60,6 +61,10 @@
                         @if (!u.IsActive)
                         {
                             <span class="ms-2 badge text-bg-secondary">Inactive</span>
+                        }
+                        @if (u.RequiresUiPasswordMigration)
+                        {
+                            <span class="ms-2 badge text-bg-warning">UI password pending</span>
                         }
                     </div>
                 </div>
