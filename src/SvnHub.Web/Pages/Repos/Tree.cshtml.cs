@@ -473,7 +473,7 @@ public sealed class TreeModel : PageModel
     private static (string RepoName, string Path)? TryResolveInternalExternalTarget(
         string currentRepoName,
         IReadOnlyList<Repository> repositories,
-        string svnBaseUrl,
+        IReadOnlyList<string> svnBaseUrls,
         SvnExternalDefinition external)
     {
         if (string.IsNullOrWhiteSpace(external.Url))
@@ -499,27 +499,40 @@ public sealed class TreeModel : PageModel
             return ResolveExternalTarget(currentRepoName, repositories, value);
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var externalUri) ||
-            !Uri.TryCreate(svnBaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var externalUri))
         {
             return null;
         }
 
-        if (!string.Equals(externalUri.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(externalUri.Authority, baseUri.Authority, StringComparison.OrdinalIgnoreCase))
+        foreach (var svnBaseUrl in svnBaseUrls)
         {
-            return null;
+            if (!Uri.TryCreate(svnBaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+            {
+                continue;
+            }
+
+            if (!string.Equals(externalUri.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(externalUri.Authority, baseUri.Authority, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var basePath = baseUri.AbsolutePath.TrimEnd('/');
+            var externalPath = externalUri.AbsolutePath;
+            if (!externalPath.StartsWith(basePath + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relativePath = Uri.UnescapeDataString(externalPath[(basePath.Length + 1)..]);
+            var target = ResolveRepositoryPath(null, repositories, relativePath);
+            if (target is not null)
+            {
+                return target;
+            }
         }
 
-        var basePath = baseUri.AbsolutePath.TrimEnd('/');
-        var externalPath = externalUri.AbsolutePath;
-        if (!externalPath.StartsWith(basePath + "/", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var relativePath = Uri.UnescapeDataString(externalPath[(basePath.Length + 1)..]);
-        return ResolveRepositoryPath(null, repositories, relativePath);
+        return null;
     }
 
     private static (string RepoName, string Path)? ResolveRepositoryPath(
@@ -1232,7 +1245,8 @@ public sealed class TreeModel : PageModel
         }
 
         var knownRepositories = _repos.List();
-        var svnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+        var svnBaseUrls = _settings.GetEffectiveSvnBaseUrls();
+        var svnBaseUrl = svnBaseUrls.FirstOrDefault() ?? _settings.GetEffectiveSvnBaseUrl();
 
         foreach (var directory in directories)
         {
@@ -1260,6 +1274,7 @@ public sealed class TreeModel : PageModel
                     sourceRepo,
                     exportRootPath,
                     knownRepositories,
+                    svnBaseUrls,
                     svnBaseUrl,
                     external,
                     userId,
@@ -1310,6 +1325,7 @@ public sealed class TreeModel : PageModel
         Repository sourceRepo,
         string exportRootPath,
         IReadOnlyList<Repository> knownRepositories,
+        IReadOnlyList<string> svnBaseUrls,
         string svnBaseUrl,
         SvnExternalDefinition external,
         Guid userId,
@@ -1346,7 +1362,7 @@ public sealed class TreeModel : PageModel
         Directory.CreateDirectory(destinationPath);
 
         var externalRevision = TryParseRevision(external.Revision) ?? TryParseRevision(external.PegRevision);
-        var internalTarget = TryResolveInternalExternalTarget(sourceRepo.Name, knownRepositories, svnBaseUrl, external);
+        var internalTarget = TryResolveInternalExternalTarget(sourceRepo.Name, knownRepositories, svnBaseUrls, external);
         if (internalTarget is not null)
         {
             await ExportInternalZipExternalAsync(

@@ -43,6 +43,13 @@
     </div>
 
     <div class="mb-3">
+        <label asp-for="Input.SvnBaseUrlAliases" class="form-label"></label>
+        <textarea asp-for="Input.SvnBaseUrlAliases" class="form-control" rows="3" placeholder="https://old-svn.example.com:18080/svn"></textarea>
+        <div class="form-text">Legacy SVN base URLs treated as internal when resolving <code>svn:externals</code>. Use one URL per line.</div>
+        <span asp-validation-for="Input.SvnBaseUrlAliases" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
         <label asp-for="Input.DefaultAuthenticatedAccess" class="form-label"></label>
         <select asp-for="Input.DefaultAuthenticatedAccess" class="form-select">
             <option value="None">None (private / allow-list)</option>

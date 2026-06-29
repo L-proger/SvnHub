@@ -13,6 +13,8 @@ public sealed class SvnHubOptions
 
     public string SvnBaseUrl { get; set; } = "http://localhost:8080/svn";
 
+    public List<string> SvnBaseUrlAliases { get; set; } = [];
+
     public string HtpasswdCommand { get; set; } = "htpasswd";
 
     public string SvnadminCommand { get; set; } = "svnadmin";

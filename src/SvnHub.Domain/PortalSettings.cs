@@ -25,6 +25,12 @@ public sealed record PortalSettings
     public string SvnBaseUrl { get; init; } = "";
 
     /// <summary>
+    /// Legacy or alternate SVN base URLs that should still be treated as internal SvnHub repository URLs.
+    /// Used when resolving svn:externals.
+    /// </summary>
+    public IReadOnlyList<string> SvnBaseUrlAliases { get; init; } = [];
+
+    /// <summary>
     /// Maximum allowed upload size for the web UI (bytes).
     /// This is enforced by the server and by request body limits.
     /// </summary>

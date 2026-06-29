@@ -146,6 +146,7 @@ public sealed class SettingsModel : PageModel
             Input.CreateIfMissing,
             Input.OrganizationName,
             Input.SvnBaseUrl,
+            Input.SvnBaseUrlAliases,
             Input.DefaultAuthenticatedAccess,
             (long)Math.Max(1, Input.MaxUploadMegabytes) * 1024 * 1024,
             Input.IndexingEnabled,
@@ -249,6 +250,8 @@ public sealed class SettingsModel : PageModel
         Input.OrganizationName = _settings.GetOrganizationName();
         Input.RepositoriesRootPath = _settings.GetEffectiveRepositoriesRootPath();
         Input.SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+        Input.SvnBaseUrlAliases = string.Join(Environment.NewLine, _settings.GetEffectiveSvnBaseUrls()
+            .Where(url => !string.Equals(url, Input.SvnBaseUrl, StringComparison.OrdinalIgnoreCase)));
         Input.MaxUploadMegabytes = (int)Math.Clamp(_settings.GetEffectiveMaxUploadBytes() / (1024 * 1024), 1, int.MaxValue);
         Input.DefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
 
@@ -346,6 +349,9 @@ public sealed class SettingsModel : PageModel
 
         [Display(Name = "SVN base URL")]
         public string SvnBaseUrl { get; set; } = "";
+
+        [Display(Name = "SVN base URL aliases")]
+        public string SvnBaseUrlAliases { get; set; } = "";
 
         [Display(Name = "Default access for authenticated users")]
         public AccessLevel DefaultAuthenticatedAccess { get; set; } = AccessLevel.Write;

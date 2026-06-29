@@ -63,6 +63,19 @@ public sealed class SettingsService
         return _options.SvnBaseUrl;
     }
 
+    public IReadOnlyList<string> GetEffectiveSvnBaseUrls()
+    {
+        var state = _store.Read();
+        var urls = new List<string>
+        {
+            GetEffectiveSvnBaseUrl(state),
+        };
+
+        urls.AddRange(state.Settings.SvnBaseUrlAliases ?? []);
+        urls.AddRange(_options.SvnBaseUrlAliases);
+        return NormalizeSvnBaseUrlList(urls) ?? [];
+    }
+
     public AccessLevel GetEffectiveDefaultAuthenticatedAccess()
     {
         var state = _store.Read();
@@ -144,6 +157,7 @@ public sealed class SettingsService
         bool createIfMissing,
         string? organizationName,
         string? svnBaseUrl,
+        string? svnBaseUrlAliases,
         AccessLevel defaultAuthenticatedAccess,
         long maxUploadBytes,
         bool indexingEnabled,
@@ -208,6 +222,12 @@ public sealed class SettingsService
             return OperationResult.Fail("SVN base URL must be an absolute http(s) URL, or empty.");
         }
 
+        var normalizedSvnBaseUrlAliases = NormalizeSvnBaseUrlLines(svnBaseUrlAliases);
+        if (normalizedSvnBaseUrlAliases is null)
+        {
+            return OperationResult.Fail("SVN base URL aliases must contain absolute http(s) URLs, one per line.");
+        }
+
         if (maxUploadBytes <= 0)
         {
             maxUploadBytes = DefaultMaxUploadBytes;
@@ -237,6 +257,7 @@ public sealed class SettingsService
             OrganizationName = normalizedOrganizationName,
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
+            SvnBaseUrlAliases = normalizedSvnBaseUrlAliases,
             DefaultAuthenticatedAccess = defaultAuthenticatedAccess,
             MaxUploadBytes = maxUploadBytes,
             IndexingEnabled = indexingEnabled,
@@ -323,6 +344,41 @@ public sealed class SettingsService
         }
 
         return trimmed;
+    }
+
+    private static IReadOnlyList<string>? NormalizeSvnBaseUrlLines(string? svnBaseUrls)
+    {
+        if (string.IsNullOrWhiteSpace(svnBaseUrls))
+        {
+            return [];
+        }
+
+        var values = svnBaseUrls
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return NormalizeSvnBaseUrlList(values);
+    }
+
+    private static IReadOnlyList<string>? NormalizeSvnBaseUrlList(IEnumerable<string> svnBaseUrls)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in svnBaseUrls)
+        {
+            var normalized = NormalizeSvnBaseUrl(value);
+            if (normalized is null)
+            {
+                return null;
+            }
+
+            if (normalized.Length == 0 || !seen.Add(normalized))
+            {
+                continue;
+            }
+
+            result.Add(normalized);
+        }
+
+        return result;
     }
 
     private static string? NormalizeOrganizationName(string? organizationName)
