@@ -141,7 +141,21 @@
                         <div class="sp-entry-meta d-flex text-muted small">
                             <div class="sp-entry-msg text-truncate" title="@row.LastCommitMessage">@((row.LastCommitMessage ?? "-"))</div>
                             <div class="sp-entry-author text-truncate" title="@row.LastChangedAuthor">@((row.LastChangedAuthor ?? "-"))</div>
-                            <div class="sp-entry-age">@((row.LastChangedAge ?? "-"))</div>
+                            <div class="sp-entry-date">
+                                @if (row.LastChangedAt is not null)
+                                {
+                                    <time data-local-datetime
+                                          data-relative="@row.LastChangedAge"
+                                          datetime="@row.LastChangedAt.Value.UtcDateTime.ToString("O")"
+                                          title="@row.LastChangedAt.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'")">
+                                        @row.LastChangedAt.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm")
+                                    </time>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </div>
                             <div class="sp-entry-rev">@((row.LastChangedRevision is null ? "-" : $"r{row.LastChangedRevision}"))</div>
                         </div>
                     </div>

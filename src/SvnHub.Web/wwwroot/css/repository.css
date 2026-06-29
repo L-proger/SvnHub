@@ -234,7 +234,7 @@
   max-width: 42vw;
 }
 
-.sp-entry-meta .sp-entry-age,
+.sp-entry-meta .sp-entry-date,
 .sp-entry-meta .sp-entry-rev {
   flex: 0 0 auto;
   text-align: right;
@@ -245,8 +245,8 @@
   text-align: right;
 }
 
-.sp-entry-meta .sp-entry-age {
-  width: 7.5rem;
+.sp-entry-meta .sp-entry-date {
+  width: 8.75rem;
 }
 
 .sp-entry-meta .sp-entry-rev {

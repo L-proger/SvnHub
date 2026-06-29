@@ -152,6 +152,36 @@
         }
     });
 
+    function pad2(value) {
+        return String(value).padStart(2, '0');
+    }
+
+    function formatLocalDateTime(date) {
+        return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+    }
+
+    function formatUtcDateTime(date) {
+        return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())} UTC`;
+    }
+
+    function initLocalDateTimes() {
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time';
+        document.querySelectorAll('[data-local-datetime]').forEach((el) => {
+            const value = el.getAttribute('datetime');
+            if (!value) return;
+
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return;
+
+            const local = formatLocalDateTime(date);
+            const utc = formatUtcDateTime(date);
+            const relative = el.getAttribute('data-relative');
+
+            el.textContent = local;
+            el.title = `Local: ${local} ${timeZone}\nUTC: ${utc}${relative ? `\nRelative: ${relative}` : ''}`;
+        });
+    }
+
     function normalizeLabel(value) {
         return String(value || '').trim().split(/\s+/).filter(Boolean).join(' ');
     }
@@ -390,6 +420,7 @@
     }
 
     document.querySelectorAll('[data-label-editor]').forEach(initLabelEditor);
+    initLocalDateTimes();
 
     // Run after the DOM is ready; site.js is loaded at the end of <body> so this is effectively immediate.
     highlightAllCode();

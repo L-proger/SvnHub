@@ -84,6 +84,7 @@ public sealed class HistoryModel : PageModel
                         Revision: entry.Revision,
                         Author: string.IsNullOrWhiteSpace(author) ? null : author.Trim(),
                         Age: IndexModel.FormatUpdatedAgo(dt, now),
+                        Date: dt,
                         Message: CommitMessageFormatter.FirstLine(log, 80),
                         ChangedPath: entry.Path
                     );
@@ -94,6 +95,7 @@ public sealed class HistoryModel : PageModel
                         Revision: entry.Revision,
                         Author: null,
                         Age: null,
+                        Date: null,
                         Message: null,
                         ChangedPath: entry.Path
                     );
@@ -114,7 +116,7 @@ public sealed class HistoryModel : PageModel
         return Page();
     }
 
-    public sealed record HistoryRow(long Revision, string? Author, string? Age, string? Message, string? ChangedPath);
+    public sealed record HistoryRow(long Revision, string? Author, string? Age, DateTimeOffset? Date, string? Message, string? ChangedPath);
 
     private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 

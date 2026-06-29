@@ -59,9 +59,15 @@ else
                                         {
                                             <span>@r.Author</span>
                                         }
-                                        @if (!string.IsNullOrWhiteSpace(r.Age))
+                                        @if (r.Date is not null)
                                         {
-                                            <span class="mx-1">|</span><span>@r.Age</span>
+                                            <span class="mx-1">|</span>
+                                            <time data-local-datetime
+                                                  data-relative="@r.Age"
+                                                  datetime="@r.Date.Value.UtcDateTime.ToString("O")"
+                                                  title="@r.Date.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'")">
+                                                @r.Date.Value.UtcDateTime.ToString("yyyy-MM-dd HH:mm")
+                                            </time>
                                         }
                                         @if (!string.IsNullOrWhiteSpace(r.ChangedPath) && r.ChangedPath != Model.Path)
                                         {

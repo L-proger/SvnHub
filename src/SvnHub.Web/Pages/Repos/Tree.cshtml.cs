@@ -329,7 +329,7 @@ public sealed class TreeModel : PageModel
         {
             if (!lastRevByPath.TryGetValue(e.Path, out var lastRev))
             {
-                return new TreeRow(e, null, null, null, null);
+                return new TreeRow(e, null, null, null, null, null);
             }
 
             revInfoByRev.TryGetValue(lastRev, out var info);
@@ -338,7 +338,7 @@ public sealed class TreeModel : PageModel
             var msg = CommitMessageFormatter.FirstLine(info.Log, 80);
             var author = string.IsNullOrWhiteSpace(info.Author) ? null : info.Author.Trim();
 
-            return new TreeRow(e, msg, author, age, lastRev);
+            return new TreeRow(e, msg, author, age, info.Date, lastRev);
         }).ToArray();
     }
 
@@ -383,6 +383,7 @@ public sealed class TreeModel : PageModel
                 virtualEntry,
                 targetLabel,
                 "svn:externals",
+                null,
                 null,
                 link.Revision,
                 link));
@@ -1194,6 +1195,7 @@ public sealed class TreeModel : PageModel
         string? LastCommitMessage,
         string? LastChangedAuthor,
         string? LastChangedAge,
+        DateTimeOffset? LastChangedAt,
         long? LastChangedRevision,
         TreeExternalLink? ExternalLink = null);
 
