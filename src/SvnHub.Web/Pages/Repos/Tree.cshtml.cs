@@ -29,6 +29,8 @@ public sealed class TreeModel : PageModel
         "README.asciidoc",
     ];
 
+    private static readonly TimeSpan ExternalZipExportTimeout = TimeSpan.FromMinutes(2);
+
     private readonly RepositoryService _repos;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
@@ -468,6 +470,58 @@ public sealed class TreeModel : PageModel
         return null;
     }
 
+    private static (string RepoName, string Path)? TryResolveInternalExternalTarget(
+        string currentRepoName,
+        IReadOnlyList<Repository> repositories,
+        string svnBaseUrl,
+        SvnExternalDefinition external)
+    {
+        if (string.IsNullOrWhiteSpace(external.Url))
+        {
+            return null;
+        }
+
+        var value = external.Url.Trim().Replace('\\', '/');
+        if (value.Length == 0)
+        {
+            return null;
+        }
+
+        if (value.StartsWith("^/", StringComparison.Ordinal) ||
+            value.StartsWith("../", StringComparison.Ordinal) ||
+            value.StartsWith("./", StringComparison.Ordinal))
+        {
+            return ResolveExternalTarget(currentRepoName, repositories, value);
+        }
+
+        if (value.StartsWith("/", StringComparison.Ordinal))
+        {
+            return ResolveExternalTarget(currentRepoName, repositories, value);
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var externalUri) ||
+            !Uri.TryCreate(svnBaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+        {
+            return null;
+        }
+
+        if (!string.Equals(externalUri.Scheme, baseUri.Scheme, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(externalUri.Authority, baseUri.Authority, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var basePath = baseUri.AbsolutePath.TrimEnd('/');
+        var externalPath = externalUri.AbsolutePath;
+        if (!externalPath.StartsWith(basePath + "/", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var relativePath = Uri.UnescapeDataString(externalPath[(basePath.Length + 1)..]);
+        return ResolveRepositoryPath(null, repositories, relativePath);
+    }
+
     private static (string RepoName, string Path)? ResolveRepositoryPath(
         string? currentRepoName,
         IReadOnlyList<Repository> repositories,
@@ -620,6 +674,62 @@ public sealed class TreeModel : PageModel
         }
 
         return value;
+    }
+
+    private static string? GetExternalZipRelativePath(string exportRootPath, SvnExternalDefinition external)
+    {
+        if (string.IsNullOrWhiteSpace(external.ResolvedPath))
+        {
+            return null;
+        }
+
+        var root = Normalize(exportRootPath);
+        var target = Normalize(external.ResolvedPath);
+        string relativePath;
+        if (root == "/")
+        {
+            relativePath = target.TrimStart('/');
+        }
+        else if (target.StartsWith(root + "/", StringComparison.Ordinal))
+        {
+            relativePath = target[(root.Length + 1)..];
+        }
+        else
+        {
+            return null;
+        }
+
+        relativePath = relativePath.Trim().Replace('\\', '/').Trim('/');
+        if (relativePath.Length == 0 ||
+            relativePath.Contains("../", StringComparison.Ordinal) ||
+            relativePath.Contains("/..", StringComparison.Ordinal) ||
+            relativePath == "..")
+        {
+            return null;
+        }
+
+        return relativePath;
+    }
+
+    private static string? GetSafeExportDestination(string exportDir, string relativePath)
+    {
+        var normalizedRelative = relativePath.Trim().Replace('\\', '/').Trim('/');
+        if (normalizedRelative.Length == 0 ||
+            normalizedRelative.Split('/').Any(segment => segment is "" or "." or ".."))
+        {
+            return null;
+        }
+
+        var root = System.IO.Path.GetFullPath(exportDir);
+        var destination = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(root, normalizedRelative.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+        var rootWithSeparator = root.EndsWith(System.IO.Path.DirectorySeparatorChar)
+            ? root
+            : root + System.IO.Path.DirectorySeparatorChar;
+
+        return destination.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
+            ? destination
+            : null;
     }
 
     private static string CombineRepoPath(string baseDir, string rel)
@@ -1030,12 +1140,27 @@ public sealed class TreeModel : PageModel
         {
             var export = await _runner.RunAsync(
                 _options.SvnCommand,
-                ["export", "--non-interactive", "--quiet", "-r", effectiveRev.ToString(), targetUrl, exportDir],
+                ["export", "--non-interactive", "--quiet", "--ignore-externals", "-r", effectiveRev.ToString(), targetUrl, exportDir],
                 cancellationToken);
 
             if (!export.IsSuccess)
             {
                 return BadRequest($"svn export failed (exit {export.ExitCode}): {export.StandardError}".Trim());
+            }
+
+            var externalNotes = new List<string>();
+            await ExportZipExternalsAsync(repo, Path, effectiveRev, userId.Value, exportDir, externalNotes, cancellationToken);
+            if (externalNotes.Count > 0)
+            {
+                var manifestPath = System.IO.Path.Combine(exportDir, "SVNHUB-EXTERNALS.txt");
+                await System.IO.File.WriteAllLinesAsync(
+                    manifestPath,
+                    [
+                        "SvnHub external export notes",
+                        "",
+                        ..externalNotes,
+                    ],
+                    cancellationToken);
             }
 
             var folderName = Path == "/"
@@ -1088,6 +1213,283 @@ public sealed class TreeModel : PageModel
             {
                 // best-effort cleanup
             }
+        }
+    }
+
+    private async Task ExportZipExternalsAsync(
+        Repository sourceRepo,
+        string exportRootPath,
+        long sourceRevision,
+        Guid userId,
+        string exportDir,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var directories = await GetDirectoriesForExternalScanAsync(sourceRepo, exportRootPath, sourceRevision, notes, cancellationToken);
+        if (directories.Count == 0)
+        {
+            return;
+        }
+
+        var knownRepositories = _repos.List();
+        var svnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+
+        foreach (var directory in directories)
+        {
+            IReadOnlyList<SvnProperty> properties;
+            try
+            {
+                properties = await _svnlook.GetPropertiesAsync(sourceRepo.LocalPath, directory, sourceRevision, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                notes.Add($"{directory}: could not read svn:externals properties: {ex.Message}");
+                continue;
+            }
+
+            var externalsProperty = properties.FirstOrDefault(p =>
+                string.Equals(p.Name, "svn:externals", StringComparison.Ordinal));
+            if (string.IsNullOrWhiteSpace(externalsProperty?.Value))
+            {
+                continue;
+            }
+
+            foreach (var external in SvnExternalDefinitionParser.Parse(directory, externalsProperty.Value))
+            {
+                await ExportSingleZipExternalAsync(
+                    sourceRepo,
+                    exportRootPath,
+                    knownRepositories,
+                    svnBaseUrl,
+                    external,
+                    userId,
+                    exportDir,
+                    notes,
+                    cancellationToken);
+            }
+        }
+    }
+
+    private async Task<IReadOnlyList<string>> GetDirectoriesForExternalScanAsync(
+        Repository sourceRepo,
+        string exportRootPath,
+        long sourceRevision,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var directories = new HashSet<string>(StringComparer.Ordinal)
+        {
+            Normalize(exportRootPath),
+        };
+
+        IReadOnlyList<SvnTreeEntry> entries;
+        try
+        {
+            entries = await _svnlook.ListTreeRecursiveAsync(sourceRepo.LocalPath, exportRootPath, sourceRevision, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            notes.Add($"{exportRootPath}: could not scan nested directories for svn:externals: {ex.Message}");
+            return directories.ToArray();
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry.IsDirectory)
+            {
+                directories.Add(Normalize(entry.Path));
+            }
+        }
+
+        return directories
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private async Task ExportSingleZipExternalAsync(
+        Repository sourceRepo,
+        string exportRootPath,
+        IReadOnlyList<Repository> knownRepositories,
+        string svnBaseUrl,
+        SvnExternalDefinition external,
+        Guid userId,
+        string exportDir,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var destinationRelativePath = GetExternalZipRelativePath(exportRootPath, external);
+        if (destinationRelativePath is null)
+        {
+            notes.Add($"{external.RawDefinition}: skipped because the target path is outside the exported folder.");
+            return;
+        }
+
+        var destinationPath = GetSafeExportDestination(exportDir, destinationRelativePath);
+        if (destinationPath is null)
+        {
+            notes.Add($"{destinationRelativePath}: skipped because the target path is not safe for ZIP export.");
+            return;
+        }
+
+        if (System.IO.File.Exists(destinationPath) || Directory.Exists(destinationPath))
+        {
+            notes.Add($"{destinationRelativePath}: skipped because the destination already exists in the exported tree.");
+            return;
+        }
+
+        var destinationParent = System.IO.Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrWhiteSpace(destinationParent))
+        {
+            Directory.CreateDirectory(destinationParent);
+        }
+
+        Directory.CreateDirectory(destinationPath);
+
+        var externalRevision = TryParseRevision(external.Revision) ?? TryParseRevision(external.PegRevision);
+        var internalTarget = TryResolveInternalExternalTarget(sourceRepo.Name, knownRepositories, svnBaseUrl, external);
+        if (internalTarget is not null)
+        {
+            await ExportInternalZipExternalAsync(
+                internalTarget.Value,
+                externalRevision,
+                userId,
+                destinationRelativePath,
+                destinationPath,
+                notes,
+                cancellationToken);
+            return;
+        }
+
+        await ExportPublicZipExternalAsync(
+            sourceRepo,
+            svnBaseUrl,
+            external,
+            externalRevision,
+            destinationRelativePath,
+            destinationPath,
+            notes,
+            cancellationToken);
+    }
+
+    private async Task ExportInternalZipExternalAsync(
+        (string RepoName, string Path) target,
+        long? externalRevision,
+        Guid userId,
+        string destinationRelativePath,
+        string destinationPath,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var targetRepo = _repos.FindByName(target.RepoName);
+        if (targetRepo is null || targetRepo.IsArchived)
+        {
+            notes.Add($"{destinationRelativePath}: skipped because target repository '{target.RepoName}' was not found.");
+            return;
+        }
+
+        if (_access.GetAccess(userId, targetRepo.Id, target.Path) < AccessLevel.Read)
+        {
+            notes.Add($"{destinationRelativePath}: skipped because current user has no Read access to {targetRepo.Name}{target.Path}.");
+            return;
+        }
+
+        long revision;
+        try
+        {
+            revision = externalRevision ?? await _svnlook.GetYoungestRevisionAsync(targetRepo.LocalPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            notes.Add($"{destinationRelativePath}: skipped because target revision could not be resolved: {ex.Message}");
+            return;
+        }
+
+        var repoRootUri = new Uri(System.IO.Path.GetFullPath(targetRepo.LocalPath) + System.IO.Path.DirectorySeparatorChar);
+        var rel = NormalizeRepoRelativePath(target.Path);
+        var targetUrl = target.Path == "/"
+            ? repoRootUri.AbsoluteUri
+            : new Uri(repoRootUri, rel).AbsoluteUri;
+
+        await RunExternalExportAsync(
+            targetUrl,
+            revision,
+            destinationPath,
+            destinationRelativePath,
+            notes,
+            cancellationToken);
+    }
+
+    private async Task ExportPublicZipExternalAsync(
+        Repository sourceRepo,
+        string svnBaseUrl,
+        SvnExternalDefinition external,
+        long? externalRevision,
+        string destinationRelativePath,
+        string destinationPath,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var externalHref = BuildExternalHref(svnBaseUrl, sourceRepo.Name, external.ParentPath, external.Url);
+        if (string.IsNullOrWhiteSpace(externalHref) ||
+            !Uri.TryCreate(externalHref, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https"))
+        {
+            notes.Add($"{destinationRelativePath}: skipped because only public http/https externals can be fetched anonymously.");
+            return;
+        }
+
+        await RunExternalExportAsync(
+            uri.ToString(),
+            externalRevision,
+            destinationPath,
+            destinationRelativePath,
+            notes,
+            cancellationToken);
+    }
+
+    private async Task RunExternalExportAsync(
+        string targetUrl,
+        long? revision,
+        string destinationPath,
+        string destinationRelativePath,
+        List<string> notes,
+        CancellationToken cancellationToken)
+    {
+        var args = new List<string>
+        {
+            "export",
+            "--non-interactive",
+            "--quiet",
+            "--ignore-externals",
+            "--force",
+        };
+
+        if (revision is not null)
+        {
+            args.AddRange(["-r", revision.Value.ToString()]);
+        }
+
+        args.Add(targetUrl);
+        args.Add(destinationPath);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ExternalZipExportTimeout);
+
+        try
+        {
+            var result = await _runner.RunAsync(_options.SvnCommand, args, timeout.Token);
+            if (!result.IsSuccess)
+            {
+                notes.Add($"{destinationRelativePath}: external export failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            notes.Add($"{destinationRelativePath}: external export timed out after {ExternalZipExportTimeout.TotalSeconds:0} seconds.");
+        }
+        catch (Exception ex)
+        {
+            notes.Add($"{destinationRelativePath}: external export failed: {ex.Message}");
         }
     }
 
