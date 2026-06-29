@@ -2,6 +2,7 @@ using SvnHub.App.Configuration;
 using SvnHub.App.System;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using SvnHub.Domain;
 
 namespace SvnHub.Infrastructure.System;
@@ -577,9 +578,10 @@ public sealed class SvnLookClient : ISvnLookClient
             return "";
         }
 
+        string decoded;
         try
         {
-            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
+            decoded = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
         }
         catch (DecoderFallbackException)
         {
@@ -587,22 +589,53 @@ public sealed class SvnLookClient : ISvnLookClient
             try
             {
                 var ansiCp = CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
-                return Encoding.GetEncoding(ansiCp).GetString(bytes);
+                decoded = Encoding.GetEncoding(ansiCp).GetString(bytes);
             }
             catch
             {
                 try
                 {
                     var oemCp = CultureInfo.CurrentCulture.TextInfo.OEMCodePage;
-                    return Encoding.GetEncoding(oemCp).GetString(bytes);
+                    decoded = Encoding.GetEncoding(oemCp).GetString(bytes);
                 }
                 catch
                 {
                     // Last resort: lossless byte-to-char mapping.
-                    return Encoding.Latin1.GetString(bytes);
+                    decoded = Encoding.Latin1.GetString(bytes);
                 }
             }
         }
+
+        return DecodeSvnEscapedUnicode(decoded);
+    }
+
+    private static string DecodeSvnEscapedUnicode(string text)
+    {
+        if (!text.Contains("{U+", StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        return Regex.Replace(
+            text,
+            @"\{U\+([0-9A-Fa-f]{4,6})\}",
+            static match =>
+            {
+                var hex = match.Groups[1].Value;
+                if (!int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var codePoint))
+                {
+                    return match.Value;
+                }
+
+                try
+                {
+                    return char.ConvertFromUtf32(codePoint);
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    return match.Value;
+                }
+            });
     }
 
     private static string FilterDiffByPath(string diff, string repoRelPath)
