@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using SvnHub.App.System;
 
 namespace SvnHub.Infrastructure.System;
@@ -25,6 +26,7 @@ public sealed class ProcessCommandRunner : ICommandRunner
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        EnsureUtf8Locale(psi);
 
         foreach (var arg in arguments)
         {
@@ -86,6 +88,7 @@ public sealed class ProcessCommandRunner : ICommandRunner
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        EnsureUtf8Locale(psi);
 
         foreach (var arg in arguments)
         {
@@ -152,6 +155,7 @@ public sealed class ProcessCommandRunner : ICommandRunner
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        EnsureUtf8Locale(psi);
 
         foreach (var arg in arguments)
         {
@@ -232,6 +236,50 @@ public sealed class ProcessCommandRunner : ICommandRunner
         {
             // Best-effort cleanup on cancellation or partial process startup.
         }
+    }
+
+    private static void EnsureUtf8Locale(ProcessStartInfo psi)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        var lcAll = psi.Environment.TryGetValue("LC_ALL", out var existingLcAll) ? existingLcAll : null;
+        var lang = psi.Environment.TryGetValue("LANG", out var existingLang) ? existingLang : null;
+
+        if (IsExplicitNonUtf8Locale(lcAll) || (string.IsNullOrWhiteSpace(lcAll) && !IsUtf8Locale(lang)))
+        {
+            psi.Environment["LC_ALL"] = "C.UTF-8";
+        }
+
+        if (!IsUtf8Locale(lang))
+        {
+            psi.Environment["LANG"] = "C.UTF-8";
+        }
+    }
+
+    private static bool IsExplicitNonUtf8Locale(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return string.Equals(value, "C", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "POSIX", StringComparison.OrdinalIgnoreCase) ||
+            !IsUtf8Locale(value);
+    }
+
+    private static bool IsUtf8Locale(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains("UTF-8", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("UTF8", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? TryResolveExecutable(string fileName, List<string> attemptedResolutions)

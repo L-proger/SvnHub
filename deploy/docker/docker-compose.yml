@@ -12,6 +12,8 @@ services:
       SvnHub__MaxPreviewBytes: ${SVNHUB_MAX_PREVIEW_BYTES:-52428800}
       SvnHub__ApacheReloadProgram: ""
       SvnHub__ApacheReloadArguments: ""
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     volumes:
       - ${SVNHUB_DATA}:/var/lib/svnhub/data
       - ${SVNHUB_REPOS}:/var/lib/svnhub/repos
