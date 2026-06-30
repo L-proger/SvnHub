@@ -1,0 +1,14 @@
+@model SvnHub.Web.Support.RepositoryRevisionNoticeModel
+
+<div class="alert alert-secondary d-flex align-items-center justify-content-between gap-2 flex-wrap mt-3 mb-0">
+    <div>
+        Viewing historical snapshot <strong>r@(Model.Revision)</strong>.
+        HEAD is <strong>r@(Model.HeadRevision)</strong>.
+    </div>
+    <a class="btn btn-sm btn-outline-secondary"
+       asp-page="/Repos/Tree"
+       asp-route-repoName="@Model.RepositoryName"
+       asp-route-defaultPath="true">
+        Go to repository HEAD
+    </a>
+</div>
