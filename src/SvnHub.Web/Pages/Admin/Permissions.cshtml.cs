@@ -12,17 +12,20 @@ namespace SvnHub.Web.Pages.Admin;
 public sealed class PermissionsModel : PageModel
 {
     private readonly PermissionService _permissions;
+    private readonly RepositoryManagementService _management;
     private readonly RepositoryService _repos;
     private readonly UserService _users;
     private readonly GroupService _groups;
 
     public PermissionsModel(
         PermissionService permissions,
+        RepositoryManagementService management,
         RepositoryService repos,
         UserService users,
         GroupService groups)
     {
         _permissions = permissions;
+        _management = management;
         _repos = repos;
         _users = users;
         _groups = groups;
@@ -37,23 +40,29 @@ public sealed class PermissionsModel : PageModel
     public IReadOnlyList<Group> GroupOptions { get; private set; } = [];
     public string? Error { get; private set; }
 
-    public void OnGet()
+    public IActionResult OnGet()
     {
-        Load();
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(actorId);
+        return Page();
     }
 
     public async Task<IActionResult> OnPostAddAsync(CancellationToken cancellationToken)
     {
-        Load();
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(actorId);
 
         if (!ModelState.IsValid)
         {
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         var subjectType = Input.SubjectType switch
@@ -101,12 +110,12 @@ public sealed class PermissionsModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteAsync(Guid ruleId, CancellationToken cancellationToken)
     {
-        Load();
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
+        if (!TryGetActorId(out var actorId))
         {
             return Forbid();
         }
+
+        Load(actorId);
 
         var result = await _permissions.DeleteRuleAsync(actorId, ruleId, cancellationToken);
         if (!result.Success)
@@ -118,9 +127,31 @@ public sealed class PermissionsModel : PageModel
         return RedirectToPage();
     }
 
-    private void Load()
+    public async Task<IActionResult> OnPostMoveAsync(Guid ruleId, string direction, CancellationToken cancellationToken)
     {
-        RepositoryOptions = _repos.List();
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(actorId);
+
+        var moveUp = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase);
+        var result = await _permissions.MoveRuleAsync(actorId, ruleId, moveUp, cancellationToken);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to move rule.";
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    private void Load(Guid actorId)
+    {
+        RepositoryOptions = _repos.List()
+            .Where(repo => _management.CanAdminRepository(actorId, repo.Id))
+            .ToArray();
         UserOptions = _users.ListUsers();
         GroupOptions = _groups.ListGroups();
 
@@ -129,19 +160,37 @@ public sealed class PermissionsModel : PageModel
         var groupNames = GroupOptions.ToDictionary(g => g.Id, g => g.Name);
 
         Rules = _permissions.ListRules()
-            .Select(r => new PermissionRow(
-                r,
-                RepositoryName: repoNames.GetValueOrDefault(r.RepositoryId, r.RepositoryId.ToString("D")),
-                SubjectDisplay: r.SubjectType switch
-                {
-                    SubjectType.User => userNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
-                    SubjectType.Group => "@" + groupNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
-                    _ => r.SubjectId.ToString("D")
-                }))
+            .Where(r => repoNames.ContainsKey(r.RepositoryId))
+            .GroupBy(r => r.RepositoryId)
+            .SelectMany(g =>
+            {
+                var rules = g.ToArray();
+                return rules.Select((r, index) => new PermissionRow(
+                    r,
+                    Order: index + 1,
+                    RepositoryName: repoNames.GetValueOrDefault(r.RepositoryId, r.RepositoryId.ToString("D")),
+                    SubjectDisplay: r.SubjectType switch
+                    {
+                        SubjectType.User => userNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
+                        SubjectType.Group => "@" + groupNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
+                        _ => r.SubjectId.ToString("D")
+                    },
+                    CanMoveUp: index > 0,
+                    CanMoveDown: index < rules.Length - 1));
+            })
             .ToArray();
     }
 
-    public sealed record PermissionRow(PermissionRule Rule, string RepositoryName, string SubjectDisplay)
+    private bool TryGetActorId(out Guid actorId) =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out actorId);
+
+    public sealed record PermissionRow(
+        PermissionRule Rule,
+        int Order,
+        string RepositoryName,
+        string SubjectDisplay,
+        bool CanMoveUp,
+        bool CanMoveDown)
     {
         public Guid Id => Rule.Id;
         public string Path => Rule.Path;

@@ -22,18 +22,18 @@ public static class PortalUserRoleExtensions
         roles.HasFlag(PortalUserRoles.AdminSystem) ||
         roles.HasFlag(PortalUserRoles.AdminHooks) ||
         roles.HasFlag(PortalUserRoles.AdminUsers) ||
-        roles.HasFlag(PortalUserRoles.Owner);
+        roles.HasFlag(PortalUserRoles.Owner) ||
+        roles.HasFlag(PortalUserRoles.RepoCreator);
+
+    public static bool CanCreateRepositories(this PortalUserRoles roles) =>
+        roles.HasEffectiveRole(PortalUserRoles.AdminRepo) ||
+        roles.HasEffectiveRole(PortalUserRoles.RepoCreator);
 
     public static PortalUserRoles NormalizeLegacyRoles(this PortalUserRoles roles)
     {
         if ((roles & LegacyAllAdmin) == LegacyAllAdmin)
         {
             roles |= PortalUserRoles.Owner;
-        }
-
-        if (roles.HasFlag(PortalUserRoles.AdminSystem))
-        {
-            roles |= PortalUserRoles.AdminUsers;
         }
 
         return roles;

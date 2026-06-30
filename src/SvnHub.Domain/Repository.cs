@@ -8,4 +8,7 @@ public sealed record Repository(
     bool IsArchived,
     AccessLevel? AuthenticatedDefaultAccess = null,
     IReadOnlyList<string>? Labels = null
-);
+)
+{
+    public bool IncludeDefaultManagementGrants { get; init; } = true;
+}

@@ -11,10 +11,15 @@
     <div class="alert alert-danger">@Model.Error</div>
 }
 
+<div class="alert alert-secondary">
+    Rules are applied top-to-bottom inside each repository; the last matching rule wins and can override group access.
+</div>
+
 <table class="table table-sm">
     <thead>
     <tr>
         <th>Repo</th>
+        <th>Order</th>
         <th>Path</th>
         <th>Subject</th>
         <th>Access</th>
@@ -27,11 +32,22 @@
     {
         <tr>
             <td>@r.RepositoryName</td>
+            <td>@r.Order</td>
             <td><code>@r.Path</code></td>
             <td>@r.SubjectDisplay</td>
             <td>@r.Access</td>
             <td>@r.CreatedAt.ToString("u")</td>
             <td class="text-end">
+                <form method="post" asp-page-handler="Move" class="d-inline">
+                    <input type="hidden" name="ruleId" value="@r.Id" />
+                    <input type="hidden" name="direction" value="up" />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" disabled="@(!r.CanMoveUp)">Up</button>
+                </form>
+                <form method="post" asp-page-handler="Move" class="d-inline">
+                    <input type="hidden" name="ruleId" value="@r.Id" />
+                    <input type="hidden" name="direction" value="down" />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" disabled="@(!r.CanMoveDown)">Down</button>
+                </form>
                 <form method="post" asp-page-handler="Delete" class="d-inline">
                     <input type="hidden" name="ruleId" value="@r.Id" />
                     <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>

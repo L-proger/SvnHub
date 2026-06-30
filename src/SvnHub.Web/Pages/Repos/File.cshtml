@@ -54,7 +54,7 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h1 class="mb-0">@Model.RepoName</h1>
-    @if (User?.IsInRole("AdminRepo") ?? false)
+    @if (Model.CanOpenSettings)
     {
         <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
     }

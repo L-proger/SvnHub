@@ -9,10 +9,11 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Repos;
 
-[Authorize(Roles = "AdminRepo")]
+[Authorize]
 public sealed class SettingsModel : PageModel
 {
     private readonly RepositoryService _repos;
+    private readonly RepositoryManagementService _management;
     private readonly PermissionService _permissions;
     private readonly UserService _users;
     private readonly GroupService _groups;
@@ -20,12 +21,14 @@ public sealed class SettingsModel : PageModel
 
     public SettingsModel(
         RepositoryService repos,
+        RepositoryManagementService management,
         PermissionService permissions,
         UserService users,
         GroupService groups,
         SettingsService settings)
     {
         _repos = repos;
+        _management = management;
         _permissions = permissions;
         _users = users;
         _groups = groups;
@@ -36,6 +39,7 @@ public sealed class SettingsModel : PageModel
     public Guid RepoId { get; private set; }
     public AccessLevel ServerDefaultAuthenticatedAccess { get; private set; } = AccessLevel.Write;
     public AccessLevel? RepoAuthenticatedDefaultAccess { get; private set; }
+    public bool IncludeDefaultManagementGrants { get; private set; } = true;
 
     public AccessLevel EffectiveAuthenticatedDefaultAccess =>
         RepoAuthenticatedDefaultAccess ?? ServerDefaultAuthenticatedAccess;
@@ -55,10 +59,20 @@ public sealed class SettingsModel : PageModel
     [BindProperty]
     public AddAccessRuleInputModel AccessRuleInput { get; set; } = new();
 
+    [BindProperty]
+    public AddManagementGrantInputModel ManagementGrantInput { get; set; } = new();
+
+    [BindProperty]
+    public DefaultManagementInputModel DefaultManagementInput { get; set; } = new();
+
     public IReadOnlyList<PermissionRow> AccessRules { get; private set; } = [];
+    public IReadOnlyList<ManagementGrantRow> ManagementGrants { get; private set; } = [];
     public IReadOnlyList<PortalUser> UserOptions { get; private set; } = [];
     public IReadOnlyList<Group> GroupOptions { get; private set; } = [];
     public IReadOnlyList<string> LabelSuggestions { get; private set; } = [];
+    public bool CanMaintainRepository { get; private set; }
+    public bool CanAdminRepository { get; private set; }
+    public bool DisablingDefaultGrantRemovesYourAdminAccess { get; private set; }
 
     public string? Error { get; private set; }
     public string? Success { get; private set; }
@@ -71,7 +85,17 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
+        if (!CanMaintainRepository)
+        {
+            return Forbid();
+        }
+
         return Page();
     }
 
@@ -83,18 +107,18 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo, resetRenameInput: false);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId, resetRenameInput: false);
 
         // Validate only rename input for this handler.
         ModelState.Clear();
         if (!TryValidateModel(RenameInput, nameof(RenameInput)))
         {
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         var result = await _repos.RenameAsync(actorId, repo.Id, RenameInput.NewName, cancellationToken);
@@ -115,17 +139,17 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo, resetLabelsInput: false);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId, resetLabelsInput: false);
 
         ModelState.Clear();
         if (!TryValidateModel(LabelsInput, nameof(LabelsInput)))
         {
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         var result = await _repos.SetLabelsAsync(actorId, repo.Id, LabelsInput.Labels, cancellationToken);
@@ -135,7 +159,7 @@ public sealed class SettingsModel : PageModel
             return Page();
         }
 
-        Load(result.Value);
+        Load(result.Value, actorId);
         Success = "Repository labels updated.";
         return Page();
     }
@@ -148,7 +172,12 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
 
         // Validate only delete input for this handler.
         ModelState.Clear();
@@ -162,11 +191,6 @@ public sealed class SettingsModel : PageModel
         {
             ModelState.AddModelError($"{nameof(DeleteInput)}.{nameof(DeleteInputModel.ConfirmName)}", "Confirmation name does not match.");
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         var result = await _repos.DeleteAsync(actorId, repo.Id, cancellationToken);
@@ -187,18 +211,18 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo, resetDefaultAccessInput: false);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId, resetDefaultAccessInput: false);
 
         // Validate only default access input for this handler.
         ModelState.Clear();
         if (!TryValidateModel(DefaultAccessInput, nameof(DefaultAccessInput)))
         {
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         if (!TryParseDefaultAccess(DefaultAccessInput.DefaultAuthenticatedAccess, out var parsed))
@@ -215,7 +239,7 @@ public sealed class SettingsModel : PageModel
         }
 
         // Keep other form defaults populated.
-        Load(result.Value);
+        Load(result.Value, actorId);
         Success = "Repository default access updated.";
         return Page();
     }
@@ -228,18 +252,18 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
 
         // Validate only access-rule input for this handler.
         ModelState.Clear();
         if (!TryValidateModel(AccessRuleInput, nameof(AccessRuleInput)))
         {
             return Page();
-        }
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
-        {
-            return Forbid();
         }
 
         var subjectType = AccessRuleInput.SubjectType switch
@@ -262,6 +286,7 @@ public sealed class SettingsModel : PageModel
 
         var access = AccessRuleInput.Access switch
         {
+            "None" => AccessLevel.None,
             "Write" => AccessLevel.Write,
             _ => AccessLevel.Read,
         };
@@ -292,12 +317,12 @@ public sealed class SettingsModel : PageModel
             return NotFound();
         }
 
-        Load(repo);
-
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId))
+        if (!TryGetActorId(out var actorId))
         {
             return Forbid();
         }
+
+        Load(repo, actorId);
 
         var rule = AccessRules.FirstOrDefault(r => r.Id == ruleId);
         if (rule is null)
@@ -316,16 +341,190 @@ public sealed class SettingsModel : PageModel
         return RedirectToPage(new { repoName = repo.Name });
     }
 
+    public async Task<IActionResult> OnPostMoveAccessRuleAsync(
+        string repoName,
+        Guid ruleId,
+        string direction,
+        CancellationToken cancellationToken)
+    {
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
+
+        var rule = AccessRules.FirstOrDefault(r => r.Id == ruleId);
+        if (rule is null)
+        {
+            Error = "Rule not found.";
+            return Page();
+        }
+
+        var moveUp = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase);
+        var result = await _permissions.MoveRuleAsync(actorId, ruleId, moveUp, cancellationToken);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to move rule.";
+            return Page();
+        }
+
+        return RedirectToPage(new { repoName = repo.Name });
+    }
+
+    public async Task<IActionResult> OnPostAddManagementGrantAsync(string repoName, CancellationToken cancellationToken)
+    {
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
+
+        ModelState.Clear();
+        if (!TryValidateModel(ManagementGrantInput, nameof(ManagementGrantInput)))
+        {
+            return Page();
+        }
+
+        var subjectType = ManagementGrantInput.SubjectType switch
+        {
+            "Group" => SubjectType.Group,
+            _ => SubjectType.User,
+        };
+
+        var subjectId = subjectType switch
+        {
+            SubjectType.Group => ManagementGrantInput.GroupId,
+            _ => ManagementGrantInput.UserId,
+        };
+
+        if (subjectId is null || subjectId.Value == Guid.Empty)
+        {
+            Error = "Select a valid subject.";
+            return Page();
+        }
+
+        var role = string.Equals(ManagementGrantInput.Role, "Admin", StringComparison.OrdinalIgnoreCase)
+            ? RepositoryManagementRole.Admin
+            : RepositoryManagementRole.Maintainer;
+
+        var result = await _management.AddGrantAsync(
+            actorId,
+            repo.Id,
+            subjectType,
+            subjectId.Value,
+            role,
+            cancellationToken);
+
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to add repository management grant.";
+            return Page();
+        }
+
+        return RedirectToPage(new { repoName = repo.Name });
+    }
+
+    public async Task<IActionResult> OnPostDefaultManagementAsync(string repoName, CancellationToken cancellationToken)
+    {
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId, resetDefaultManagementInput: false);
+
+        ModelState.Clear();
+        if (!TryValidateModel(DefaultManagementInput, nameof(DefaultManagementInput)))
+        {
+            return Page();
+        }
+
+        var result = await _repos.SetIncludeDefaultManagementGrantsAsync(
+            actorId,
+            repo.Id,
+            DefaultManagementInput.IncludeDefaultManagementGrants,
+            cancellationToken);
+
+        if (!result.Success || result.Value is null)
+        {
+            Error = result.Error ?? "Failed to update repository management defaults.";
+            return Page();
+        }
+
+        Load(result.Value, actorId);
+        Success = "Repository management inheritance updated.";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostDeleteManagementGrantAsync(string repoName, Guid grantId, CancellationToken cancellationToken)
+    {
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (!TryGetActorId(out var actorId))
+        {
+            return Forbid();
+        }
+
+        Load(repo, actorId);
+
+        var grant = ManagementGrants.FirstOrDefault(g => g.Id == grantId);
+        if (grant is null)
+        {
+            Error = "Repository management grant not found.";
+            return Page();
+        }
+
+        var result = await _management.DeleteGrantAsync(actorId, grantId, cancellationToken);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to delete repository management grant.";
+            return Page();
+        }
+
+        return RedirectToPage(new { repoName = repo.Name });
+    }
+
     private void Load(
         Repository repo,
+        Guid actorId,
         bool resetRenameInput = true,
         bool resetDefaultAccessInput = true,
-        bool resetLabelsInput = true)
+        bool resetLabelsInput = true,
+        bool resetDefaultManagementInput = true)
     {
         RepoName = repo.Name;
         RepoId = repo.Id;
         ServerDefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
         RepoAuthenticatedDefaultAccess = repo.AuthenticatedDefaultAccess;
+        IncludeDefaultManagementGrants = repo.IncludeDefaultManagementGrants;
+        CanMaintainRepository = _management.CanMaintainRepository(actorId, repo.Id);
+        CanAdminRepository = _management.CanAdminRepository(actorId, repo.Id);
+        DisablingDefaultGrantRemovesYourAdminAccess =
+            _management.WouldDisablingDefaultGrantRemoveAdmin(actorId, repo.Id);
 
         if (resetRenameInput)
         {
@@ -342,6 +541,11 @@ public sealed class SettingsModel : PageModel
             LabelsInput.Labels = string.Join(", ", RepositoryLabels.Normalize(repo.Labels));
         }
 
+        if (resetDefaultManagementInput)
+        {
+            DefaultManagementInput.IncludeDefaultManagementGrants = repo.IncludeDefaultManagementGrants;
+        }
+
         LabelSuggestions = RepositoryLabels.Collect(_repos.List());
 
         UserOptions = _users.ListUsers();
@@ -350,16 +554,35 @@ public sealed class SettingsModel : PageModel
         var userNames = UserOptions.ToDictionary(u => u.Id, u => u.UserName);
         var groupNames = GroupOptions.ToDictionary(g => g.Id, g => g.Name);
 
-        AccessRules = _permissions.ListRules()
+        var accessRules = _permissions.ListRules()
             .Where(r => r.RepositoryId == repo.Id)
-            .Select(r => new PermissionRow(
+            .ToArray();
+
+        AccessRules = accessRules
+            .Select((r, index) => new PermissionRow(
                 r,
+                Order: index + 1,
                 SubjectDisplay: r.SubjectType switch
                 {
                     SubjectType.User => userNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
                     SubjectType.Group => "@" + groupNames.GetValueOrDefault(r.SubjectId, r.SubjectId.ToString("D")),
                     _ => r.SubjectId.ToString("D")
-                }))
+                },
+                CanMoveUp: index > 0,
+                CanMoveDown: index < accessRules.Length - 1))
+            .ToArray();
+
+        ManagementGrants = _management.ListGrants()
+            .Where(g => g.RepositoryId == repo.Id)
+            .Select(g => new ManagementGrantRow(
+                g,
+                SubjectDisplay: g.SubjectType switch
+                {
+                    SubjectType.User => userNames.GetValueOrDefault(g.SubjectId, g.SubjectId.ToString("D")),
+                    SubjectType.Group => "@" + groupNames.GetValueOrDefault(g.SubjectId, g.SubjectId.ToString("D")),
+                    _ => g.SubjectId.ToString("D")
+                },
+                DeletingRemovesYourAdminAccess: _management.WouldDeletingGrantRemoveAdmin(actorId, g.Id)))
             .ToArray();
     }
 
@@ -390,12 +613,27 @@ public sealed class SettingsModel : PageModel
         public string Labels { get; set; } = "";
     }
 
-    public sealed record PermissionRow(PermissionRule Rule, string SubjectDisplay)
+    public sealed record PermissionRow(
+        PermissionRule Rule,
+        int Order,
+        string SubjectDisplay,
+        bool CanMoveUp,
+        bool CanMoveDown)
     {
         public Guid Id => Rule.Id;
         public string Path => Rule.Path;
         public AccessLevel Access => Rule.Access;
         public DateTimeOffset CreatedAt => Rule.CreatedAt;
+    }
+
+    public sealed record ManagementGrantRow(
+        RepositoryManagementGrant Grant,
+        string SubjectDisplay,
+        bool DeletingRemovesYourAdminAccess)
+    {
+        public Guid Id => Grant.Id;
+        public RepositoryManagementRole Role => Grant.Role;
+        public DateTimeOffset CreatedAt => Grant.CreatedAt;
     }
 
     public sealed class AddAccessRuleInputModel
@@ -415,6 +653,26 @@ public sealed class SettingsModel : PageModel
         public string Access { get; set; } = "Read";
     }
 
+    public sealed class AddManagementGrantInputModel
+    {
+        [Required]
+        [Display(Name = "Subject type")]
+        public string SubjectType { get; set; } = "User";
+
+        public Guid? UserId { get; set; }
+
+        public Guid? GroupId { get; set; }
+
+        [Required]
+        public string Role { get; set; } = "Maintainer";
+    }
+
+    public sealed class DefaultManagementInputModel
+    {
+        [Display(Name = "Include AdminRepo default grant")]
+        public bool IncludeDefaultManagementGrants { get; set; } = true;
+    }
+
     private static string FormatDefaultAccess(AccessLevel? value) =>
         value switch
         {
@@ -424,6 +682,9 @@ public sealed class SettingsModel : PageModel
             AccessLevel.Write => "Write",
             _ => "Inherit",
         };
+
+    private bool TryGetActorId(out Guid actorId) =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out actorId);
 
     private static bool TryParseDefaultAccess(string? value, out AccessLevel? result)
     {

@@ -7,6 +7,7 @@ public sealed record PortalState(
     List<GroupMember> GroupMembers,
     List<GroupGroupMember> GroupGroupMembers,
     List<PermissionRule> PermissionRules,
+    List<RepositoryManagementGrant> RepositoryManagementGrants,
     List<ApiToken> ApiTokens,
     List<AuditEvent> AuditEvents
 )
@@ -21,6 +22,7 @@ public sealed record PortalState(
             GroupMembers: [],
             GroupGroupMembers: [],
             PermissionRules: [],
+            RepositoryManagementGrants: [],
             ApiTokens: [],
             AuditEvents: []
         );
@@ -34,6 +36,7 @@ public sealed record PortalState(
             GroupMembers = [..GroupMembers],
             GroupGroupMembers = [..GroupGroupMembers],
             PermissionRules = [..PermissionRules],
+            RepositoryManagementGrants = [..RepositoryManagementGrants],
             ApiTokens = [..ApiTokens],
             AuditEvents = [..AuditEvents],
             Settings = Settings,

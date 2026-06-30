@@ -50,6 +50,7 @@ public sealed class UsersCreateModel : PageModel
             if (Input.AdminRepo) roles |= PortalUserRoles.AdminRepo;
             if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
             if (Input.AdminHooks) roles |= PortalUserRoles.AdminHooks;
+            if (Input.RepoCreator) roles |= PortalUserRoles.RepoCreator;
         }
 
         var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, roles, cancellationToken);
@@ -75,6 +76,9 @@ public sealed class UsersCreateModel : PageModel
 
         [Display(Name = "AdminRepo")]
         public bool AdminRepo { get; set; }
+
+        [Display(Name = "RepoCreator")]
+        public bool RepoCreator { get; set; }
 
         [Display(Name = "AdminSystem")]
         public bool AdminSystem { get; set; }

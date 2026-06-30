@@ -19,12 +19,7 @@ public sealed class PermissionService
     public IReadOnlyList<PermissionRule> ListRules()
     {
         var state = _store.Read();
-        return state.PermissionRules
-            .OrderBy(r => r.RepositoryId)
-            .ThenBy(r => r.Path, StringComparer.Ordinal)
-            .ThenBy(r => r.SubjectType)
-            .ThenBy(r => r.SubjectId)
-            .ToArray();
+        return state.PermissionRules.ToArray();
     }
 
     public async Task<OperationResult<PermissionRule>> AddRuleAsync(
@@ -44,14 +39,19 @@ public sealed class PermissionService
         }
 
         var state = _store.Read();
-        if (!CanManageRepositoryAccess(state, actorUserId))
-        {
-            return OperationResult<PermissionRule>.Fail("You don't have permission to manage repository access.");
-        }
-
         if (state.Repositories.All(r => r.Id != repositoryId))
         {
             return OperationResult<PermissionRule>.Fail("Repository not found.");
+        }
+
+        if (!IsValidRuleAccess(access))
+        {
+            return OperationResult<PermissionRule>.Fail("Invalid access level.");
+        }
+
+        if (!CanManageRepositoryAccess(state, actorUserId, repositoryId))
+        {
+            return OperationResult<PermissionRule>.Fail("You don't have permission to manage repository access.");
         }
 
         var subjectExists = subjectType switch
@@ -115,15 +115,15 @@ public sealed class PermissionService
     )
     {
         var state = _store.Read();
-        if (!CanManageRepositoryAccess(state, actorUserId))
-        {
-            return OperationResult.Fail("You don't have permission to manage repository access.");
-        }
-
         var existing = state.PermissionRules.FirstOrDefault(r => r.Id == ruleId);
         if (existing is null)
         {
             return OperationResult.Fail("Rule not found.");
+        }
+
+        if (!CanManageRepositoryAccess(state, actorUserId, existing.RepositoryId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repository access.");
         }
 
         var newState = state with
@@ -137,6 +137,67 @@ public sealed class PermissionService
                     CreatedAt: DateTimeOffset.UtcNow,
                     ActorUserId: actorUserId,
                     Action: "permission.delete",
+                    Target: existing.RepositoryId.ToString("D"),
+                    Success: true,
+                    Details: existing.Path
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+
+        try
+        {
+            await _authFilesWriter.WriteAuthzAsync(newState, cancellationToken);
+            await _authFilesWriter.ReloadApacheAsync(cancellationToken);
+        }
+        catch
+        {
+        }
+
+        return OperationResult.Ok();
+    }
+
+    public async Task<OperationResult> MoveRuleAsync(
+        Guid actorUserId,
+        Guid ruleId,
+        bool moveUp,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var state = _store.Read();
+        var rules = state.PermissionRules.ToList();
+        var index = rules.FindIndex(r => r.Id == ruleId);
+        if (index < 0)
+        {
+            return OperationResult.Fail("Rule not found.");
+        }
+
+        var existing = rules[index];
+        if (!CanManageRepositoryAccess(state, actorUserId, existing.RepositoryId))
+        {
+            return OperationResult.Fail("You don't have permission to manage repository access.");
+        }
+
+        var swapIndex = FindAdjacentRuleIndex(rules, index, existing.RepositoryId, moveUp);
+        if (swapIndex is null)
+        {
+            return OperationResult.Ok();
+        }
+
+        (rules[index], rules[swapIndex.Value]) = (rules[swapIndex.Value], rules[index]);
+
+        var newState = state with
+        {
+            PermissionRules = rules,
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: moveUp ? "permission.move-up" : "permission.move-down",
                     Target: existing.RepositoryId.ToString("D"),
                     Success: true,
                     Details: existing.Path
@@ -193,9 +254,41 @@ public sealed class PermissionService
         return "/" + string.Join('/', parts);
     }
 
-    private static bool CanManageRepositoryAccess(PortalState state, Guid actorUserId) =>
-        state.Users.Any(u =>
-            u.Id == actorUserId &&
-            u.IsActive &&
-            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
+    private static bool CanManageRepositoryAccess(PortalState state, Guid actorUserId, Guid repositoryId) =>
+        RepositoryManagementEvaluator.CanAdminRepository(state, actorUserId, repositoryId);
+
+    private static int? FindAdjacentRuleIndex(
+        IReadOnlyList<PermissionRule> rules,
+        int currentIndex,
+        Guid repositoryId,
+        bool moveUp)
+    {
+        if (moveUp)
+        {
+            for (var i = currentIndex - 1; i >= 0; i--)
+            {
+                if (rules[i].RepositoryId == repositoryId)
+                {
+                    return i;
+                }
+            }
+
+            return null;
+        }
+
+        for (var i = currentIndex + 1; i < rules.Count; i++)
+        {
+            if (rules[i].RepositoryId == repositoryId)
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsValidRuleAccess(AccessLevel access) =>
+        access is AccessLevel.None or
+            AccessLevel.Read or
+            AccessLevel.Write;
 }

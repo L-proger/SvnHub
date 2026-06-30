@@ -13,13 +13,20 @@ namespace SvnHub.Web.Pages.Repos;
 public sealed class IndexModel : PageModel
 {
     private readonly RepositoryService _repos;
+    private readonly RepositoryManagementService _management;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly SettingsService _settings;
 
-    public IndexModel(RepositoryService repos, AccessService access, ISvnLookClient svnlook, SettingsService settings)
+    public IndexModel(
+        RepositoryService repos,
+        RepositoryManagementService management,
+        AccessService access,
+        ISvnLookClient svnlook,
+        SettingsService settings)
     {
         _repos = repos;
+        _management = management;
         _access = access;
         _svnlook = svnlook;
         _settings = settings;
@@ -47,6 +54,8 @@ public sealed class IndexModel : PageModel
 
     public IReadOnlyDictionary<string, DateTimeOffset?> UpdatedAtByRepoName { get; private set; } =
         new Dictionary<string, DateTimeOffset?>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlySet<Guid> BrowseableRepositoryIds { get; private set; } = new HashSet<Guid>();
+    public IReadOnlySet<Guid> ManageableRepositoryIds { get; private set; } = new HashSet<Guid>();
 
     public string SvnBaseUrl { get; private set; } = "";
 
@@ -67,8 +76,25 @@ public sealed class IndexModel : PageModel
         SearchQuery = NormalizeSearchQuery(q);
         LabelFilter = NormalizeSearchQuery(label);
 
+        var browseable = new HashSet<Guid>();
+        var manageable = new HashSet<Guid>();
         var accessible = _repos.List()
-            .Where(r => _access.GetAccess(userId.Value, r.Id, "/") >= AccessLevel.Read)
+            .Where(r =>
+            {
+                var canBrowse = _access.GetAccess(userId.Value, r.Id, "/") >= AccessLevel.Read;
+                var canManage = _management.CanMaintainRepository(userId.Value, r.Id);
+                if (canBrowse)
+                {
+                    browseable.Add(r.Id);
+                }
+
+                if (canManage)
+                {
+                    manageable.Add(r.Id);
+                }
+
+                return canBrowse || canManage;
+            })
             .ToArray();
 
         LabelOptions = RepositoryLabels.Collect(accessible);
@@ -98,6 +124,8 @@ public sealed class IndexModel : PageModel
 
         var skip = (PageNumber - 1) * PageSize;
         Repositories = accessible.Skip(skip).Take(PageSize).ToArray();
+        BrowseableRepositoryIds = browseable;
+        ManageableRepositoryIds = manageable;
 
         if (TotalCount == 0)
         {

@@ -130,6 +130,7 @@ builder.Services.AddSingleton<ISvnRepositoryWriter, SvnCliRepositoryWriter>();
 builder.Services.AddSingleton<SetupService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<RepositoryService>();
+builder.Services.AddSingleton<RepositoryManagementService>();
 builder.Services.AddSingleton<GroupService>();
 builder.Services.AddSingleton<PermissionService>();
 builder.Services.AddSingleton<AccessService>();
@@ -143,6 +144,7 @@ builder.Services.AddSingleton<RepositoryFileResponseService>();
 builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
 builder.Services.AddSingleton<RepositoryIndexService>();
 builder.Services.AddSingleton<RepositoryIndexQueryService>();
+builder.Services.AddHostedService<AuthFilesStartupSyncService>();
 builder.Services.AddHostedService<RepositoryIndexHostedService>();
 
 var app = builder.Build();

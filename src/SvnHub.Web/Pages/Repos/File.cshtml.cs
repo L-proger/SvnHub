@@ -17,6 +17,7 @@ public sealed class FileModel : PageModel
     private const int MaxChars = 1_000_000;
 
     private readonly RepositoryService _repos;
+    private readonly RepositoryManagementService _management;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly ISvnRepositoryWriter _svnWriter;
@@ -26,6 +27,7 @@ public sealed class FileModel : PageModel
 
     public FileModel(
         RepositoryService repos,
+        RepositoryManagementService management,
         AccessService access,
         ISvnLookClient svnlook,
         ISvnRepositoryWriter svnWriter,
@@ -34,6 +36,7 @@ public sealed class FileModel : PageModel
         AltiumPreviewRenderer altiumPreview)
     {
         _repos = repos;
+        _management = management;
         _access = access;
         _svnlook = svnlook;
         _svnWriter = svnWriter;
@@ -77,6 +80,7 @@ public sealed class FileModel : PageModel
     public IReadOnlyList<ModelPreviewFile> ModelPreviewFiles { get; private set; } = [];
     public int? LineCount { get; private set; }
     public bool CanWrite { get; private set; }
+    public bool CanOpenSettings { get; private set; }
     public string? CheckoutUrl { get; private set; }
     public bool CanEdit { get; private set; }
     public bool CanServeFile { get; private set; }
@@ -128,6 +132,7 @@ public sealed class FileModel : PageModel
             return Forbid();
         }
 
+        CanOpenSettings = _management.CanMaintainRepository(userId.Value, repo.Id);
         CanWrite = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         ViewRevision = rev;
 

@@ -32,6 +32,7 @@ public sealed class TreeModel : PageModel
     private static readonly TimeSpan ExternalZipExportTimeout = TimeSpan.FromMinutes(2);
 
     private readonly RepositoryService _repos;
+    private readonly RepositoryManagementService _management;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly ISvnRepositoryWriter _svnWriter;
@@ -41,6 +42,7 @@ public sealed class TreeModel : PageModel
 
     public TreeModel(
         RepositoryService repos,
+        RepositoryManagementService management,
         AccessService access,
         ISvnLookClient svnlook,
         ISvnRepositoryWriter svnWriter,
@@ -49,6 +51,7 @@ public sealed class TreeModel : PageModel
         SvnHubOptions options)
     {
         _repos = repos;
+        _management = management;
         _access = access;
         _svnlook = svnlook;
         _svnWriter = svnWriter;
@@ -70,6 +73,7 @@ public sealed class TreeModel : PageModel
     public ISet<string> ZipPaths { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
     public bool CanWriteHere { get; private set; }
     public bool CanWriteActions { get; private set; }
+    public bool CanOpenSettings { get; private set; }
     public int DirectoryCount { get; private set; }
     public int FileCount { get; private set; }
     public int ExternalCount { get; private set; }
@@ -120,6 +124,7 @@ public sealed class TreeModel : PageModel
             return Forbid();
         }
 
+        CanOpenSettings = _management.CanMaintainRepository(userId.Value, repo.Id);
         CanWriteHere = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         CanWriteActions = CanWriteHere && rev is null;
 

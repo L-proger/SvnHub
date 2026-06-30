@@ -83,6 +83,7 @@ public sealed class UserModel : PageModel
         if (RolesInput.AdminRepo) newRoles |= PortalUserRoles.AdminRepo;
         if (RolesInput.AdminSystem) newRoles |= PortalUserRoles.AdminSystem;
         if (RolesInput.AdminHooks) newRoles |= PortalUserRoles.AdminHooks;
+        if (RolesInput.RepoCreator) newRoles |= PortalUserRoles.RepoCreator;
 
         var result = await _users.ChangeRolesAsync(actorId, userId, newRoles, cancellationToken);
         if (!result.Success)
@@ -192,6 +193,7 @@ public sealed class UserModel : PageModel
                 Owner = user.Roles.HasFlag(PortalUserRoles.Owner),
                 AdminUsers = user.Roles.HasFlag(PortalUserRoles.AdminUsers),
                 AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
+                RepoCreator = user.Roles.HasFlag(PortalUserRoles.RepoCreator),
                 AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
                 AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
             };
@@ -218,6 +220,9 @@ public sealed class UserModel : PageModel
 
         [Display(Name = "AdminRepo")]
         public bool AdminRepo { get; set; }
+
+        [Display(Name = "RepoCreator")]
+        public bool RepoCreator { get; set; }
 
         [Display(Name = "AdminSystem")]
         public bool AdminSystem { get; set; }

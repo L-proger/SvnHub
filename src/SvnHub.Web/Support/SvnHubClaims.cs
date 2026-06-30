@@ -38,6 +38,11 @@ public static class SvnHubClaims
             claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminUsers)));
         }
 
+        if (user.Roles.CanCreateRepositories())
+        {
+            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.RepoCreator)));
+        }
+
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType));
     }
 

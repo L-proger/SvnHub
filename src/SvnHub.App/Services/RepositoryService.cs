@@ -67,9 +67,9 @@ public sealed class RepositoryService
         }
 
         var state = _store.Read();
-        if (!CanManageRepositories(state, actorUserId))
+        if (!CanCreateRepositories(state, actorUserId))
         {
-            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
+            return OperationResult<Repository>.Fail("You don't have permission to create repositories.");
         }
 
         if (state.Repositories.Any(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -98,9 +98,22 @@ public sealed class RepositoryService
             AuthenticatedDefaultAccess: authenticatedDefaultAccess
         );
 
+        var ownerGrant = new RepositoryManagementGrant(
+            Id: Guid.NewGuid(),
+            RepositoryId: repo.Id,
+            SubjectType: SubjectType.User,
+            SubjectId: actorUserId,
+            Role: RepositoryManagementRole.Admin,
+            CreatedAt: DateTimeOffset.UtcNow
+        );
+
+        var managementGrants = state.RepositoryManagementGrants.ToList();
+        managementGrants.Add(ownerGrant);
+
         var newState = state with
         {
             Repositories = [..state.Repositories, repo],
+            RepositoryManagementGrants = managementGrants,
             AuditEvents =
             [
                 ..state.AuditEvents,
@@ -139,15 +152,15 @@ public sealed class RepositoryService
     )
     {
         var state = _store.Read();
-        if (!CanManageRepositories(state, actorUserId))
-        {
-            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
-        }
-
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
             return OperationResult<Repository>.Fail("Repository not found.");
+        }
+
+        if (!CanAdminRepository(state, actorUserId, repositoryId))
+        {
+            return OperationResult<Repository>.Fail("You don't have permission to manage repository access.");
         }
 
         if (repo.AuthenticatedDefaultAccess == authenticatedDefaultAccess)
@@ -199,6 +212,55 @@ public sealed class RepositoryService
         return OperationResult<Repository>.Ok(updated);
     }
 
+    public Task<OperationResult<Repository>> SetIncludeDefaultManagementGrantsAsync(
+        Guid actorUserId,
+        Guid repositoryId,
+        bool includeDefaultManagementGrants,
+        CancellationToken cancellationToken = default
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var state = _store.Read();
+        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
+        if (repo is null || repo.IsArchived)
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail("Repository not found."));
+        }
+
+        if (!CanAdminRepository(state, actorUserId, repositoryId))
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail("You don't have permission to manage repository administrators."));
+        }
+
+        if (repo.IncludeDefaultManagementGrants == includeDefaultManagementGrants)
+        {
+            return Task.FromResult(OperationResult<Repository>.Ok(repo));
+        }
+
+        var updated = repo with { IncludeDefaultManagementGrants = includeDefaultManagementGrants };
+        var newState = state with
+        {
+            Repositories = state.Repositories.Select(r => r.Id == repositoryId ? updated : r).ToList(),
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: actorUserId,
+                    Action: "repo.management.inheritance",
+                    Target: repo.Name,
+                    Success: true,
+                    Details: includeDefaultManagementGrants ? "enabled" : "disabled"
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+        return Task.FromResult(OperationResult<Repository>.Ok(updated));
+    }
+
     public Task<OperationResult<Repository>> SetLabelsAsync(
         Guid actorUserId,
         Guid repositoryId,
@@ -214,15 +276,15 @@ public sealed class RepositoryService
         }
 
         var state = _store.Read();
-        if (!CanManageRepositories(state, actorUserId))
-        {
-            return Task.FromResult(OperationResult<Repository>.Fail("You don't have permission to manage repositories."));
-        }
-
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
             return Task.FromResult(OperationResult<Repository>.Fail("Repository not found."));
+        }
+
+        if (!CanMaintainRepository(state, actorUserId, repositoryId))
+        {
+            return Task.FromResult(OperationResult<Repository>.Fail("You don't have permission to manage this repository."));
         }
 
         var currentLabels = RepositoryLabels.Normalize(repo.Labels);
@@ -268,15 +330,15 @@ public sealed class RepositoryService
         }
 
         var state = _store.Read();
-        if (!CanManageRepositories(state, actorUserId))
-        {
-            return OperationResult<Repository>.Fail("You don't have permission to manage repositories.");
-        }
-
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
             return OperationResult<Repository>.Fail("Repository not found.");
+        }
+
+        if (!CanMaintainRepository(state, actorUserId, repositoryId))
+        {
+            return OperationResult<Repository>.Fail("You don't have permission to manage this repository.");
         }
 
         if (state.Repositories.Any(r => r.Id != repositoryId && string.Equals(r.Name, newName, StringComparison.OrdinalIgnoreCase)))
@@ -353,15 +415,15 @@ public sealed class RepositoryService
     )
     {
         var state = _store.Read();
-        if (!CanManageRepositories(state, actorUserId))
-        {
-            return OperationResult.Fail("You don't have permission to manage repositories.");
-        }
-
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
         if (repo is null || repo.IsArchived)
         {
             return OperationResult.Fail("Repository not found.");
+        }
+
+        if (!CanAdminRepository(state, actorUserId, repositoryId))
+        {
+            return OperationResult.Fail("You don't have permission to delete this repository.");
         }
 
         var parent = Path.GetDirectoryName(repo.LocalPath);
@@ -563,9 +625,18 @@ public sealed class RepositoryService
         }
     }
 
-    private static bool CanManageRepositories(PortalState state, Guid actorUserId) =>
+    private static bool CanCreateRepositories(PortalState state, Guid actorUserId) =>
         state.Users.Any(u =>
             u.Id == actorUserId &&
             u.IsActive &&
-            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
+            u.Roles.CanCreateRepositories());
+
+    private static bool CanManageRepositories(PortalState state, Guid actorUserId) =>
+        RepositoryManagementEvaluator.CanManageRepositoryPolicy(state, actorUserId);
+
+    private static bool CanMaintainRepository(PortalState state, Guid actorUserId, Guid repositoryId) =>
+        RepositoryManagementEvaluator.CanMaintainRepository(state, actorUserId, repositoryId);
+
+    private static bool CanAdminRepository(PortalState state, Guid actorUserId, Guid repositoryId) =>
+        RepositoryManagementEvaluator.CanAdminRepository(state, actorUserId, repositoryId);
 }

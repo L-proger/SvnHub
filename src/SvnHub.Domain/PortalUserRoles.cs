@@ -10,6 +10,7 @@ public enum PortalUserRoles
     AdminHooks = 1 << 2,
     AdminUsers = 1 << 3,
     Owner = 1 << 4,
+    RepoCreator = 1 << 5,
 
-    AllAdmin = AdminRepo | AdminSystem | AdminHooks | AdminUsers | Owner,
+    AllAdmin = AdminRepo | AdminSystem | AdminHooks | AdminUsers | Owner | RepoCreator,
 }

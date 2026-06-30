@@ -18,93 +18,216 @@
 }
 
 <div class="mt-3">
-    <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">Back to Browse</a>
+    <a asp-page="/Repos/Index">Back to Repositories</a>
 </div>
 
 <hr class="mt-4" />
 
-<h2>Rename</h2>
-<form method="post" asp-page-handler="Rename" class="mt-2" autocomplete="off">
-    <div class="mb-2">
-        <label asp-for="RenameInput.NewName" class="form-label"></label>
-        <div class="input-group">
-            <input asp-for="RenameInput.NewName" class="form-control" />
-            <button class="btn btn-primary" type="submit">Rename</button>
-        </div>
-        <span asp-validation-for="RenameInput.NewName" class="text-danger"></span>
-        <div class="form-text">Allowed: letters (upper/lower), digits, dot, dash, underscore.</div>
-    </div>
-</form>
-
-<hr class="mt-4" />
-
-<h2>Labels</h2>
-<form method="post" asp-page-handler="Labels" class="mt-2" autocomplete="off">
-    <div class="mb-2">
-        <label asp-for="LabelsInput.Labels" class="form-label"></label>
-        <div class="d-flex gap-2 align-items-start">
-            <div class="label-editor flex-grow-1"
-                 data-label-editor
-                 data-label-editor-suggestions="@System.Text.Json.JsonSerializer.Serialize(Model.LabelSuggestions)">
-                <input asp-for="LabelsInput.Labels" type="hidden" data-label-editor-value />
-                <div class="label-editor-control" data-label-editor-control>
-                    <div class="label-editor-tokens" data-label-editor-tokens></div>
-                    <input class="label-editor-input"
-                           type="text"
-                           data-label-editor-input
-                           placeholder="Add label"
-                           role="combobox"
-                           aria-expanded="false"
-                           aria-label="Add label" />
-                </div>
-                <div class="label-editor-suggestions" data-label-editor-suggestions-list hidden></div>
-                <div class="form-text label-editor-error" data-label-editor-error></div>
+@if (Model.CanMaintainRepository)
+{
+    <h2>Rename</h2>
+    <form method="post" asp-page-handler="Rename" class="mt-2" autocomplete="off">
+        <div class="mb-2">
+            <label asp-for="RenameInput.NewName" class="form-label"></label>
+            <div class="input-group">
+                <input asp-for="RenameInput.NewName" class="form-control" />
+                <button class="btn btn-primary" type="submit">Rename</button>
             </div>
-            <button class="btn btn-primary" type="submit">Save</button>
+            <span asp-validation-for="RenameInput.NewName" class="text-danger"></span>
+            <div class="form-text">Allowed: letters (upper/lower), digits, dot, dash, underscore.</div>
         </div>
-        <span asp-validation-for="LabelsInput.Labels" class="text-danger"></span>
-        <div class="form-text">Press Enter or comma to add a label. Labels are used for repository grouping and filtering.</div>
-    </div>
-</form>
+    </form>
 
-<hr class="mt-4" />
+    <hr class="mt-4" />
 
-<h2>Default access</h2>
-<form method="post" asp-page-handler="DefaultAccess" class="mt-2" autocomplete="off">
-    <div class="mb-3">
-        <label asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-label"></label>
-        <select asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-select">
-            <option value="Inherit">Inherit server default (@Model.ServerDefaultAuthenticatedAccess)</option>
-            <option value="None">None (private / allow-list)</option>
-            <option value="Read">Read</option>
-            <option value="Write">Write</option>
-        </select>
-        <div class="form-text">Controls the authz rule for <code>$authenticated</code> at repository root.</div>
-    </div>
-    <button class="btn btn-primary" type="submit">Save</button>
-</form>
-
-<hr class="mt-4" />
-
-<h2>Access</h2>
-@if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
-{
-    <div class="alert alert-info">
-        This repository is private (allow-list). Only users/groups listed below have access.
-    </div>
-}
-else
-{
-    <div class="alert alert-secondary">
-        Default access for authenticated users: <strong>@Model.EffectiveAuthenticatedDefaultAccess</strong>. Use rules below to grant additional access.
-    </div>
+    <h2>Labels</h2>
+    <form method="post" asp-page-handler="Labels" class="mt-2" autocomplete="off">
+        <div class="mb-2">
+            <label asp-for="LabelsInput.Labels" class="form-label"></label>
+            <div class="d-flex gap-2 align-items-start">
+                <div class="label-editor flex-grow-1"
+                     data-label-editor
+                     data-label-editor-suggestions="@System.Text.Json.JsonSerializer.Serialize(Model.LabelSuggestions)">
+                    <input asp-for="LabelsInput.Labels" type="hidden" data-label-editor-value />
+                    <div class="label-editor-control" data-label-editor-control>
+                        <div class="label-editor-tokens" data-label-editor-tokens></div>
+                        <input class="label-editor-input"
+                               type="text"
+                               data-label-editor-input
+                               placeholder="Add label"
+                               role="combobox"
+                               aria-expanded="false"
+                               aria-label="Add label" />
+                    </div>
+                    <div class="label-editor-suggestions" data-label-editor-suggestions-list hidden></div>
+                    <div class="form-text label-editor-error" data-label-editor-error></div>
+                </div>
+                <button class="btn btn-primary" type="submit">Save</button>
+            </div>
+            <span asp-validation-for="LabelsInput.Labels" class="text-danger"></span>
+            <div class="form-text">Press Enter or comma to add a label. Labels are used for repository grouping and filtering.</div>
+        </div>
+    </form>
 }
 
-@if (Model.AccessRules.Count > 0)
+@if (Model.CanAdminRepository)
 {
-    <table class="table table-sm mt-2">
+    <hr class="mt-4" />
+
+    <h2>Repository management</h2>
+    <div class="form-text mb-2">
+        These grants control SvnHub repository settings only. They do not grant SVN read or write access.
+    </div>
+
+    <form method="post"
+          asp-page-handler="DefaultManagement"
+          class="mb-3"
+          onsubmit="return document.getElementById('include-adminrepo-default-grant')?.checked !== false || !this.dataset.warnSelfRemoval || confirm(this.dataset.warnSelfRemoval);"
+          data-warn-self-removal="@(Model.DisablingDefaultGrantRemovesYourAdminAccess ? "Disabling AdminRepo inheritance will remove your repository Admin access after this save. An Owner can restore access later. Continue?" : null)">
+        <div class="form-check">
+            <input asp-for="DefaultManagementInput.IncludeDefaultManagementGrants"
+                   id="include-adminrepo-default-grant"
+                   class="form-check-input" />
+            <label asp-for="DefaultManagementInput.IncludeDefaultManagementGrants" class="form-check-label"></label>
+        </div>
+        <div class="form-text">
+            When enabled, users with the AdminRepo role inherit repository-level Admin here. Disable it for repositories that must be managed only by explicit grants.
+        </div>
+        <button class="btn btn-primary btn-sm mt-2" type="submit">Save inheritance</button>
+    </form>
+
+    <h3 class="h6 mt-4">Inherited default grant</h3>
+    @if (!Model.IncludeDefaultManagementGrants)
+    {
+        <div class="text-muted">AdminRepo inheritance is disabled for this repository.</div>
+    }
+    else
+    {
+        <div class="text-muted">Users with AdminRepo inherit repository-level Admin.</div>
+    }
+
+    <h3 class="h6 mt-4">Explicit grants</h3>
+    @if (Model.ManagementGrants.Count > 0)
+    {
+        <table class="table table-sm mt-2">
+            <thead>
+            <tr>
+                <th>Subject</th>
+                <th>Role</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var grant in Model.ManagementGrants)
+            {
+                <tr>
+                    <td>@grant.SubjectDisplay</td>
+                    <td>@grant.Role</td>
+                    <td>@grant.CreatedAt.ToString("u")</td>
+                    <td class="text-end">
+                        <form method="post" asp-page-handler="DeleteManagementGrant" class="d-inline">
+                            <input type="hidden" name="grantId" value="@grant.Id" />
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-danger"
+                                    onclick="return !this.dataset.warnSelfRemoval || confirm(this.dataset.warnSelfRemoval);"
+                                    data-warn-self-removal="@(grant.DeletingRemovesYourAdminAccess ? "Deleting this grant will remove your repository Admin access. An Owner can restore access later. Continue?" : null)">
+                                Delete
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="text-muted">No repository management grants yet.</div>
+    }
+
+    <h3 class="mt-4">Add management grant</h3>
+    <form method="post" asp-page-handler="AddManagementGrant" class="mt-2" autocomplete="off">
+        <div class="row">
+            <div class="col-md-2 mb-3">
+                <label asp-for="ManagementGrantInput.SubjectType" class="form-label"></label>
+                <select asp-for="ManagementGrantInput.SubjectType" class="form-select">
+                    <option value="User">User</option>
+                    <option value="Group">Group</option>
+                </select>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">User</label>
+                <select asp-for="ManagementGrantInput.UserId" class="form-select">
+                    @foreach (var u in Model.UserOptions)
+                    {
+                        <option value="@u.Id">@u.UserName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Group</label>
+                <select asp-for="ManagementGrantInput.GroupId" class="form-select">
+                    @foreach (var g in Model.GroupOptions)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 mb-3">
+                <label asp-for="ManagementGrantInput.Role" class="form-label"></label>
+                <select asp-for="ManagementGrantInput.Role" class="form-select">
+                    <option value="Maintainer">Maintainer</option>
+                    <option value="Admin">Admin</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-3 d-flex align-items-end">
+                <button class="btn btn-primary w-100" type="submit">Add</button>
+            </div>
+        </div>
+    </form>
+
+    <hr class="mt-4" />
+
+    <h2>Default access</h2>
+    <form method="post" asp-page-handler="DefaultAccess" class="mt-2" autocomplete="off">
+        <div class="mb-3">
+            <label asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-label"></label>
+            <select asp-for="DefaultAccessInput.DefaultAuthenticatedAccess" class="form-select">
+                <option value="Inherit">Inherit server default (@Model.ServerDefaultAuthenticatedAccess)</option>
+                <option value="None">None (private / allow-list)</option>
+                <option value="Read">Read</option>
+                <option value="Write">Write</option>
+            </select>
+            <div class="form-text">Controls the default SVN access for active authenticated users.</div>
+        </div>
+        <button class="btn btn-primary" type="submit">Save</button>
+    </form>
+
+    <hr class="mt-4" />
+
+    <h2>SVN content access</h2>
+    @if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
+    {
+        <div class="alert alert-info">
+            This repository is private (allow-list). Only users/groups listed below have access.
+            Rules are applied top-to-bottom; the last matching rule wins and can override group access.
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-secondary">
+            Default access for authenticated users: <strong>@Model.EffectiveAuthenticatedDefaultAccess</strong>.
+            Rules are applied top-to-bottom; the last matching rule wins and can override group access.
+        </div>
+    }
+
+    @if (Model.AccessRules.Count > 0)
+    {
+        <table class="table table-sm mt-2">
         <thead>
         <tr>
+            <th>Order</th>
             <th>Path</th>
             <th>Subject</th>
             <th>Access</th>
@@ -116,11 +239,22 @@ else
         @foreach (var r in Model.AccessRules)
         {
             <tr>
+                <td>@r.Order</td>
                 <td><code>@r.Path</code></td>
                 <td>@r.SubjectDisplay</td>
                 <td>@r.Access</td>
                 <td>@r.CreatedAt.ToString("u")</td>
                 <td class="text-end">
+                    <form method="post" asp-page-handler="MoveAccessRule" class="d-inline">
+                        <input type="hidden" name="ruleId" value="@r.Id" />
+                        <input type="hidden" name="direction" value="up" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary" disabled="@(!r.CanMoveUp)">Up</button>
+                    </form>
+                    <form method="post" asp-page-handler="MoveAccessRule" class="d-inline">
+                        <input type="hidden" name="ruleId" value="@r.Id" />
+                        <input type="hidden" name="direction" value="down" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary" disabled="@(!r.CanMoveDown)">Down</button>
+                    </form>
                     <form method="post" asp-page-handler="DeleteAccessRule" class="d-inline">
                         <input type="hidden" name="ruleId" value="@r.Id" />
                         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
@@ -130,80 +264,82 @@ else
         }
         </tbody>
     </table>
-}
-else if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
-{
-    <div class="text-muted">No rules yet. Add at least one rule to allow access.</div>
-}
-else
-{
-    <div class="text-muted">No rules yet.</div>
-}
+    }
+    else if (Model.EffectiveAuthenticatedDefaultAccess == SvnHub.Domain.AccessLevel.None)
+    {
+        <div class="text-muted">No rules yet. Add at least one rule to allow access.</div>
+    }
+    else
+    {
+        <div class="text-muted">No rules yet.</div>
+    }
 
-<h3 class="mt-4">Add rule</h3>
-<form method="post" asp-page-handler="AddAccessRule" class="mt-2" autocomplete="off">
-    <div class="row">
-        <div class="col-md-3 mb-3">
-            <label asp-for="AccessRuleInput.Path" class="form-label"></label>
-            <input asp-for="AccessRuleInput.Path" class="form-control" placeholder="/" />
-            <span asp-validation-for="AccessRuleInput.Path" class="text-danger"></span>
+    <h3 class="mt-4">Add rule</h3>
+    <form method="post" asp-page-handler="AddAccessRule" class="mt-2" autocomplete="off">
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <label asp-for="AccessRuleInput.Path" class="form-label"></label>
+                <input asp-for="AccessRuleInput.Path" class="form-control" placeholder="/" />
+                <span asp-validation-for="AccessRuleInput.Path" class="text-danger"></span>
+            </div>
+            <div class="col-md-2 mb-3">
+                <label asp-for="AccessRuleInput.SubjectType" class="form-label"></label>
+                <select asp-for="AccessRuleInput.SubjectType" class="form-select">
+                    <option value="User">User</option>
+                    <option value="Group">Group</option>
+                </select>
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">User</label>
+                <select asp-for="AccessRuleInput.UserId" class="form-select">
+                    @foreach (var u in Model.UserOptions)
+                    {
+                        <option value="@u.Id">@u.UserName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 mb-3">
+                <label class="form-label">Group</label>
+                <select asp-for="AccessRuleInput.GroupId" class="form-select">
+                    @foreach (var g in Model.GroupOptions)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 mb-3">
+                <label asp-for="AccessRuleInput.Access" class="form-label"></label>
+                <select asp-for="AccessRuleInput.Access" class="form-select">
+                    <option value="None">None (deny)</option>
+                    <option value="Read">Read</option>
+                    <option value="Write">Write</option>
+                </select>
+            </div>
         </div>
-        <div class="col-md-2 mb-3">
-            <label asp-for="AccessRuleInput.SubjectType" class="form-label"></label>
-            <select asp-for="AccessRuleInput.SubjectType" class="form-select">
-                <option value="User">User</option>
-                <option value="Group">Group</option>
-            </select>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Add</button>
         </div>
-        <div class="col-md-3 mb-3">
-            <label class="form-label">User</label>
-            <select asp-for="AccessRuleInput.UserId" class="form-select">
-                @foreach (var u in Model.UserOptions)
-                {
-                    <option value="@u.Id">@u.UserName</option>
-                }
-            </select>
-        </div>
-        <div class="col-md-2 mb-3">
-            <label class="form-label">Group</label>
-            <select asp-for="AccessRuleInput.GroupId" class="form-select">
-                @foreach (var g in Model.GroupOptions)
-                {
-                    <option value="@g.Id">@g.Name</option>
-                }
-            </select>
-        </div>
-        <div class="col-md-2 mb-3">
-            <label asp-for="AccessRuleInput.Access" class="form-label"></label>
-            <select asp-for="AccessRuleInput.Access" class="form-select">
-                <option value="Read">Read</option>
-                <option value="Write">Write</option>
-            </select>
-        </div>
-    </div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-primary" type="submit">Add</button>
-    </div>
-</form>
+    </form>
 
-<hr class="mt-4" />
+    <hr class="mt-4" />
 
-<h2>Delete</h2>
-<div class="alert alert-warning">
-    Delete moves the repository folder into a <code>.deleted</code> folder and hides it from the UI.
-    This is not a permanent wipe.
-</div>
-
-<form method="post" asp-page-handler="Delete" class="mt-2" autocomplete="off">
-    <div class="mb-3">
-        <label asp-for="DeleteInput.ConfirmName" class="form-label"></label>
-        <input asp-for="DeleteInput.ConfirmName" class="form-control" />
-        <span asp-validation-for="DeleteInput.ConfirmName" class="text-danger"></span>
-        <div class="form-text">Type <code>@Model.RepoName</code> to confirm.</div>
+    <h2>Delete</h2>
+    <div class="alert alert-warning">
+        Delete moves the repository folder into a <code>.deleted</code> folder and hides it from the UI.
+        This is not a permanent wipe.
     </div>
 
-    <button class="btn btn-danger" type="submit">Delete repository</button>
-</form>
+    <form method="post" asp-page-handler="Delete" class="mt-2" autocomplete="off">
+        <div class="mb-3">
+            <label asp-for="DeleteInput.ConfirmName" class="form-label"></label>
+            <input asp-for="DeleteInput.ConfirmName" class="form-control" />
+            <span asp-validation-for="DeleteInput.ConfirmName" class="text-danger"></span>
+            <div class="form-text">Type <code>@Model.RepoName</code> to confirm.</div>
+        </div>
+
+        <button class="btn btn-danger" type="submit">Delete repository</button>
+    </form>
+}
 
 @section Scripts
 {

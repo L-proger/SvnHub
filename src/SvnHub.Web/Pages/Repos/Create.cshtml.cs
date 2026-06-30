@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Repos;
 
-[Authorize(Roles = "AdminRepo")]
+[Authorize(Roles = "AdminRepo,RepoCreator")]
 public sealed class CreateModel : PageModel
 {
     private readonly RepositoryService _repos;

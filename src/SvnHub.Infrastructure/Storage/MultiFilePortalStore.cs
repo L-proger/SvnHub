@@ -21,6 +21,7 @@ public sealed class MultiFilePortalStore : IPortalStore
     private readonly string _usersPath;
     private readonly string _groupsPath;
     private readonly string _permissionsPath;
+    private readonly string _repositoryManagementPath;
     private readonly string _apiTokensPath;
     private readonly string _auditPath;
 
@@ -38,6 +39,7 @@ public sealed class MultiFilePortalStore : IPortalStore
         _usersPath = Path.Combine(_dataDir, "users.json");
         _groupsPath = Path.Combine(_dataDir, "groups.json");
         _permissionsPath = Path.Combine(_dataDir, "permissions.json");
+        _repositoryManagementPath = Path.Combine(_dataDir, "repository-management.json");
         _apiTokensPath = Path.Combine(_dataDir, "api-tokens.json");
         _auditPath = Path.Combine(_dataDir, "audit.json");
 
@@ -70,6 +72,7 @@ public sealed class MultiFilePortalStore : IPortalStore
         var users = ReadFileOrDefault(_usersPath, static () => new List<PortalUser>());
         var groupsBundle = ReadFileOrDefault(_groupsPath, static () => new GroupsBundle());
         var rules = ReadFileOrDefault(_permissionsPath, static () => new List<PermissionRule>());
+        var managementGrants = ReadFileOrDefault(_repositoryManagementPath, static () => new List<RepositoryManagementGrant>());
         var apiTokens = ReadFileOrDefault(_apiTokensPath, static () => new List<ApiToken>());
         var audit = ReadFileOrDefault(_auditPath, static () => new List<AuditEvent>());
 
@@ -79,6 +82,8 @@ public sealed class MultiFilePortalStore : IPortalStore
             settings = settings with { RoleSchemaVersion = 1 };
         }
 
+        SplitLegacyManagementRules(rules, managementGrants);
+
         return PortalState.Empty() with
         {
             Repositories = repos,
@@ -86,7 +91,8 @@ public sealed class MultiFilePortalStore : IPortalStore
             Groups = groupsBundle.Groups ?? [],
             GroupMembers = groupsBundle.GroupMembers ?? [],
             GroupGroupMembers = groupsBundle.GroupGroupMembers ?? [],
-            PermissionRules = rules,
+            PermissionRules = rules.Where(r => IsContentAccess(r.Access)).ToList(),
+            RepositoryManagementGrants = managementGrants,
             ApiTokens = apiTokens,
             AuditEvents = audit,
             Settings = settings,
@@ -105,6 +111,7 @@ public sealed class MultiFilePortalStore : IPortalStore
             GroupGroupMembers = state.GroupGroupMembers,
         });
         WriteFileAtomic(_permissionsPath, state.PermissionRules);
+        WriteFileAtomic(_repositoryManagementPath, state.RepositoryManagementGrants);
         WriteFileAtomic(_apiTokensPath, state.ApiTokens);
         WriteFileAtomic(_auditPath, state.AuditEvents);
     }
@@ -159,7 +166,7 @@ public sealed class MultiFilePortalStore : IPortalStore
 
         return normalized
             .Select(u => u.Id == firstSystemAdmin.Id
-                ? u with { Roles = u.Roles | PortalUserRoles.Owner | PortalUserRoles.AdminUsers }
+                ? u with { Roles = u.Roles | PortalUserRoles.Owner }
                 : u)
             .ToList();
     }
@@ -170,4 +177,41 @@ public sealed class MultiFilePortalStore : IPortalStore
         public List<GroupMember>? GroupMembers { get; set; }
         public List<GroupGroupMember>? GroupGroupMembers { get; set; }
     }
+
+    private static void SplitLegacyManagementRules(
+        List<PermissionRule> rules,
+        List<RepositoryManagementGrant> managementGrants)
+    {
+        if (rules.Count == 0)
+        {
+            return;
+        }
+
+        var existing = managementGrants
+            .Select(g => (g.RepositoryId, g.SubjectType, g.SubjectId))
+            .ToHashSet();
+
+        foreach (var rule in rules.Where(r => IsLegacyManagementAccess(r.Access) && r.Path == "/"))
+        {
+            var key = (rule.RepositoryId, rule.SubjectType, rule.SubjectId);
+            if (!existing.Add(key))
+            {
+                continue;
+            }
+
+            managementGrants.Add(new RepositoryManagementGrant(
+                Id: Guid.NewGuid(),
+                RepositoryId: rule.RepositoryId,
+                SubjectType: rule.SubjectType,
+                SubjectId: rule.SubjectId,
+                Role: (int)rule.Access >= 4 ? RepositoryManagementRole.Admin : RepositoryManagementRole.Maintainer,
+                CreatedAt: rule.CreatedAt));
+        }
+    }
+
+    private static bool IsContentAccess(AccessLevel access) =>
+        access is AccessLevel.None or AccessLevel.Read or AccessLevel.Write;
+
+    private static bool IsLegacyManagementAccess(AccessLevel access) =>
+        (int)access >= 3;
 }

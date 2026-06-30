@@ -90,7 +90,7 @@
                             <a class="nav-link" asp-area="" asp-page="/Admin/Settings">Settings</a>
                         </li>
                     }
-                    @if (User?.IsInRole("AdminRepo") ?? false)
+                    @if (User?.IsInRole("Owner") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Groups">Groups</a>

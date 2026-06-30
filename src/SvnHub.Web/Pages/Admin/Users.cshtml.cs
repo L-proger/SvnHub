@@ -71,6 +71,7 @@ public sealed class UsersModel : PageModel
         var parts = new List<string>();
         if (roles.HasFlag(PortalUserRoles.Owner)) parts.Add(nameof(PortalUserRoles.Owner));
         if (roles.HasFlag(PortalUserRoles.AdminRepo)) parts.Add(nameof(PortalUserRoles.AdminRepo));
+        if (roles.HasFlag(PortalUserRoles.RepoCreator)) parts.Add(nameof(PortalUserRoles.RepoCreator));
         if (roles.HasFlag(PortalUserRoles.AdminSystem)) parts.Add(nameof(PortalUserRoles.AdminSystem));
         if (roles.HasFlag(PortalUserRoles.AdminHooks)) parts.Add(nameof(PortalUserRoles.AdminHooks));
         if (roles.HasFlag(PortalUserRoles.AdminUsers)) parts.Add(nameof(PortalUserRoles.AdminUsers));

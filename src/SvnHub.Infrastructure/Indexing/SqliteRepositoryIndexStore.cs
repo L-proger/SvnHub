@@ -320,29 +320,11 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
 
+        var statistics = await ReadStatisticsAsync(connection, cancellationToken);
+
         var repositoryCount = (int)await ExecuteScalarLongAsync(
             connection,
             "select count(*) from index_repositories;",
-            cancellationToken);
-        var revisionCount = await ExecuteScalarLongAsync(
-            connection,
-            "select count(*) from revisions;",
-            cancellationToken);
-        var changedPathCount = await ExecuteScalarLongAsync(
-            connection,
-            "select count(*) from changed_paths;",
-            cancellationToken);
-        var headTreeEntryCount = await ExecuteScalarLongAsync(
-            connection,
-            "select count(*) from head_tree_entries;",
-            cancellationToken);
-        var headPropertyCount = await ExecuteScalarLongAsync(
-            connection,
-            "select count(*) from head_properties;",
-            cancellationToken);
-        var headExternalCount = await ExecuteScalarLongAsync(
-            connection,
-            "select count(*) from head_externals;",
             cancellationToken);
 
         var repositories = new List<RepositoryIndexRepositoryState>();
@@ -377,11 +359,11 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         return new RepositoryIndexStoreStatus(
             _databasePath,
             repositoryCount,
-            revisionCount,
-            changedPathCount,
-            headTreeEntryCount,
-            headPropertyCount,
-            headExternalCount,
+            statistics.RevisionCount,
+            statistics.ChangedPathCount,
+            statistics.HeadTreeEntryCount,
+            statistics.HeadPropertyCount,
+            statistics.HeadExternalCount,
             repositories
                 .Where(r => r.LastSuccessAt is not null)
                 .Select(r => r.LastSuccessAt)
@@ -529,6 +511,36 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         await connection.OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
 
+        var existingRevisionCount = await ExecuteScalarLongAsync(
+            connection,
+            transaction,
+            """
+            select count(*)
+              from revisions
+             where repository_id = $repositoryId
+               and revision = $revision;
+            """,
+            [
+                ("$repositoryId", FormatGuid(repositoryId)),
+                ("$revision", revision.Revision),
+            ],
+            cancellationToken);
+
+        var oldChangedPathCount = await ExecuteScalarLongAsync(
+            connection,
+            transaction,
+            """
+            select count(*)
+              from changed_paths
+             where repository_id = $repositoryId
+               and revision = $revision;
+            """,
+            [
+                ("$repositoryId", FormatGuid(repositoryId)),
+                ("$revision", revision.Revision),
+            ],
+            cancellationToken);
+
         await ExecuteNonQueryAsync(
             connection,
             transaction,
@@ -601,6 +613,16 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 cancellationToken);
         }
 
+        await AdjustStatisticsAsync(
+            connection,
+            transaction,
+            revisionDelta: existingRevisionCount == 0 ? 1 : 0,
+            changedPathDelta: changedPaths.Count - oldChangedPathCount,
+            headTreeEntryDelta: 0,
+            headPropertyDelta: 0,
+            headExternalDelta: 0,
+            cancellationToken);
+
         transaction.Commit();
     }
 
@@ -617,6 +639,25 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
         using var transaction = connection.BeginTransaction();
+
+        var oldHeadTreeEntryCount = await CountByRepositoryAsync(
+            connection,
+            transaction,
+            "head_tree_entries",
+            repositoryId,
+            cancellationToken);
+        var oldHeadPropertyCount = await CountByRepositoryAsync(
+            connection,
+            transaction,
+            "head_properties",
+            repositoryId,
+            cancellationToken);
+        var oldHeadExternalCount = await CountByRepositoryAsync(
+            connection,
+            transaction,
+            "head_externals",
+            repositoryId,
+            cancellationToken);
 
         await ExecuteNonQueryAsync(
             connection,
@@ -771,6 +812,16 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 ("$now", FormatDate(DateTimeOffset.UtcNow)),
                 ("$repositoryId", FormatGuid(repositoryId)),
             ],
+            cancellationToken);
+
+        await AdjustStatisticsAsync(
+            connection,
+            transaction,
+            revisionDelta: 0,
+            changedPathDelta: 0,
+            headTreeEntryDelta: treeEntries.Count - oldHeadTreeEntryCount,
+            headPropertyDelta: properties.Count - oldHeadPropertyCount,
+            headExternalDelta: externals.Count - oldHeadExternalCount,
             cancellationToken);
 
         transaction.Commit();
@@ -940,6 +991,16 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     foreign key (repository_id) references index_repositories(repository_id) on delete cascade
                 );
 
+                create table if not exists index_statistics (
+                    id integer primary key check (id = 1),
+                    revision_count integer not null default 0,
+                    changed_path_count integer not null default 0,
+                    head_tree_entry_count integer not null default 0,
+                    head_property_count integer not null default 0,
+                    head_external_count integer not null default 0,
+                    updated_at text not null
+                );
+
                 create index if not exists ix_revisions_author on revisions(author);
                 create index if not exists ix_revisions_date on revisions(date);
                 create index if not exists ix_changed_paths_path on changed_paths(path);
@@ -992,6 +1053,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 [],
                 cancellationToken);
 
+            await EnsureStatisticsAsync(connection, cancellationToken);
+
             _initialized = true;
         }
         finally
@@ -1037,6 +1100,158 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         }
 
         return result;
+    }
+
+    private static async Task<IndexStatistics> ReadStatisticsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select revision_count,
+                   changed_path_count,
+                   head_tree_entry_count,
+                   head_property_count,
+                   head_external_count
+              from index_statistics
+             where id = 1;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new IndexStatistics(0, 0, 0, 0, 0);
+        }
+
+        return new IndexStatistics(
+            reader.GetInt64(0),
+            reader.GetInt64(1),
+            reader.GetInt64(2),
+            reader.GetInt64(3),
+            reader.GetInt64(4));
+    }
+
+    private static async Task EnsureStatisticsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var existingRows = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from index_statistics where id = 1;",
+            cancellationToken);
+        if (existingRows > 0)
+        {
+            return;
+        }
+
+        var revisionCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from revisions;",
+            cancellationToken);
+        var changedPathCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from changed_paths;",
+            cancellationToken);
+        var headTreeEntryCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_tree_entries;",
+            cancellationToken);
+        var headPropertyCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_properties;",
+            cancellationToken);
+        var headExternalCount = await ExecuteScalarLongAsync(
+            connection,
+            "select count(*) from head_externals;",
+            cancellationToken);
+
+        await ExecuteNonQueryAsync(
+            connection,
+            null,
+            """
+            insert into index_statistics (
+                id,
+                revision_count,
+                changed_path_count,
+                head_tree_entry_count,
+                head_property_count,
+                head_external_count,
+                updated_at
+            ) values (
+                1,
+                $revisionCount,
+                $changedPathCount,
+                $headTreeEntryCount,
+                $headPropertyCount,
+                $headExternalCount,
+                $updatedAt
+            );
+            """,
+            [
+                ("$revisionCount", revisionCount),
+                ("$changedPathCount", changedPathCount),
+                ("$headTreeEntryCount", headTreeEntryCount),
+                ("$headPropertyCount", headPropertyCount),
+                ("$headExternalCount", headExternalCount),
+                ("$updatedAt", FormatDate(DateTimeOffset.UtcNow)),
+            ],
+            cancellationToken);
+    }
+
+    private static Task<long> CountByRepositoryAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        Guid repositoryId,
+        CancellationToken cancellationToken) =>
+        ExecuteScalarLongAsync(
+            connection,
+            transaction,
+            $"select count(*) from {tableName} where repository_id = $repositoryId;",
+            [("$repositoryId", FormatGuid(repositoryId))],
+            cancellationToken);
+
+    private static Task AdjustStatisticsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long revisionDelta,
+        long changedPathDelta,
+        long headTreeEntryDelta,
+        long headPropertyDelta,
+        long headExternalDelta,
+        CancellationToken cancellationToken)
+    {
+        if (revisionDelta == 0 &&
+            changedPathDelta == 0 &&
+            headTreeEntryDelta == 0 &&
+            headPropertyDelta == 0 &&
+            headExternalDelta == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            """
+            update index_statistics
+               set revision_count = max(0, revision_count + $revisionDelta),
+                   changed_path_count = max(0, changed_path_count + $changedPathDelta),
+                   head_tree_entry_count = max(0, head_tree_entry_count + $headTreeEntryDelta),
+                   head_property_count = max(0, head_property_count + $headPropertyDelta),
+                   head_external_count = max(0, head_external_count + $headExternalDelta),
+                   updated_at = $updatedAt
+             where id = 1;
+            """,
+            [
+                ("$revisionDelta", revisionDelta),
+                ("$changedPathDelta", changedPathDelta),
+                ("$headTreeEntryDelta", headTreeEntryDelta),
+                ("$headPropertyDelta", headPropertyDelta),
+                ("$headExternalDelta", headExternalDelta),
+                ("$updatedAt", FormatDate(DateTimeOffset.UtcNow)),
+            ],
+            cancellationToken);
     }
 
     private static async Task ExecuteNonQueryAsync(
@@ -1101,10 +1316,37 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         string commandText,
         CancellationToken cancellationToken)
     {
+        return await ExecuteScalarLongAsync(
+            connection,
+            null,
+            commandText,
+            [],
+            cancellationToken);
+    }
+
+    private static async Task<long> ExecuteScalarLongAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string commandText,
+        IReadOnlyList<(string Name, object? Value)> parameters,
+        CancellationToken cancellationToken)
+    {
         await using var command = connection.CreateCommand();
         command.CommandText = commandText;
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-        return value is null || value is DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        if (transaction is not null)
+        {
+            command.Transaction = transaction;
+        }
+
+        foreach (var (name, value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        }
+
+        var scalarValue = await command.ExecuteScalarAsync(cancellationToken);
+        return scalarValue is null || scalarValue is DBNull
+            ? 0
+            : Convert.ToInt64(scalarValue, CultureInfo.InvariantCulture);
     }
 
     private static RepositoryIndexRepositoryState ReadRepositoryState(SqliteDataReader reader) =>
@@ -1162,4 +1404,11 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         var extension = Path.GetExtension(entry.Name);
         return string.IsNullOrWhiteSpace(extension) ? null : extension.ToLowerInvariant();
     }
+
+    private sealed record IndexStatistics(
+        long RevisionCount,
+        long ChangedPathCount,
+        long HeadTreeEntryCount,
+        long HeadPropertyCount,
+        long HeadExternalCount);
 }

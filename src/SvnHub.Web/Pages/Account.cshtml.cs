@@ -261,6 +261,11 @@ public sealed class AccountModel : PageModel
             names.Add("AdminRepo");
         }
 
+        if (roles.HasFlag(PortalUserRoles.RepoCreator))
+        {
+            names.Add("RepoCreator");
+        }
+
         if (roles.HasFlag(PortalUserRoles.AdminSystem))
         {
             names.Add("AdminSystem");

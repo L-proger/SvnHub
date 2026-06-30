@@ -56,7 +56,7 @@
             <option value="Read">Read</option>
             <option value="Write">Write</option>
         </select>
-        <div class="form-text">Controls the default authz rule for <code>$authenticated</code> at repository root (unless overridden per-repo).</div>
+        <div class="form-text">Controls the default SVN access for active authenticated users unless a repository overrides it.</div>
         <span asp-validation-for="Input.DefaultAuthenticatedAccess" class="text-danger"></span>
     </div>
 
