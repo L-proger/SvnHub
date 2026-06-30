@@ -30,7 +30,7 @@
     {
         fileActions.Add(new RepositoryObjectActionModel(
             "Raw",
-            Href: Url.Page("/Repos/File", "Raw", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }),
+            Href: Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }),
             OpenInNewTab: true));
         fileActions.Add(new RepositoryObjectActionModel(
             "Download",
@@ -39,7 +39,7 @@
 
     fileActions.Add(new RepositoryObjectActionModel(
         "History",
-        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path })));
+        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path, rev = Model.ViewRevision })));
 
     if (Model.CanCopyContent)
     {
@@ -62,6 +62,11 @@
 <div class="text-muted">r@(Model.Revision)</div>
 
 @await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
+
+@if (Model.ViewRevision is not null && Model.Revision != Model.HeadRevision)
+{
+    @await Html.PartialAsync("Shared/_RepositoryRevisionNotice", new RepositoryRevisionNoticeModel(Model.RepoName, Model.Revision, Model.HeadRevision))
+}
 
 @if (!string.IsNullOrWhiteSpace(Model.FlashError))
 {

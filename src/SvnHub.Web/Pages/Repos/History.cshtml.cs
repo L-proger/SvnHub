@@ -26,17 +26,20 @@ public sealed class HistoryModel : PageModel
     public string Path { get; private set; } = "/";
     public string ParentPath { get; private set; } = "/";
     public long HeadRevision { get; private set; }
+    public long Revision { get; private set; }
+    public long? ViewRevision { get; private set; }
     public bool IsDirectory { get; private set; }
     public int Limit { get; private set; } = 50;
     public string? Error { get; private set; }
 
     public IReadOnlyList<HistoryRow> Rows { get; private set; } = [];
 
-    public async Task<IActionResult> OnGetAsync(string repoName, string? path, int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, int limit = 50, CancellationToken cancellationToken = default)
     {
         RepoName = repoName;
         Path = Normalize(path);
         ParentPath = GetParent(Path);
+        ViewRevision = rev;
         Limit = Math.Clamp(limit, 1, 500);
 
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
@@ -59,8 +62,9 @@ public sealed class HistoryModel : PageModel
         try
         {
             HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
-            IsDirectory = await DetectIsDirectoryAsync(repo.LocalPath, Path, HeadRevision, cancellationToken);
-            var history = await _svnlook.GetHistoryAsync(repo.LocalPath, Path, HeadRevision, Limit, cancellationToken);
+            Revision = ResolveRevision(rev, HeadRevision);
+            IsDirectory = await DetectIsDirectoryAsync(repo.LocalPath, Path, Revision, cancellationToken);
+            var history = await _svnlook.GetHistoryAsync(repo.LocalPath, Path, Revision, Limit, cancellationToken);
 
             if (history.Count == 0)
             {
@@ -121,6 +125,21 @@ public sealed class HistoryModel : PageModel
     private static string Normalize(string? path) => RepositoryPath.Normalize(path);
 
     private static string GetParent(string path) => RepositoryPath.GetParent(path);
+
+    private static long ResolveRevision(long? requested, long head)
+    {
+        if (requested is null)
+        {
+            return head;
+        }
+
+        if (requested.Value <= 0 || requested.Value > head)
+        {
+            throw new InvalidOperationException($"Invalid revision: r{requested.Value}.");
+        }
+
+        return requested.Value;
+    }
 
     private async Task<bool> DetectIsDirectoryAsync(string repoLocalPath, string path, long revision, CancellationToken cancellationToken)
     {

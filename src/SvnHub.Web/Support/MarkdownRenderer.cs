@@ -460,10 +460,10 @@ public static class MarkdownRenderer
         var repoSegment = Uri.EscapeDataString(repoName);
         var pathSegment = BuildRoutePath(svnPath);
         var baseUrl = string.IsNullOrWhiteSpace(pathSegment)
-            ? $"/repos/{repoSegment}/file?handler=Raw"
-            : $"/repos/{repoSegment}/file/{pathSegment}?handler=Raw";
+            ? $"/repos/{repoSegment}/raw"
+            : $"/repos/{repoSegment}/raw/{pathSegment}";
 
-        return revision is null ? baseUrl : $"{baseUrl}&rev={revision.Value}";
+        return revision is null ? baseUrl : $"{baseUrl}?rev={revision.Value}";
     }
 
     private static string BuildRoutePath(string svnPath)

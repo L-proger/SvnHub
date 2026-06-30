@@ -139,6 +139,7 @@ builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
 builder.Services.AddSingleton<MaterialFileIconService>();
 builder.Services.AddSingleton<AltiumPreviewRenderer>();
+builder.Services.AddSingleton<RepositoryFileResponseService>();
 builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
 builder.Services.AddSingleton<RepositoryIndexService>();
 builder.Services.AddSingleton<RepositoryIndexQueryService>();

@@ -23,6 +23,7 @@ public sealed class FileModel : PageModel
     private readonly SettingsService _settings;
     private readonly SvnHubOptions _options;
     private readonly AltiumPreviewRenderer _altiumPreview;
+    private readonly RepositoryFileResponseService _fileResponses;
 
     public FileModel(
         RepositoryService repos,
@@ -31,7 +32,8 @@ public sealed class FileModel : PageModel
         ISvnRepositoryWriter svnWriter,
         SettingsService settings,
         SvnHubOptions options,
-        AltiumPreviewRenderer altiumPreview)
+        AltiumPreviewRenderer altiumPreview,
+        RepositoryFileResponseService fileResponses)
     {
         _repos = repos;
         _access = access;
@@ -40,6 +42,7 @@ public sealed class FileModel : PageModel
         _settings = settings;
         _options = options;
         _altiumPreview = altiumPreview;
+        _fileResponses = fileResponses;
     }
 
     [TempData]
@@ -612,62 +615,8 @@ public sealed class FileModel : PageModel
         return File(content, contentType, fileName);
     }
 
-    public async Task<IActionResult> OnGetRawAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
-    {
-        RepoName = repoName;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return NotFound();
-        }
-
-        Path = Normalize(path);
-
-        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
-        if (userId is null)
-        {
-            return Forbid();
-        }
-
-        var repo = _repos.FindByName(repoName);
-        if (repo is null || repo.IsArchived)
-        {
-            return NotFound();
-        }
-
-        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
-        {
-            return Forbid();
-        }
-
-        long effectiveRev;
-        byte[] content;
-        try
-        {
-            HeadRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
-            effectiveRev = ResolveRevision(rev, HeadRevision);
-            var maxServeBytes = _options.GetEffectiveMaxPreviewBytes();
-            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
-            if (fileSize > maxServeBytes)
-            {
-                return StatusCode(
-                    StatusCodes.Status413PayloadTooLarge,
-                    BuildFileTooLargeMessage(fileSize, maxServeBytes));
-            }
-
-            content = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(ex.Message);
-        }
-
-        var fileName = System.IO.Path.GetFileName(Path);
-        var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
-        contentType = RepositoryFileClassifier.NormalizeRawTextContentType(fileName, contentType, content);
-
-        Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
-        return File(content, contentType);
-    }
+    public Task<IActionResult> OnGetRawAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken) =>
+        _fileResponses.ServeRawAsync(User, Response, repoName, path, rev, cancellationToken);
 
     private static string BuildFileTooLargeMessage(long fileSize, long maxServeBytes) =>
         $"File is too large to serve through the SvnHub browser ({FormatByteSize(fileSize)} > {FormatByteSize(maxServeBytes)}). " +

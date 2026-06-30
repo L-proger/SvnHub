@@ -6,7 +6,7 @@
             name = f.Name,
             kind = f.Kind,
             sizeLabel = f.SizeLabel,
-            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+            url = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
         })
         .ToArray();
     var modelPreviewFiles = Model.ModelPreviewFiles
@@ -15,7 +15,7 @@
             name = f.Name,
             kind = f.Kind,
             sizeLabel = f.SizeLabel,
-            url = Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
+            url = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
         })
         .ToArray();
     var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
@@ -31,14 +31,14 @@ else if (Model.IsImage)
     <div class="text-center">
         <img class="img-fluid border rounded d-inline-block"
              alt="@Model.Path"
-             src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)" />
+             src="@Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)" />
     </div>
 }
 else if (Model.IsPdf)
 {
     <iframe class="file-pdf-preview"
             title="@System.IO.Path.GetFileName(Model.Path)"
-            src="@Url.Page("/Repos/File", null, new { handler = "Raw", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
+            src="@Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null)">
     </iframe>
 }
 else if (Model.IsGerberPreview)

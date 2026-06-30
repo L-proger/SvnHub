@@ -53,7 +53,7 @@
 
     treeActions.Add(new RepositoryObjectActionModel(
         "History",
-        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path == "/" ? null : Model.Path })));
+        Href: Url.Page("/Repos/History", null, new { repoName = Model.RepoName, path = Model.Path == "/" ? null : Model.Path, rev = Model.ViewRevision })));
     treeActions.Add(new RepositoryObjectActionModel(
         "Download ZIP",
         Href: Url.Page("/Repos/Tree", "Zip", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision })));
@@ -91,6 +91,11 @@
 <div class="text-muted">r@(Model.Revision)</div>
 
 @await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
+
+@if (Model.ViewRevision is not null && Model.Revision != Model.HeadRevision)
+{
+    @await Html.PartialAsync("Shared/_RepositoryRevisionNotice", new RepositoryRevisionNoticeModel(Model.RepoName, Model.Revision, Model.HeadRevision))
+}
 
 @section Head
 {

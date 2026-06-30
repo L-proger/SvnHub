@@ -9,9 +9,14 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h1 class="mb-0">@Model.RepoName</h1>
 </div>
-<div class="text-muted">r@(Model.HeadRevision)</div>
+<div class="text-muted">r@(Model.Revision)</div>
 
-@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path))
+@await Html.PartialAsync("Shared/_RepositoryBreadcrumb", new SvnHub.Web.Support.RepositoryBreadcrumbModel(Model.RepoName, Model.Path, Model.ViewRevision))
+
+@if (Model.ViewRevision is not null && Model.Revision != Model.HeadRevision)
+{
+    @await Html.PartialAsync("Shared/_RepositoryRevisionNotice", new RepositoryRevisionNoticeModel(Model.RepoName, Model.Revision, Model.HeadRevision))
+}
 
 @if (!string.IsNullOrWhiteSpace(Model.Error))
 {
@@ -28,8 +33,9 @@ else
                 <a class="btn btn-sm btn-outline-secondary"
                    asp-page="@openPage"
                    asp-route-repoName="@Model.RepoName"
-                   asp-route-path="@openPath">
-                    Open
+                   asp-route-path="@openPath"
+                   asp-route-rev="@Model.ViewRevision">
+                    Back to browse
                 </a>
             </div>
         </div>

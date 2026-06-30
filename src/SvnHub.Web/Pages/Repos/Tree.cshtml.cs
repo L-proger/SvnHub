@@ -1176,11 +1176,8 @@ public sealed class TreeModel : PageModel
                     cancellationToken);
             }
 
-            var folderName = Path == "/"
-                ? repoName
-                : System.IO.Path.GetFileName(Path.TrimEnd('/'));
-
-            var zipName = $"{folderName}-r{effectiveRev}.zip";
+            var archiveRootName = BuildZipArchiveRootName(repoName, Path, effectiveRev);
+            var zipName = $"{archiveRootName}.zip";
 
             Response.ContentType = "application/zip";
             Response.Headers.ContentDisposition = $"attachment; filename=\"{zipName}\"";
@@ -1196,13 +1193,13 @@ public sealed class TreeModel : PageModel
                         continue;
                     }
 
-                    var relDir = System.IO.Path.GetRelativePath(exportDir, dir).Replace('\\', '/').TrimEnd('/') + "/";
+                    var relDir = archiveRootName + "/" + System.IO.Path.GetRelativePath(exportDir, dir).Replace('\\', '/').TrimEnd('/') + "/";
                     archive.CreateEntry(relDir);
                 }
 
                 foreach (var file in Directory.EnumerateFiles(exportDir, "*", SearchOption.AllDirectories))
                 {
-                    var relFile = System.IO.Path.GetRelativePath(exportDir, file).Replace('\\', '/');
+                    var relFile = archiveRootName + "/" + System.IO.Path.GetRelativePath(exportDir, file).Replace('\\', '/');
                     var entry = archive.CreateEntry(relFile, CompressionLevel.Fastest);
                     await using var input = System.IO.File.OpenRead(file);
                     await using var output = entry.Open();
@@ -1545,6 +1542,25 @@ public sealed class TreeModel : PageModel
         }
 
         return p;
+    }
+
+    private static string BuildZipArchiveRootName(string repoName, string path, long revision)
+    {
+        var parts = new List<string> { repoName };
+        parts.AddRange(NormalizeRepoRelativePath(path)
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        parts.Add($"r{revision}");
+
+        var name = string.Join("-", parts.Select(SanitizeZipNamePart).Where(p => p.Length > 0));
+        return name.Length == 0 ? $"repository-r{revision}" : name;
+    }
+
+    private static string SanitizeZipNamePart(string value)
+    {
+        var chars = value.Trim().Select(ch =>
+            char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' ? ch : '_').ToArray();
+        var result = new string(chars).Trim('.', '_', '-');
+        return result.Length == 0 ? "_" : result;
     }
 
     private sealed class AsyncWriteStream : Stream
