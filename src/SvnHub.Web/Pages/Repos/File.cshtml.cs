@@ -23,7 +23,6 @@ public sealed class FileModel : PageModel
     private readonly SettingsService _settings;
     private readonly SvnHubOptions _options;
     private readonly AltiumPreviewRenderer _altiumPreview;
-    private readonly RepositoryFileResponseService _fileResponses;
 
     public FileModel(
         RepositoryService repos,
@@ -32,8 +31,7 @@ public sealed class FileModel : PageModel
         ISvnRepositoryWriter svnWriter,
         SettingsService settings,
         SvnHubOptions options,
-        AltiumPreviewRenderer altiumPreview,
-        RepositoryFileResponseService fileResponses)
+        AltiumPreviewRenderer altiumPreview)
     {
         _repos = repos;
         _access = access;
@@ -42,7 +40,6 @@ public sealed class FileModel : PageModel
         _settings = settings;
         _options = options;
         _altiumPreview = altiumPreview;
-        _fileResponses = fileResponses;
     }
 
     [TempData]
@@ -614,9 +611,6 @@ public sealed class FileModel : PageModel
         Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
         return File(content, contentType, fileName);
     }
-
-    public Task<IActionResult> OnGetRawAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken) =>
-        _fileResponses.ServeRawAsync(User, Response, repoName, path, rev, cancellationToken);
 
     private static string BuildFileTooLargeMessage(long fileSize, long maxServeBytes) =>
         $"File is too large to serve through the SvnHub browser ({FormatByteSize(fileSize)} > {FormatByteSize(maxServeBytes)}). " +
