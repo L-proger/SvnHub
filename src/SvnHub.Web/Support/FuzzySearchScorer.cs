@@ -123,6 +123,21 @@ internal static class FuzzySearchScorer
             return 880;
         }
 
+        if (tokenCompact.Length >= 2)
+        {
+            var containsIndex = candidateNormalized.IndexOf(tokenNormalized, StringComparison.Ordinal);
+            if (containsIndex >= 0)
+            {
+                return 700 - Math.Min(160, containsIndex * 12);
+            }
+
+            var compactContainsIndex = candidateCompact.IndexOf(tokenCompact, StringComparison.Ordinal);
+            if (compactContainsIndex >= 0)
+            {
+                return 680 - Math.Min(160, compactContainsIndex * 12);
+            }
+        }
+
         if (allowShortAcronym)
         {
             var wordScore = ScoreShortWords(candidate, tokenCompact);
