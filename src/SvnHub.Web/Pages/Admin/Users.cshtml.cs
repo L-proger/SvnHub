@@ -32,13 +32,30 @@ public sealed class UsersModel : PageModel
     public int TotalPages { get; private set; }
     public int FromIndex { get; private set; }
     public int ToIndex { get; private set; }
+    public string? SearchQuery { get; private set; }
 
-    public void OnGet(int p = 1, int? pageSize = null)
+    public void OnGet(int p = 1, int? pageSize = null, string? q = null)
     {
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
+        SearchQuery = NormalizeSearchQuery(q);
 
         var all = _users.ListUsers();
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            all = all
+                .Select(u => new
+                {
+                    User = u,
+                    Score = FuzzySearchScorer.Score(u.UserName, SearchQuery),
+                })
+                .Where(u => u.Score > 0)
+                .OrderByDescending(u => u.Score)
+                .ThenBy(u => u.User.UserName, StringComparer.OrdinalIgnoreCase)
+                .Select(u => u.User)
+                .ToArray();
+        }
+
         TotalCount = all.Count;
         TotalPages = Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
         if (PageNumber > TotalPages)
@@ -79,4 +96,14 @@ public sealed class UsersModel : PageModel
         return string.Join(", ", parts);
     }
 
+    private static string? NormalizeSearchQuery(string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return null;
+        }
+
+        var trimmed = q.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
 }

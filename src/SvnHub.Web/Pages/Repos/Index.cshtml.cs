@@ -102,9 +102,15 @@ public sealed class IndexModel : PageModel
         if (!string.IsNullOrWhiteSpace(SearchQuery))
         {
             accessible = accessible
-                .Where(r =>
-                    r.Name.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ||
-                    RepositoryLabels.Normalize(r.Labels).Any(l => l.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)))
+                .Select(r => new
+                {
+                    Repository = r,
+                    Score = FuzzySearchScorer.Score(r.Name, SearchQuery),
+                })
+                .Where(r => r.Score > 0)
+                .OrderByDescending(r => r.Score)
+                .ThenBy(r => r.Repository.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(r => r.Repository)
                 .ToArray();
         }
 
