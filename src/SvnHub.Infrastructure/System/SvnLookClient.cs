@@ -3,6 +3,7 @@ using SvnHub.App.System;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using SvnHub.Domain;
 
 namespace SvnHub.Infrastructure.System;
@@ -417,6 +418,11 @@ public sealed class SvnLookClient : ISvnLookClient
 
         if (!result.IsSuccess)
         {
+            if (ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return await GetFileSizeWithSvnClientAsync(repoLocalPath, repoRelPath, revision, cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"svnlook filesize failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
@@ -755,6 +761,11 @@ public sealed class SvnLookClient : ISvnLookClient
 
         if (!result.IsSuccess)
         {
+            if (ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return DecodeSvnText(await CatBytesWithSvnClientAsync(repoLocalPath, repoRelPath, revision, cancellationToken));
+            }
+
             throw new InvalidOperationException(
                 $"svnlook cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
@@ -782,6 +793,11 @@ public sealed class SvnLookClient : ISvnLookClient
 
         if (!result.IsSuccess)
         {
+            if (ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return await CatBytesWithSvnClientAsync(repoLocalPath, repoRelPath, revision, cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"svnlook cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
@@ -811,8 +827,89 @@ public sealed class SvnLookClient : ISvnLookClient
 
         if (!result.IsSuccess)
         {
+            if (ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return await CatPrefixBytesWithSvnClientAsync(repoLocalPath, repoRelPath, revision, maxBytes, cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"svnlook cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return result.StandardOutput;
+    }
+
+    private async Task<long> GetFileSizeWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildLocalRepositoryUrl(repoLocalPath, repoRelPath);
+        var result = await _runner.RunAsync(
+            _options.SvnCommand,
+            ["info", "--xml", "--non-interactive", "-r", revision.ToString(CultureInfo.InvariantCulture), url + "@"],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svn info failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var document = XDocument.Parse(result.StandardOutput);
+        var sizeText = document.Root?
+            .Element("entry")?
+            .Attribute("size")?
+            .Value;
+
+        if (!long.TryParse(sizeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var size) || size < 0)
+        {
+            throw new InvalidOperationException($"Unexpected svn info size output: {result.StandardOutput.Trim()}");
+        }
+
+        return size;
+    }
+
+    private async Task<byte[]> CatBytesWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildLocalRepositoryUrl(repoLocalPath, repoRelPath);
+        var result = await _runner.RunBinaryAsync(
+            _options.SvnCommand,
+            ["cat", "--non-interactive", "-r", revision.ToString(CultureInfo.InvariantCulture), url + "@"],
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svn cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return result.StandardOutput;
+    }
+
+    private async Task<byte[]> CatPrefixBytesWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        long revision,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildLocalRepositoryUrl(repoLocalPath, repoRelPath);
+        var result = await _runner.RunBinaryPrefixAsync(
+            _options.SvnCommand,
+            ["cat", "--non-interactive", "-r", revision.ToString(CultureInfo.InvariantCulture), url + "@"],
+            maxBytes,
+            cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svn cat failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
 
         return result.StandardOutput;
@@ -966,6 +1063,25 @@ public sealed class SvnLookClient : ISvnLookClient
         }
 
         return NormalizePath(path).TrimStart('/');
+    }
+
+    private static bool ShouldFallbackToSvnClientForUnicodePath(string repoRelPath)
+    {
+        return OperatingSystem.IsWindows() && repoRelPath.Any(c => c > 127);
+    }
+
+    private static string BuildLocalRepositoryUrl(string repoLocalPath, string repoRelPath)
+    {
+        var repoUrl = new Uri(Path.GetFullPath(repoLocalPath)).AbsoluteUri.TrimEnd('/');
+        var escapedPath = string.Join(
+            '/',
+            repoRelPath
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return string.IsNullOrWhiteSpace(escapedPath)
+            ? repoUrl
+            : repoUrl + "/" + escapedPath;
     }
 
     private static string NormalizePath(string? path)

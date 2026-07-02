@@ -122,6 +122,9 @@ public static class RepositoryFileClassifier
     public static bool IsPdfPath(string path) =>
         string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsDxfPath(string path) =>
+        string.Equals(Path.GetExtension(path), ".dxf", StringComparison.OrdinalIgnoreCase);
+
     public static bool LooksPdfContent(ReadOnlySpan<byte> bytes) =>
         bytes.Length >= 5 &&
         bytes[0] == (byte)'%' &&

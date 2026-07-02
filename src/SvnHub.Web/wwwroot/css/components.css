@@ -260,6 +260,77 @@
   cursor: grabbing;
 }
 
+.dxf-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.dxf-layer-panel {
+  max-height: 72vh;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--sp-surface-2);
+}
+
+.dxf-layer-item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--sp-surface);
+  color: var(--bs-body-color);
+  font-size: 0.875rem;
+}
+
+.dxf-layer-item + .dxf-layer-item {
+  margin-top: 0.35rem;
+}
+
+.dxf-layer-item:hover {
+  border-color: var(--sp-control-border);
+  background: var(--sp-row-hover);
+}
+
+.dxf-layer-swatch {
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+}
+
+.dxf-preview-stage {
+  width: 100%;
+  height: clamp(420px, 72vh, 860px);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--bs-body-bg);
+  overflow: hidden;
+}
+
+.dxf-preview-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 991.98px) {
+  .dxf-preview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dxf-layer-panel {
+    max-height: 12rem;
+  }
+}
+
 .table {
   color: var(--bs-body-color);
 }

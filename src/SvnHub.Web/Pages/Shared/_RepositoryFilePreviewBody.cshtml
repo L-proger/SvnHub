@@ -20,6 +20,7 @@
         .ToArray();
     var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
     var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
+    var dxfPreviewUrl = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
 }
 
 @if (!string.IsNullOrWhiteSpace(Model.PreviewUnavailableMessage))
@@ -138,6 +139,25 @@ else if (Model.IsAltiumPreview)
                 sandbox="allow-same-origin"
                 src="@altiumTopUrl">
         </iframe>
+    </div>
+}
+else if (Model.IsDxfPreview)
+{
+    <div class="dxf-preview" data-dxf-preview data-dxf-url="@dxfPreviewUrl">
+        <div class="dxf-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+            <div>
+                <div class="fw-semibold">DXF preview</div>
+                <div class="text-muted small">@System.IO.Path.GetFileName(Model.Path)</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-dxf-reset>Reset view</button>
+        </div>
+        <div class="dxf-preview-status alert alert-secondary mb-3" data-dxf-status>
+            Loading DXF preview...
+        </div>
+        <div class="dxf-preview-layout" data-dxf-layout hidden>
+            <div class="dxf-layer-panel" data-dxf-layer-panel aria-label="DXF layers"></div>
+            <div class="dxf-preview-stage" data-dxf-stage></div>
+        </div>
     </div>
 }
 else if (Model.IsMarkdown)

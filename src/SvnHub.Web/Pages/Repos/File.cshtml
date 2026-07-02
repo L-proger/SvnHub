@@ -7,6 +7,7 @@
         !Model.IsGerberPreview &&
         !Model.IsModelPreview &&
         !Model.IsAltiumPreview &&
+        !Model.IsDxfPreview &&
         !Model.IsMarkdown
             ? Model.LineCount
             : null;
@@ -127,5 +128,10 @@ else
     @if (Model.IsAltiumPreview)
     {
         <script src="~/js/altium-preview.js" asp-append-version="true"></script>
+    }
+    @if (Model.IsDxfPreview)
+    {
+        <script src="~/lib/dxf-viewer/dxf-viewer.bundle.js" asp-append-version="true"></script>
+        <script src="~/js/dxf-preview.js" asp-append-version="true"></script>
     }
 }

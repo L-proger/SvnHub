@@ -69,6 +69,7 @@ public sealed class FileModel : PageModel
     public bool IsGerberPreview { get; private set; }
     public bool IsModelPreview { get; private set; }
     public bool IsAltiumPreview { get; private set; }
+    public bool IsDxfPreview { get; private set; }
     public bool IsAltiumPcbDocument { get; private set; }
     public string AltiumPreviewLabel { get; private set; } = "";
     public string ImageContentType { get; private set; } = "application/octet-stream";
@@ -94,6 +95,7 @@ public sealed class FileModel : PageModel
         !IsGerberPreview &&
         !IsModelPreview &&
         !IsAltiumPreview &&
+        !IsDxfPreview &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -162,6 +164,13 @@ public sealed class FileModel : PageModel
             {
                 PreviewUnavailableMessage =
                     $"Preview is disabled for files larger than {MaxPreviewSizeLabel}. This file is {FileSizeLabel}.";
+                return Page();
+            }
+
+            if (RepositoryFileClassifier.IsDxfPath(Path))
+            {
+                ClearTextPreviewState();
+                IsDxfPreview = true;
                 return Page();
             }
 
@@ -310,6 +319,7 @@ public sealed class FileModel : PageModel
         IsGerberPreview = false;
         IsModelPreview = false;
         IsAltiumPreview = false;
+        IsDxfPreview = false;
         IsAltiumPcbDocument = false;
         AltiumPreviewLabel = "";
         LineNumbers = "";
