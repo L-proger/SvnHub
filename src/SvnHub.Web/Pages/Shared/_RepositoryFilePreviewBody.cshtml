@@ -21,6 +21,7 @@
     var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
     var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
     var dxfPreviewUrl = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
+    var interactiveBomPreviewUrl = Url.Page("/Repos/File", null, new { handler = "InteractiveBomPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
 }
 
 @if (!string.IsNullOrWhiteSpace(Model.PreviewUnavailableMessage))
@@ -158,6 +159,22 @@ else if (Model.IsDxfPreview)
             <div class="dxf-layer-panel" data-dxf-layer-panel aria-label="DXF layers"></div>
             <div class="dxf-preview-stage" data-dxf-stage></div>
         </div>
+    </div>
+}
+else if (Model.IsInteractiveBomPreview)
+{
+    <div class="interactive-bom-preview">
+        <div class="d-flex justify-content-end mb-2">
+            <a class="btn btn-sm btn-outline-secondary"
+               href="@interactiveBomPreviewUrl"
+               target="_blank"
+               rel="noopener">Open full preview</a>
+        </div>
+        <iframe class="interactive-bom-preview-frame"
+                title="@System.IO.Path.GetFileName(Model.Path)"
+                sandbox="allow-scripts allow-downloads allow-forms"
+                src="@interactiveBomPreviewUrl">
+        </iframe>
     </div>
 }
 else if (Model.IsMarkdown)

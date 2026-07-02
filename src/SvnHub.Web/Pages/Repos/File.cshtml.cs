@@ -24,6 +24,7 @@ public sealed class FileModel : PageModel
     private readonly SettingsService _settings;
     private readonly SvnHubOptions _options;
     private readonly AltiumPreviewRenderer _altiumPreview;
+    private readonly InteractiveBomHtmlBuilder _interactiveBomHtml;
 
     public FileModel(
         RepositoryService repos,
@@ -33,7 +34,8 @@ public sealed class FileModel : PageModel
         ISvnRepositoryWriter svnWriter,
         SettingsService settings,
         SvnHubOptions options,
-        AltiumPreviewRenderer altiumPreview)
+        AltiumPreviewRenderer altiumPreview,
+        InteractiveBomHtmlBuilder interactiveBomHtml)
     {
         _repos = repos;
         _management = management;
@@ -43,6 +45,7 @@ public sealed class FileModel : PageModel
         _settings = settings;
         _options = options;
         _altiumPreview = altiumPreview;
+        _interactiveBomHtml = interactiveBomHtml;
     }
 
     [TempData]
@@ -70,6 +73,7 @@ public sealed class FileModel : PageModel
     public bool IsModelPreview { get; private set; }
     public bool IsAltiumPreview { get; private set; }
     public bool IsDxfPreview { get; private set; }
+    public bool IsInteractiveBomPreview { get; private set; }
     public bool IsAltiumPcbDocument { get; private set; }
     public string AltiumPreviewLabel { get; private set; } = "";
     public string ImageContentType { get; private set; } = "application/octet-stream";
@@ -96,6 +100,7 @@ public sealed class FileModel : PageModel
         !IsModelPreview &&
         !IsAltiumPreview &&
         !IsDxfPreview &&
+        !IsInteractiveBomPreview &&
         (IsMarkdown || LineCount is not null);
 
     public async Task<IActionResult> OnGetAsync(string repoName, string? path, long? rev, CancellationToken cancellationToken)
@@ -171,6 +176,13 @@ public sealed class FileModel : PageModel
             {
                 ClearTextPreviewState();
                 IsDxfPreview = true;
+                return Page();
+            }
+
+            if (RepositoryFileClassifier.IsInteractiveBomInputPath(Path))
+            {
+                ClearTextPreviewState();
+                IsInteractiveBomPreview = true;
                 return Page();
             }
 
@@ -320,6 +332,7 @@ public sealed class FileModel : PageModel
         IsModelPreview = false;
         IsAltiumPreview = false;
         IsDxfPreview = false;
+        IsInteractiveBomPreview = false;
         IsAltiumPcbDocument = false;
         AltiumPreviewLabel = "";
         LineNumbers = "";
@@ -563,6 +576,70 @@ public sealed class FileModel : PageModel
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return BadRequest($"Altium preview failed: {ex.Message}");
+        }
+    }
+
+    public async Task<IActionResult> OnGetInteractiveBomPreviewAsync(
+        string repoName,
+        string? path,
+        long? rev,
+        CancellationToken cancellationToken)
+    {
+        RepoName = repoName;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return NotFound();
+        }
+
+        Path = Normalize(path);
+        if (!RepositoryFileClassifier.IsInteractiveBomInputPath(Path))
+        {
+            return NotFound();
+        }
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var repo = _repos.FindByName(repoName);
+        if (repo is null || repo.IsArchived)
+        {
+            return NotFound();
+        }
+
+        if (_access.GetAccess(userId.Value, repo.Id, Path) < AccessLevel.Read)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var headRevision = await _svnlook.GetYoungestRevisionAsync(repo.LocalPath, cancellationToken);
+            var effectiveRev = ResolveRevision(rev, headRevision);
+            var maxServeBytes = _options.GetEffectiveMaxPreviewBytes();
+            var fileSize = await _svnlook.GetFileSizeAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            if (fileSize > maxServeBytes)
+            {
+                return StatusCode(
+                    StatusCodes.Status413PayloadTooLarge,
+                    BuildFileTooLargeMessage(fileSize, maxServeBytes));
+            }
+
+            var bytes = await _svnlook.CatBytesAsync(repo.LocalPath, Path, effectiveRev, cancellationToken);
+            var html = _interactiveBomHtml.Build(RepositoryFileClassifier.DecodeText(bytes));
+
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            Response.Headers["X-SvnHub-Preview"] = "interactive-bom";
+            Response.Headers["X-SvnHub-Preview-Bytes"] = bytes.Length.ToString(CultureInfo.InvariantCulture);
+            Response.Headers["X-SvnHub-Preview-Html-Length"] = html.Length.ToString(CultureInfo.InvariantCulture);
+            Response.Headers.CacheControl = "no-store";
+            return Content(html, "text/html; charset=utf-8");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return BadRequest($"Interactive BOM preview failed: {ex.Message}");
         }
     }
 

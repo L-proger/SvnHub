@@ -125,6 +125,10 @@ public static class RepositoryFileClassifier
     public static bool IsDxfPath(string path) =>
         string.Equals(Path.GetExtension(path), ".dxf", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsInteractiveBomInputPath(string path) =>
+        string.Equals(Path.GetFileName(path), "ibom-input.json", StringComparison.OrdinalIgnoreCase) ||
+        Path.GetFileName(path).EndsWith(".ibom-input.json", StringComparison.OrdinalIgnoreCase);
+
     public static bool LooksPdfContent(ReadOnlySpan<byte> bytes) =>
         bytes.Length >= 5 &&
         bytes[0] == (byte)'%' &&
