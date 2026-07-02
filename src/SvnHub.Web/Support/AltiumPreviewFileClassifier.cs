@@ -5,6 +5,9 @@ public static class AltiumPreviewFileClassifier
     public static bool IsPreviewablePath(string path) =>
         GetKind(path) is not AltiumPreviewKind.Unknown;
 
+    public static bool IsProjectPath(string path) =>
+        string.Equals(Path.GetExtension(path), ".PrjPcb", StringComparison.OrdinalIgnoreCase);
+
     public static AltiumPreviewKind GetKind(string path)
     {
         var ext = Path.GetExtension(path);

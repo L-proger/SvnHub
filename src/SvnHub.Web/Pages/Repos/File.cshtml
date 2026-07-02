@@ -30,6 +30,14 @@
 
     if (Model.CanServeFile)
     {
+        if (Model.IsAltiumPcbDocument || Model.IsAltiumProjectDocument)
+        {
+            fileActions.Add(new RepositoryObjectActionModel(
+                "Interactive BOM",
+                Href: Url.Page("/Repos/InteractiveBom", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }),
+                OpenInNewTab: true));
+        }
+
         fileActions.Add(new RepositoryObjectActionModel(
             "Raw",
             Href: Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }),

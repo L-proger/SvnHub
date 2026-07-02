@@ -75,6 +75,7 @@ public sealed class FileModel : PageModel
     public bool IsDxfPreview { get; private set; }
     public bool IsInteractiveBomPreview { get; private set; }
     public bool IsAltiumPcbDocument { get; private set; }
+    public bool IsAltiumProjectDocument { get; private set; }
     public string AltiumPreviewLabel { get; private set; } = "";
     public string ImageContentType { get; private set; } = "application/octet-stream";
     public string Language { get; private set; } = "plaintext";
@@ -116,6 +117,7 @@ public sealed class FileModel : PageModel
         CheckoutUrl = SvnCheckoutUrl.Build(_settings.GetEffectiveSvnBaseUrl(), repoName, Path);
         var language = RepositoryFileClassifier.GuessLanguage(Path);
         Language = language;
+        IsAltiumProjectDocument = AltiumPreviewFileClassifier.IsProjectPath(Path);
         IsImage = RepositoryFileClassifier.IsImagePath(Path);
         var isPdfPath = RepositoryFileClassifier.IsPdfPath(Path);
         ImageContentType = RepositoryFileClassifier.GetContentTypeOrDefault(Path);
@@ -334,6 +336,7 @@ public sealed class FileModel : PageModel
         IsDxfPreview = false;
         IsInteractiveBomPreview = false;
         IsAltiumPcbDocument = false;
+        IsAltiumProjectDocument = false;
         AltiumPreviewLabel = "";
         LineNumbers = "";
         LineCount = null;
