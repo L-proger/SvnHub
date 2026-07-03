@@ -7,16 +7,25 @@ RUN dotnet publish ./src/SvnHub.Web/SvnHub.Web.csproj -c Release -o /out --no-se
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 SHELL ["/bin/bash", "-c"]
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then \
+        sed -i -E 's/Components: main/Components: main contrib/g' /etc/apt/sources.list.d/debian.sources; \
+    elif [[ -f /etc/apt/sources.list ]]; then \
+        sed -i -E 's/ main([[:space:]]|$)/ main contrib\1/g' /etc/apt/sources.list; \
+    fi; \
+    apt-get update; \
+    echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' | debconf-set-selections; \
+    apt-get install -y --no-install-recommends \
         apache2 \
         apache2-utils \
         subversion \
         libapache2-mod-svn \
         ca-certificates \
+        cabextract \
         fontconfig \
         fonts-dejavu-core \
         fonts-liberation \
+        ttf-mscorefonts-installer \
         gosu \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
