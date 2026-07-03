@@ -447,6 +447,7 @@ public sealed class SvnLookClient : ISvnLookClient
         var repoRelPrefix = string.IsNullOrWhiteSpace(repoRelPath) ? null : repoRelPath.TrimEnd('/') + "/";
         var baseNamePrefix = string.IsNullOrWhiteSpace(repoRelPath) ? null : repoRelPath.Split('/').Last().TrimEnd('/') + "/";
         var baseName = string.IsNullOrWhiteSpace(repoRelPath) ? null : repoRelPath.Split('/').Last().TrimEnd('/');
+        var normalizedBase = NormalizePath(path);
 
         var args = new List<string>
         {
@@ -465,11 +466,14 @@ public sealed class SvnLookClient : ISvnLookClient
         var result = await _runner.RunBinaryAsync(_options.SvnlookCommand, args, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (!string.IsNullOrWhiteSpace(repoRelPath) && ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return await ListTreeWithSvnClientAsync(repoLocalPath, repoRelPath, normalizedBase, revision, cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"svnlook tree failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
-
-        var normalizedBase = NormalizePath(path);
 
         var stdout = DecodeSvnText(result.StandardOutput);
 
@@ -547,6 +551,11 @@ public sealed class SvnLookClient : ISvnLookClient
         var result = await _runner.RunBinaryAsync(_options.SvnlookCommand, args, cancellationToken);
         if (!result.IsSuccess)
         {
+            if (!string.IsNullOrWhiteSpace(repoRelPath) && ShouldFallbackToSvnClientForUnicodePath(repoRelPath))
+            {
+                return await ListTreeRecursiveWithSvnClientAsync(repoLocalPath, repoRelPath, NormalizePath(path), revision, cancellationToken);
+            }
+
             throw new InvalidOperationException(
                 $"svnlook tree failed (exit {result.ExitCode}): {result.StandardError}".Trim());
         }
@@ -913,6 +922,98 @@ public sealed class SvnLookClient : ISvnLookClient
         }
 
         return result.StandardOutput;
+    }
+
+    private async Task<IReadOnlyList<SvnTreeEntry>> ListTreeWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        string normalizedBase,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        var stdout = await ListWithSvnClientAsync(repoLocalPath, repoRelPath, revision, recursive: false, cancellationToken);
+
+        return stdout
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.Length != 0)
+            .Select(line =>
+            {
+                var isDirectory = line.EndsWith("/", StringComparison.Ordinal);
+                var name = isDirectory ? line.TrimEnd('/') : line;
+                return new SvnTreeEntry(name, Combine(normalizedBase, name), isDirectory);
+            })
+            .OrderBy(e => e.IsDirectory ? 0 : 1)
+            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<SvnTreeEntry>> ListTreeRecursiveWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        string normalizedBase,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        var stdout = await ListWithSvnClientAsync(repoLocalPath, repoRelPath, revision, recursive: true, cancellationToken);
+        var rows = new List<SvnTreeEntry>();
+
+        foreach (var rawLine in stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var isDirectory = line.EndsWith("/", StringComparison.Ordinal);
+            var relativePath = isDirectory ? line.TrimEnd('/') : line;
+            var fullPath = Combine(normalizedBase, relativePath);
+            var name = fullPath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            rows.Add(new SvnTreeEntry(name, fullPath, isDirectory));
+        }
+
+        return rows
+            .OrderBy(e => e.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task<string> ListWithSvnClientAsync(
+        string repoLocalPath,
+        string repoRelPath,
+        long revision,
+        bool recursive,
+        CancellationToken cancellationToken)
+    {
+        var url = BuildLocalRepositoryUrl(repoLocalPath, repoRelPath);
+        var args = new List<string>
+        {
+            "list",
+            "--non-interactive",
+            "-r",
+            revision.ToString(CultureInfo.InvariantCulture),
+        };
+
+        if (recursive)
+        {
+            args.Add("--recursive");
+        }
+
+        args.Add(url + "@");
+
+        var result = await _runner.RunBinaryAsync(_options.SvnCommand, args, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svn list failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        return DecodeSvnText(result.StandardOutput);
     }
 
     public async Task<IReadOnlyList<SvnProperty>> GetPropertiesAsync(

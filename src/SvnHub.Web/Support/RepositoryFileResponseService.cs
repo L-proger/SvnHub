@@ -85,7 +85,7 @@ public sealed class RepositoryFileResponseService
         var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
         contentType = RepositoryFileClassifier.NormalizeRawTextContentType(fileName, contentType, content);
 
-        response.Headers.ETag = $"W/\"{repoName}:{effectiveRevision}:{normalizedPath}\"";
+        response.Headers.ETag = HttpEntityTags.WeakRepositoryFileTag(repoName, effectiveRevision, normalizedPath);
         return new FileContentResult(content, contentType);
     }
 

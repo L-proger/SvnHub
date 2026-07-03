@@ -703,7 +703,7 @@ public sealed class FileModel : PageModel
 
         var contentType = RepositoryFileClassifier.GetContentTypeOrDefault(fileName);
 
-        Response.Headers.ETag = $"W/\"{repoName}:{effectiveRev}:{Path}\"";
+        Response.Headers.ETag = HttpEntityTags.WeakRepositoryFileTag(repoName, effectiveRev, Path);
         return File(content, contentType, fileName);
     }
 
