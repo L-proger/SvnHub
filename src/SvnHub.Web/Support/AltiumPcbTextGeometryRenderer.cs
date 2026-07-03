@@ -109,9 +109,7 @@ internal static class AltiumPcbTextGeometryRenderer
                     ? SKFontStyle.Italic
                     : SKFontStyle.Normal;
 
-        using var typeface = SKTypeface.FromFamilyName(
-            string.IsNullOrWhiteSpace(text.FontName) ? "Arial" : text.FontName,
-            typefaceStyle);
+        using var typeface = CreateTypeface(text.FontName, typefaceStyle);
         using var font = new SKFont(typeface, fontSize)
         {
             Edging = SKFontEdging.Antialias,
@@ -218,9 +216,7 @@ internal static class AltiumPcbTextGeometryRenderer
 
         var textHeight = Math.Max(text.Height.ToMils(), 1);
         var (fontSize, lineSpacing) = GetFramedPcbTextMetrics(textHeight, frame, lines.Length);
-        using var typeface = SKTypeface.FromFamilyName(
-            string.IsNullOrWhiteSpace(text.FontName) ? "Arial" : text.FontName,
-            typefaceStyle);
+        using var typeface = CreateTypeface(text.FontName, typefaceStyle);
         using var font = new SKFont(typeface, (float)fontSize)
         {
             Edging = SKFontEdging.Antialias,
@@ -381,6 +377,32 @@ internal static class AltiumPcbTextGeometryRenderer
         var availableLineHeight = (frame.HeightMils - 2 * margin) / lineCount * 0.92;
         var fontSize = Math.Max(1, Math.Min(textHeight * trueTypeEmScale, availableLineHeight));
         return (fontSize, fontSize * 1.2);
+    }
+
+    private static SKTypeface CreateTypeface(string? fontName, SKFontStyle style)
+    {
+        foreach (var candidate in GetFontCandidates(fontName))
+        {
+            var typeface = SKTypeface.FromFamilyName(candidate, style);
+            if (typeface is not null)
+            {
+                return typeface;
+            }
+        }
+
+        return SKTypeface.Default;
+    }
+
+    private static IEnumerable<string> GetFontCandidates(string? fontName)
+    {
+        if (!string.IsNullOrWhiteSpace(fontName))
+        {
+            yield return fontName;
+        }
+
+        yield return "Arial";
+        yield return "Liberation Sans";
+        yield return "DejaVu Sans";
     }
 
     private static (double X, double Y) GetLocalOffset(

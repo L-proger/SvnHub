@@ -8,7 +8,17 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends apache2 apache2-utils subversion libapache2-mod-svn ca-certificates gosu \
+    && apt-get install -y --no-install-recommends \
+        apache2 \
+        apache2-utils \
+        subversion \
+        libapache2-mod-svn \
+        ca-certificates \
+        fontconfig \
+        fonts-dejavu-core \
+        fonts-liberation \
+        gosu \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 # SvnHub uses one service identity for the web app, Apache SVN workers, and SVN CLI tools.
