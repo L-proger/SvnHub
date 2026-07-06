@@ -212,12 +212,15 @@
                             {
                                 <li><hr class="dropdown-divider" /></li>
                                 <li>
-                                    <form method="post" asp-page-handler="DeleteEntry" class="m-0">
+                                    <form method="post"
+                                          asp-page-handler="DeleteEntry"
+                                          class="m-0"
+                                          data-delete-requires-message="true">
+                                        @Html.AntiForgeryToken()
                                         <input type="hidden" name="path" value="@Model.Path" />
                                         <input type="hidden" name="targetPath" value="@e.Path" />
                                         <button type="submit"
-                                                class="dropdown-item text-danger"
-                                                onclick="return confirm('Delete this @(e.IsDirectory ? "folder" : "file") from SVN? This will create a new revision.');">
+                                                class="dropdown-item text-danger">
                                             Delete
                                         </button>
                                     </form>

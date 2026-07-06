@@ -1,0 +1,33 @@
+<div class="modal fade" id="deleteCommitModal" tabindex="-1" aria-labelledby="deleteCommitModalTitle" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content" id="deleteCommitForm">
+            @Html.AntiForgeryToken()
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="deleteCommitModalTitle">Delete from SVN</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2">
+                    This will create a new revision.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="deleteCommitMessage">Commit message</label>
+                    <input class="form-control"
+                           type="text"
+                           name="commitMessage"
+                           id="deleteCommitMessage"
+                           placeholder="Describe why this is being deleted"
+                           required />
+                </div>
+                <div class="text-muted small">
+                    Target: <code id="deleteCommitTarget">-</code>
+                </div>
+                <div id="deleteCommitHiddenFields"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-danger">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>

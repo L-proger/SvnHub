@@ -72,6 +72,12 @@ public sealed class RepositoryService
             return OperationResult<Repository>.Fail("You don't have permission to create repositories.");
         }
 
+        var actor = state.Users.FirstOrDefault(u => u.Id == actorUserId && u.IsActive);
+        if (actor is null)
+        {
+            return OperationResult<Repository>.Fail("Actor user not found.");
+        }
+
         if (state.Repositories.Any(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return OperationResult<Repository>.Fail("Repository already exists.");
@@ -82,7 +88,7 @@ public sealed class RepositoryService
 
         try
         {
-            await _provisioner.CreateAsync(localPath, initializeStandardLayout, cancellationToken);
+            await _provisioner.CreateAsync(localPath, initializeStandardLayout, actor.UserName, cancellationToken);
         }
         catch (Exception ex)
         {

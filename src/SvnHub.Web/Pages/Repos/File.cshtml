@@ -21,6 +21,7 @@
             ButtonClass: "btn-outline-danger",
             FormAction: Url.Page("/Repos/File", "Delete", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path) }),
             Confirm: "Delete this file from SVN? This will create a new revision.",
+            RequiresCommitMessage: true,
             HiddenFields: new Dictionary<string, string?> { ["path"] = Model.Path }));
 
         fileActions.Add(new RepositoryObjectActionModel(
@@ -98,6 +99,7 @@ else
                 Model,
                 WrapBodyInCardBody: true,
                 CopyMessageElementId: "copyMsg"))
+            @await Html.PartialAsync("Shared/_RepositoryDeleteModal")
 
             @if (Model.IsTruncated)
             {
@@ -124,6 +126,10 @@ else
 @section Scripts
 {
     @* copy handlers live in wwwroot/js/site.js *@
+    @if (Model.CanEdit)
+    {
+        <script src="~/js/repository-delete.js" asp-append-version="true"></script>
+    }
     @if (Model.IsGerberPreview)
     {
         <script src="~/lib/tracespace/pcb-stackup.min.js" asp-append-version="true"></script>

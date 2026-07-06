@@ -23,6 +23,7 @@
             ButtonClass: "btn-outline-danger",
             FormAction: Url.Page("/Repos/Tree", "DeleteEntry", new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.ParentPath) }),
             Confirm: "Delete this folder from SVN? This will create a new revision.",
+            RequiresCommitMessage: true,
             HiddenFields: new Dictionary<string, string?> { ["targetPath"] = Model.Path }));
     }
 
@@ -132,6 +133,7 @@ else
                 CopyMessageElementId: "treeCopyMsg"))
 
             @await Html.PartialAsync("Shared/_RepositoryUploadModal", Model)
+            @await Html.PartialAsync("Shared/_RepositoryDeleteModal")
 
             @if (Model.HasReadme)
             {
@@ -154,5 +156,6 @@ else
     @if (Model.CanWriteActions)
     {
         <script src="~/js/repository-tree.js" asp-append-version="true"></script>
+        <script src="~/js/repository-delete.js" asp-append-version="true"></script>
     }
 }

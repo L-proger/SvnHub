@@ -473,7 +473,11 @@ public sealed class FileModel : PageModel
         return string.Format(CultureInfo.InvariantCulture, "{0:0.#} {1}", size, units[unit]);
     }
 
-    public async Task<IActionResult> OnPostDeleteAsync(string repoName, string? path, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostDeleteAsync(
+        string repoName,
+        string? path,
+        string commitMessage,
+        CancellationToken cancellationToken)
     {
         RepoName = repoName;
         if (string.IsNullOrWhiteSpace(path))
@@ -501,8 +505,12 @@ public sealed class FileModel : PageModel
             return Forbid();
         }
 
-        var actor = User?.Identity?.Name ?? userId.Value.ToString("D");
-        var message = $"Delete {Path} via SvnHub (by {actor})";
+        var message = (commitMessage ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            FlashError = "Commit message is required.";
+            return RedirectToPage("/Repos/File", new { repoName, path = RepositoryPath.ToRouteValue(Path) });
+        }
 
         try
         {

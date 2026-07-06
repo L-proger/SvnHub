@@ -764,6 +764,7 @@ public sealed class TreeModel : PageModel
         string repoName,
         string? path,
         string targetPath,
+        string commitMessage,
         CancellationToken cancellationToken)
     {
         RepoName = repoName;
@@ -800,8 +801,12 @@ public sealed class TreeModel : PageModel
             return Forbid();
         }
 
-        var actor = User?.Identity?.Name ?? userId.Value.ToString("D");
-        var message = $"Delete {normalizedTarget} via SvnHub (by {actor})";
+        var message = (commitMessage ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            FlashError = "Commit message is required.";
+            return RedirectToPage(new { repoName, path = RoutePath(Path) });
+        }
 
         try
         {

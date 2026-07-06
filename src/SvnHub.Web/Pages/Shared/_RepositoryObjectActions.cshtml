@@ -52,7 +52,10 @@
     }
     else if (action.IsForm)
     {
-        <form method="post" action="@action.FormAction" class="d-inline">
+        <form method="post"
+              action="@action.FormAction"
+              class="d-inline"
+              data-delete-requires-message="@(action.RequiresCommitMessage ? "true" : null)">
             @Html.AntiForgeryToken()
             @foreach (var field in action.HiddenFields ?? new Dictionary<string, string?>())
             {
@@ -60,7 +63,7 @@
             }
             <button type="submit"
                     class="btn btn-sm @action.ButtonClass"
-                    onclick="@(string.IsNullOrWhiteSpace(action.Confirm) ? null : $"return confirm('{action.Confirm}');")">
+                    onclick="@(!action.RequiresCommitMessage && !string.IsNullOrWhiteSpace(action.Confirm) ? $"return confirm('{action.Confirm}');" : null)">
                 @action.Text
             </button>
         </form>

@@ -10,6 +10,7 @@ public sealed record RepositoryObjectActionModel(
     string? CopyMessageTarget = null,
     string? FormAction = null,
     string? Confirm = null,
+    bool RequiresCommitMessage = false,
     IReadOnlyDictionary<string, string?>? HiddenFields = null,
     string? UploadOpenTarget = null,
     IReadOnlyList<RepositoryObjectActionModel>? Items = null)

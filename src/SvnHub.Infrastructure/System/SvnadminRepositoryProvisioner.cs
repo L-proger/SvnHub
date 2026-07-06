@@ -17,6 +17,7 @@ public sealed class SvnadminRepositoryProvisioner : ISvnRepositoryProvisioner
     public async Task CreateAsync(
         string localPath,
         bool initializeStandardLayout,
+        string? authorUserName = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(localPath))
@@ -39,16 +40,29 @@ public sealed class SvnadminRepositoryProvisioner : ISvnRepositoryProvisioner
         var repoUri = new Uri(Path.GetFullPath(localPath));
         var repoUrl = repoUri.AbsoluteUri.TrimEnd('/');
 
+        var args = new List<string>
+        {
+            "--non-interactive",
+        };
+
+        if (!string.IsNullOrWhiteSpace(authorUserName))
+        {
+            args.AddRange(["--username", authorUserName]);
+        }
+
+        args.AddRange(
+        [
+            "mkdir",
+            "-m",
+            "Initialize standard layout (trunk/branches/tags)",
+            $"{repoUrl}/trunk",
+            $"{repoUrl}/branches",
+            $"{repoUrl}/tags",
+        ]);
+
         var mkdir = await _runner.RunAsync(
             _options.SvnCommand,
-            [
-                "mkdir",
-                "-m",
-                "Initialize standard layout (trunk/branches/tags)",
-                $"{repoUrl}/trunk",
-                $"{repoUrl}/branches",
-                $"{repoUrl}/tags",
-            ],
+            args,
             cancellationToken);
 
         if (!mkdir.IsSuccess)
