@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "Owner")]
+[Authorize(Roles = "owner")]
 public sealed class GroupsModel : PageModel
 {
     private readonly GroupService _groups;

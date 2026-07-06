@@ -23,23 +23,23 @@ public sealed class RepositoryManagementService
             .ToArray();
     }
 
-    public bool CanMaintainRepository(Guid actorUserId, Guid repositoryId)
-    {
-        var state = _store.Read();
-        return RepositoryManagementEvaluator.CanMaintainRepository(state, actorUserId, repositoryId);
-    }
-
     public bool CanAdminRepository(Guid actorUserId, Guid repositoryId)
     {
         var state = _store.Read();
         return RepositoryManagementEvaluator.CanAdminRepository(state, actorUserId, repositoryId);
     }
 
-    public bool WouldDisablingDefaultGrantRemoveAdmin(Guid actorUserId, Guid repositoryId)
+    public bool CanManageRepositoryHooks(Guid actorUserId, Guid repositoryId)
+    {
+        var state = _store.Read();
+        return RepositoryManagementEvaluator.CanManageRepositoryHooks(state, actorUserId, repositoryId);
+    }
+
+    public bool WouldDisablingInheritedManagementGrantsRemoveAdmin(Guid actorUserId, Guid repositoryId)
     {
         var state = _store.Read();
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || repo.IsArchived || !repo.IncludeDefaultManagementGrants)
+        if (repo is null || repo.IsArchived || !repo.IncludeInheritedManagementGrants)
         {
             return false;
         }
@@ -52,7 +52,7 @@ public sealed class RepositoryManagementService
         var simulatedState = state with
         {
             Repositories = state.Repositories
-                .Select(r => r.Id == repositoryId ? r with { IncludeDefaultManagementGrants = false } : r)
+                .Select(r => r.Id == repositoryId ? r with { IncludeInheritedManagementGrants = false } : r)
                 .ToList(),
         };
 
@@ -119,7 +119,7 @@ public sealed class RepositoryManagementService
             return OperationResult<RepositoryManagementGrant>.Fail("Subject not found.");
         }
 
-        if (role is not (RepositoryManagementRole.Maintainer or RepositoryManagementRole.Admin))
+        if (role is not RepositoryManagementRole.Admin)
         {
             return OperationResult<RepositoryManagementGrant>.Fail("Invalid repository management role.");
         }

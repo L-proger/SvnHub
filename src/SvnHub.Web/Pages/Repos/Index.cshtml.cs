@@ -82,7 +82,7 @@ public sealed class IndexModel : PageModel
             .Where(r =>
             {
                 var canBrowse = _access.GetAccess(userId.Value, r.Id, "/") >= AccessLevel.Read;
-                var canManage = _management.CanMaintainRepository(userId.Value, r.Id);
+                var canManage = _management.CanAdminRepository(userId.Value, r.Id);
                 if (canBrowse)
                 {
                     browseable.Add(r.Id);
@@ -149,7 +149,7 @@ public sealed class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, string? label = null, CancellationToken cancellationToken = default)
     {
-        if (!(User?.IsInRole("AdminRepo") ?? false))
+        if (!(User?.IsInRole("admin.system") ?? false))
         {
             return Forbid();
         }

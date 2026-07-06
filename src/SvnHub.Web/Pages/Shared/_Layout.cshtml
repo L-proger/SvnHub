@@ -78,19 +78,19 @@
                             <a class="nav-link" asp-area="" asp-page="/Repos/Index">Repos</a>
                         </li>
                     }
-                    @if (User?.IsInRole("AdminUsers") ?? false)
+                    @if (User?.IsInRole("admin.users") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Users">Users</a>
                         </li>
                     }
-                    @if (User?.IsInRole("AdminSystem") ?? false)
+                    @if (User?.IsInRole("admin.system") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Settings">Settings</a>
                         </li>
                     }
-                    @if (User?.IsInRole("Owner") ?? false)
+                    @if (User?.IsInRole("owner") ?? false)
                     {
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Admin/Groups">Groups</a>

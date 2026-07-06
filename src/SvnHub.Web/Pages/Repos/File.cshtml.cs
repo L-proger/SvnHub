@@ -141,7 +141,7 @@ public sealed class FileModel : PageModel
             return Forbid();
         }
 
-        CanOpenSettings = _management.CanMaintainRepository(userId.Value, repo.Id);
+        CanOpenSettings = _management.CanAdminRepository(userId.Value, repo.Id);
         CanWrite = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         ViewRevision = rev;
 

@@ -17,17 +17,20 @@ public sealed class EditModel : PageModel
     private const int MaxEditBytes = 1_000_000;
 
     private readonly RepositoryService _repos;
+    private readonly RepositoryManagementService _management;
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly ISvnRepositoryWriter _writer;
 
     public EditModel(
         RepositoryService repos,
+        RepositoryManagementService management,
         AccessService access,
         ISvnLookClient svnlook,
         ISvnRepositoryWriter writer)
     {
         _repos = repos;
+        _management = management;
         _access = access;
         _svnlook = svnlook;
         _writer = writer;
@@ -45,6 +48,7 @@ public sealed class EditModel : PageModel
     public bool CanEditContents { get; private set; }
     public bool IsDirectory { get; private set; }
     public bool IsNew { get; private set; }
+    public bool CanOpenSettings { get; private set; }
     public string EditorLineNumbers { get; private set; } = "";
 
     [BindProperty]
@@ -77,6 +81,8 @@ public sealed class EditModel : PageModel
         {
             return Forbid();
         }
+
+        CanOpenSettings = _management.CanAdminRepository(userId.Value, repo.Id);
 
         try
         {
@@ -137,6 +143,8 @@ public sealed class EditModel : PageModel
         {
             return Forbid();
         }
+
+        CanOpenSettings = _management.CanAdminRepository(userId.Value, repo.Id);
 
         try
         {

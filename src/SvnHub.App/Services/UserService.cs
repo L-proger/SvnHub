@@ -268,7 +268,7 @@ public sealed class UserService
                 UiPasswordHash: "imported:htpasswd",
                 SvnBcryptHash: hash,
                 IsActive: true,
-                Roles: PortalUserRoles.None,
+                Roles: PortalUserRoles.RepoWrite,
                 CreatedAt: DateTimeOffset.UtcNow)
             {
                 RequiresUiPasswordMigration = true,

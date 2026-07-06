@@ -75,6 +75,8 @@ public sealed class MultiFilePortalStore : IPortalStore
         var managementGrants = ReadFileOrDefault(_repositoryManagementPath, static () => new List<RepositoryManagementGrant>());
         var apiTokens = ReadFileOrDefault(_apiTokensPath, static () => new List<ApiToken>());
         var audit = ReadFileOrDefault(_auditPath, static () => new List<AuditEvent>());
+        var previousDefaultAccess = ReadPreviousDefaultAccess(_configPath);
+        var previousRepositoryInheritance = ReadPreviousRepositoryInheritance(_reposPath);
 
         if (settings.RoleSchemaVersion < 1)
         {
@@ -82,7 +84,26 @@ public sealed class MultiFilePortalStore : IPortalStore
             settings = settings with { RoleSchemaVersion = 1 };
         }
 
+        if (settings.RoleSchemaVersion < 2)
+        {
+            users = MigrateGlobalRepositoryGrants(users, previousDefaultAccess ?? AccessLevel.Write);
+            repos = MigrateRepositoryGrantInheritance(repos, previousRepositoryInheritance);
+            settings = settings with { RoleSchemaVersion = 2 };
+        }
+
+        if (settings.RoleSchemaVersion < 3)
+        {
+            repos = MigrateSplitRepositoryGrantInheritance(repos, previousRepositoryInheritance);
+            settings = settings with { RoleSchemaVersion = 3 };
+        }
+
+        if (settings.RoleSchemaVersion < 4)
+        {
+            settings = settings with { RoleSchemaVersion = 4 };
+        }
+
         SplitLegacyManagementRules(rules, managementGrants);
+        managementGrants = NormalizeRepositoryManagementGrants(managementGrants);
 
         return PortalState.Empty() with
         {
@@ -135,6 +156,100 @@ public sealed class MultiFilePortalStore : IPortalStore
         }
     }
 
+    private static AccessLevel? ReadPreviousDefaultAccess(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            return TryGetProperty(doc.RootElement, "defaultAuthenticatedAccess", out var value)
+                ? ReadAccessLevel(value)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyDictionary<Guid, PreviousRepositoryInheritance> ReadPreviousRepositoryInheritance(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return new Dictionary<Guid, PreviousRepositoryInheritance>();
+            }
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return new Dictionary<Guid, PreviousRepositoryInheritance>();
+            }
+
+            var result = new Dictionary<Guid, PreviousRepositoryInheritance>();
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (!TryGetProperty(item, "id", out var idElement) ||
+                    idElement.ValueKind != JsonValueKind.String ||
+                    !Guid.TryParse(idElement.GetString(), out var id))
+                {
+                    continue;
+                }
+
+                AccessLevel? defaultAccess = null;
+                if (TryGetProperty(item, "authenticatedDefaultAccess", out var accessElement))
+                {
+                    defaultAccess = ReadAccessLevel(accessElement);
+                }
+
+                bool? singleInheritanceFlag = null;
+                if (TryGetProperty(item, "includeInheritedRepositoryGrants", out var includeElement) &&
+                    includeElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    singleInheritanceFlag = includeElement.GetBoolean();
+                }
+
+                result[id] = new PreviousRepositoryInheritance(
+                    defaultAccess,
+                    singleInheritanceFlag);
+            }
+
+            return result;
+        }
+        catch
+        {
+            return new Dictionary<Guid, PreviousRepositoryInheritance>();
+        }
+    }
+
+    private static bool TryGetProperty(JsonElement element, string camelCaseName, out JsonElement value)
+    {
+        if (element.TryGetProperty(camelCaseName, out value))
+        {
+            return true;
+        }
+
+        var pascalCaseName = char.ToUpperInvariant(camelCaseName[0]) + camelCaseName[1..];
+        return element.TryGetProperty(pascalCaseName, out value);
+    }
+
+    private static AccessLevel? ReadAccessLevel(JsonElement value)
+    {
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetInt32(out var number) && Enum.IsDefined(typeof(AccessLevel), number) =>
+                (AccessLevel)number,
+            JsonValueKind.String when Enum.TryParse<AccessLevel>(value.GetString(), ignoreCase: true, out var parsed) =>
+                parsed,
+            _ => null,
+        };
+    }
+
     private static void WriteFileAtomic<T>(string path, T value)
     {
         var json = JsonSerializer.Serialize(value, JsonOptions);
@@ -171,6 +286,91 @@ public sealed class MultiFilePortalStore : IPortalStore
             .ToList();
     }
 
+    private static List<PortalUser> MigrateGlobalRepositoryGrants(
+        List<PortalUser> users,
+        AccessLevel defaultAccess)
+    {
+        if (users.Count == 0)
+        {
+            return users;
+        }
+
+        return users
+            .Select(user =>
+            {
+                var roles = user.Roles;
+
+                if (roles.HasFlag(PortalUserRoles.RepoAdmin))
+                {
+                    roles |= PortalUserRoles.RepoCreate;
+                }
+
+                if (user.IsActive)
+                {
+                    roles |= defaultAccess switch
+                    {
+                        AccessLevel.Write => PortalUserRoles.RepoWrite,
+                        AccessLevel.Read => PortalUserRoles.RepoRead,
+                        _ => PortalUserRoles.None,
+                    };
+                }
+
+                return user with { Roles = roles };
+            })
+            .ToList();
+    }
+
+    private static List<Repository> MigrateRepositoryGrantInheritance(
+        List<Repository> repos,
+        IReadOnlyDictionary<Guid, PreviousRepositoryInheritance> previousInheritance)
+    {
+        if (repos.Count == 0)
+        {
+            return repos;
+        }
+
+        return repos
+            .Select(repo =>
+            {
+                previousInheritance.TryGetValue(repo.Id, out var previous);
+                var includeInherited = previous?.DefaultAccess != AccessLevel.None;
+
+                return repo with
+                {
+                    IncludeInheritedContentGrants = includeInherited,
+                    IncludeInheritedManagementGrants = includeInherited,
+                };
+            })
+            .ToList();
+    }
+
+    private static List<Repository> MigrateSplitRepositoryGrantInheritance(
+        List<Repository> repos,
+        IReadOnlyDictionary<Guid, PreviousRepositoryInheritance> previousInheritance)
+    {
+        if (repos.Count == 0)
+        {
+            return repos;
+        }
+
+        return repos
+            .Select(repo =>
+            {
+                if (!previousInheritance.TryGetValue(repo.Id, out var previous) ||
+                    previous.SingleInheritanceFlag is not { } inherited)
+                {
+                    return repo;
+                }
+
+                return repo with
+                {
+                    IncludeInheritedContentGrants = inherited,
+                    IncludeInheritedManagementGrants = inherited,
+                };
+            })
+            .ToList();
+    }
+
     private sealed class GroupsBundle
     {
         public List<Group>? Groups { get; set; }
@@ -204,14 +404,24 @@ public sealed class MultiFilePortalStore : IPortalStore
                 RepositoryId: rule.RepositoryId,
                 SubjectType: rule.SubjectType,
                 SubjectId: rule.SubjectId,
-                Role: (int)rule.Access >= 4 ? RepositoryManagementRole.Admin : RepositoryManagementRole.Maintainer,
+                Role: RepositoryManagementRole.Admin,
                 CreatedAt: rule.CreatedAt));
         }
     }
+
+    private static List<RepositoryManagementGrant> NormalizeRepositoryManagementGrants(
+        List<RepositoryManagementGrant> managementGrants) =>
+        managementGrants
+            .Select(g => g.Role == RepositoryManagementRole.Admin ? g : g with { Role = RepositoryManagementRole.Admin })
+            .ToList();
 
     private static bool IsContentAccess(AccessLevel access) =>
         access is AccessLevel.None or AccessLevel.Read or AccessLevel.Write;
 
     private static bool IsLegacyManagementAccess(AccessLevel access) =>
         (int)access >= 3;
+
+    private sealed record PreviousRepositoryInheritance(
+        AccessLevel? DefaultAccess,
+        bool? SingleInheritanceFlag);
 }

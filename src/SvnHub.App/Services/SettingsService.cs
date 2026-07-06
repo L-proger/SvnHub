@@ -76,23 +76,6 @@ public sealed class SettingsService
         return NormalizeSvnBaseUrlList(urls) ?? [];
     }
 
-    public AccessLevel GetEffectiveDefaultAuthenticatedAccess()
-    {
-        var state = _store.Read();
-        return GetEffectiveDefaultAuthenticatedAccess(state);
-    }
-
-    public static AccessLevel GetEffectiveDefaultAuthenticatedAccess(PortalState state)
-    {
-        return state.Settings.DefaultAuthenticatedAccess switch
-        {
-            AccessLevel.None => AccessLevel.None,
-            AccessLevel.Read => AccessLevel.Read,
-            AccessLevel.Write => AccessLevel.Write,
-            _ => AccessLevel.Write,
-        };
-    }
-
     public long GetEffectiveMaxUploadBytes()
     {
         var state = _store.Read();
@@ -158,7 +141,6 @@ public sealed class SettingsService
         string? organizationName,
         string? svnBaseUrl,
         string? svnBaseUrlAliases,
-        AccessLevel defaultAuthenticatedAccess,
         long maxUploadBytes,
         bool indexingEnabled,
         int indexingScanIntervalSeconds,
@@ -170,17 +152,6 @@ public sealed class SettingsService
         if (!CanManageSystemSettings(state, actorUserId))
         {
             return OperationResult.Fail("You don't have permission to manage system settings.");
-        }
-
-        if (defaultAuthenticatedAccess is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
-        {
-            return OperationResult.Fail("Invalid default authenticated access.");
-        }
-
-        if (state.Settings.DefaultAuthenticatedAccess != defaultAuthenticatedAccess &&
-            !CanManageRepositoryAccessPolicy(state, actorUserId))
-        {
-            return OperationResult.Fail("You don't have permission to change repository access defaults.");
         }
 
         if (string.IsNullOrWhiteSpace(repositoriesRootPath))
@@ -258,7 +229,6 @@ public sealed class SettingsService
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
             SvnBaseUrlAliases = normalizedSvnBaseUrlAliases,
-            DefaultAuthenticatedAccess = defaultAuthenticatedAccess,
             MaxUploadBytes = maxUploadBytes,
             IndexingEnabled = indexingEnabled,
             IndexingScanIntervalSeconds = indexingScanIntervalSeconds,
@@ -288,15 +258,6 @@ public sealed class SettingsService
                     Target: "organizationName",
                     Success: true,
                     Details: normalizedOrganizationName
-                ),
-                new AuditEvent(
-                    Id: Guid.NewGuid(),
-                    CreatedAt: DateTimeOffset.UtcNow,
-                    ActorUserId: actorUserId,
-                    Action: "settings.set_default_access",
-                    Target: "defaultAuthenticatedAccess",
-                    Success: true,
-                    Details: defaultAuthenticatedAccess.ToString()
                 ),
                 new AuditEvent(
                     Id: Guid.NewGuid(),
@@ -398,9 +359,4 @@ public sealed class SettingsService
             u.IsActive &&
             u.Roles.HasEffectiveRole(PortalUserRoles.AdminSystem));
 
-    private static bool CanManageRepositoryAccessPolicy(PortalState state, Guid actorUserId) =>
-        state.Users.Any(u =>
-            u.Id == actorUserId &&
-            u.IsActive &&
-            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
 }

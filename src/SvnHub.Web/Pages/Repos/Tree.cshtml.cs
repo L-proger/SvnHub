@@ -124,7 +124,7 @@ public sealed class TreeModel : PageModel
             return Forbid();
         }
 
-        CanOpenSettings = _management.CanMaintainRepository(userId.Value, repo.Id);
+        CanOpenSettings = _management.CanAdminRepository(userId.Value, repo.Id);
         CanWriteHere = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         CanWriteActions = CanWriteHere && rev is null;
 

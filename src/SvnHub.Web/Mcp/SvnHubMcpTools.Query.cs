@@ -41,14 +41,14 @@ public sealed partial class SvnHubMcpTools
         [Description(
             "Index query object. Sources: repositories, commits, changedPaths, tree, properties, externals. " +
             "Use limit and offset for pagination. Default limit is 100, max limit is 1000. If the result has truncated=true, use matchedRows to know the total and request the next page with offset += limit. For datasets over 1000 rows, make multiple calls with the same where/select/orderBy and increasing offset. " +
-            "Common fields: repository.name, repository.createdAt, repository.labels, repository.rootAccess, repository.authenticatedDefaultAccess, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
+            "Common fields: repository.name, repository.createdAt, repository.labels, repository.rootAccess, repository.inheritedContentGrants, repository.inheritedManagementGrants, indexed.headRevision, indexed.revision, indexed.headTreeRevision, indexed.propertiesRevision, indexed.externalsRevision, indexed.remainingRevisions, indexed.complete, indexed.lastSuccessAt, indexed.lastError, indexed.isMissing. " +
             "repositories fields: latest.revision, latest.author, latest.date, latest.message. " +
             "commits fields: commit.revision, commit.author, commit.date, commit.message, commit.changedPaths, commit.changedPathCount. " +
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
             "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. tree.extension returns values with a leading dot, for example .pri; filters accept pri or .pri. " +
             "properties fields: property.snapshotRevision, property.path, property.nodeKind, property.name, property.value. Properties are indexed only on root and directories. " +
             "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.isPinned, external.raw. " +
-            "Aliases, each used as its own field string: repositoryName, label, labels, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. label/labels match repository.labels. Never send repositoryName/name.")]
+            "Aliases, each used as its own field string: repositoryName, label, labels, inheritedContentGrants, inheritedManagementGrants, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. label/labels match repository.labels. Never send repositoryName/name.")]
         RepositoryIndexQueryRequest query,
         RepositoryIndexQueryService indexQuery,
         IHttpContextAccessor httpContextAccessor,
@@ -80,7 +80,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -102,6 +103,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["revision"] = "latest.revision",
                         ["author"] = "latest.author",
                         ["date"] = "latest.date",
@@ -123,7 +126,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -144,6 +148,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["revision"] = "commit.revision",
                         ["author"] = "commit.author",
                         ["date"] = "commit.date",
@@ -160,7 +166,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -181,6 +188,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["revision"] = "commit.revision",
                         ["author"] = "commit.author",
                         ["date"] = "commit.date",
@@ -197,7 +206,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -216,6 +226,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["revision"] = "tree.revision",
                         ["snapshotRevision"] = "tree.revision",
                         ["path"] = "tree.path",
@@ -236,7 +248,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -259,6 +272,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["snapshotRevision"] = "external.snapshotRevision",
                         ["parentPath"] = "external.parentPath",
                         ["targetPath"] = "external.targetPath",
@@ -283,7 +298,8 @@ public sealed partial class SvnHubMcpTools
                         "repository.createdAt",
                         "repository.labels",
                         "repository.rootAccess",
-                        "repository.authenticatedDefaultAccess",
+                        "repository.inheritedContentGrants",
+                        "repository.inheritedManagementGrants",
                         "indexed.headRevision",
                         "indexed.revision",
                         "indexed.headTreeRevision",
@@ -302,6 +318,8 @@ public sealed partial class SvnHubMcpTools
                         ["repositoryName"] = "repository.name",
                         ["label"] = "repository.labels",
                         ["labels"] = "repository.labels",
+                        ["inheritedContentGrants"] = "repository.inheritedContentGrants",
+                        ["inheritedManagementGrants"] = "repository.inheritedManagementGrants",
                         ["snapshotRevision"] = "property.snapshotRevision",
                         ["path"] = "property.path",
                         ["nodeKind"] = "property.nodeKind",

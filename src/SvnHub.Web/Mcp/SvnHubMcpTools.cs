@@ -39,7 +39,8 @@ public sealed partial class SvnHubMcpTools
                 r.CreatedAt,
                 SvnHub.App.Support.RepositoryLabels.Normalize(r.Labels),
                 access.GetAccess(userId, r.Id, "/").ToString(),
-                r.AuthenticatedDefaultAccess?.ToString()))
+                r.IncludeInheritedContentGrants,
+                r.IncludeInheritedManagementGrants))
             .ToArray();
     }
 
@@ -354,7 +355,8 @@ public sealed record McpRepositoryInfo(
     DateTimeOffset CreatedAt,
     IReadOnlyList<string> Labels,
     string RootAccess,
-    string? AuthenticatedDefaultAccess);
+    bool InheritedContentGrants,
+    bool InheritedManagementGrants);
 
 public sealed record McpTreeResult(
     string Repository,

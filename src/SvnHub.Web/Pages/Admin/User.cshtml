@@ -58,23 +58,31 @@
                         <label asp-for="RolesInput.AdminUsers" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="RolesInput.AdminRepo" class="form-check-input" />
-                        <label asp-for="RolesInput.AdminRepo" class="form-check-label"></label>
+                        <input asp-for="RolesInput.RepoRead" class="form-check-input" />
+                        <label asp-for="RolesInput.RepoRead" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="RolesInput.RepoCreator" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoCreator" class="form-check-label"></label>
+                        <input asp-for="RolesInput.RepoWrite" class="form-check-input" />
+                        <label asp-for="RolesInput.RepoWrite" class="form-check-label"></label>
+                    </div>
+                    <div class="form-check">
+                        <input asp-for="RolesInput.RepoAdmin" class="form-check-input" />
+                        <label asp-for="RolesInput.RepoAdmin" class="form-check-label"></label>
+                    </div>
+                    <div class="form-check">
+                        <input asp-for="RolesInput.RepoCreate" class="form-check-input" />
+                        <label asp-for="RolesInput.RepoCreate" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
                         <input asp-for="RolesInput.AdminSystem" class="form-check-input" />
                         <label asp-for="RolesInput.AdminSystem" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="RolesInput.AdminHooks" class="form-check-input" />
-                        <label asp-for="RolesInput.AdminHooks" class="form-check-label"></label>
+                        <input asp-for="RolesInput.RepoHooks" class="form-check-input" />
+                        <label asp-for="RolesInput.RepoHooks" class="form-check-label"></label>
                     </div>
                 </div>
-                <div class="form-text">Owner can assign roles and perform protected account actions.</div>
+                <div class="form-text">repo.hooks allows hook editing only together with repository Admin access. Only Owners can assign it.</div>
             </div>
             <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end ms-md-auto">
                 <button class="btn btn-primary w-100" type="submit">Update</button>

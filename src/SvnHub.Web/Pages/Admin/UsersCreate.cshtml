@@ -37,23 +37,31 @@
                         <label asp-for="Input.AdminUsers" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="Input.AdminRepo" class="form-check-input" />
-                        <label asp-for="Input.AdminRepo" class="form-check-label"></label>
+                        <input asp-for="Input.RepoRead" class="form-check-input" />
+                        <label asp-for="Input.RepoRead" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="Input.RepoCreator" class="form-check-input" />
-                        <label asp-for="Input.RepoCreator" class="form-check-label"></label>
+                        <input asp-for="Input.RepoWrite" class="form-check-input" />
+                        <label asp-for="Input.RepoWrite" class="form-check-label"></label>
+                    </div>
+                    <div class="form-check">
+                        <input asp-for="Input.RepoAdmin" class="form-check-input" />
+                        <label asp-for="Input.RepoAdmin" class="form-check-label"></label>
+                    </div>
+                    <div class="form-check">
+                        <input asp-for="Input.RepoCreate" class="form-check-input" />
+                        <label asp-for="Input.RepoCreate" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
                         <input asp-for="Input.AdminSystem" class="form-check-input" />
                         <label asp-for="Input.AdminSystem" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="Input.AdminHooks" class="form-check-input" />
-                        <label asp-for="Input.AdminHooks" class="form-check-label"></label>
+                        <input asp-for="Input.RepoHooks" class="form-check-input" />
+                        <label asp-for="Input.RepoHooks" class="form-check-label"></label>
                     </div>
                 </div>
-                <div class="form-text">Leave all unchecked for a regular user.</div>
+                <div class="form-text">Use repo.write for regular developers, repo.read for read-only service accounts, repo.admin/repo.create for repository administration, and repo.hooks for Owner-approved hook editing.</div>
             </div>
         }
     </div>

@@ -7,7 +7,7 @@ using SvnHub.Web.Support;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminUsers")]
+[Authorize(Roles = "admin.users")]
 public sealed class UsersModel : PageModel
 {
     private readonly UserService _users;
@@ -86,12 +86,14 @@ public sealed class UsersModel : PageModel
         }
 
         var parts = new List<string>();
-        if (roles.HasFlag(PortalUserRoles.Owner)) parts.Add(nameof(PortalUserRoles.Owner));
-        if (roles.HasFlag(PortalUserRoles.AdminRepo)) parts.Add(nameof(PortalUserRoles.AdminRepo));
-        if (roles.HasFlag(PortalUserRoles.RepoCreator)) parts.Add(nameof(PortalUserRoles.RepoCreator));
-        if (roles.HasFlag(PortalUserRoles.AdminSystem)) parts.Add(nameof(PortalUserRoles.AdminSystem));
-        if (roles.HasFlag(PortalUserRoles.AdminHooks)) parts.Add(nameof(PortalUserRoles.AdminHooks));
-        if (roles.HasFlag(PortalUserRoles.AdminUsers)) parts.Add(nameof(PortalUserRoles.AdminUsers));
+        if (roles.HasFlag(PortalUserRoles.Owner)) parts.Add(PortalUserRoleExtensions.OwnerClaim);
+        if (roles.HasFlag(PortalUserRoles.RepoAdmin)) parts.Add("repo.admin");
+        if (roles.HasFlag(PortalUserRoles.RepoCreate)) parts.Add("repo.create");
+        if (roles.HasFlag(PortalUserRoles.RepoRead)) parts.Add("repo.read");
+        if (roles.HasFlag(PortalUserRoles.RepoWrite)) parts.Add("repo.write");
+        if (roles.HasFlag(PortalUserRoles.AdminSystem)) parts.Add(PortalUserRoleExtensions.AdminSystemClaim);
+        if (roles.HasFlag(PortalUserRoles.RepoHooks)) parts.Add(PortalUserRoleExtensions.RepoHooksClaim);
+        if (roles.HasFlag(PortalUserRoles.AdminUsers)) parts.Add(PortalUserRoleExtensions.AdminUsersClaim);
 
         return string.Join(", ", parts);
     }

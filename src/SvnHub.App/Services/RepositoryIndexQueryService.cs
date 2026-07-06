@@ -442,7 +442,8 @@ public sealed class RepositoryIndexQueryService
             ["repository.createdAt"] = repo.CreatedAt,
             ["repository.labels"] = RepositoryLabels.Normalize(repo.Labels).ToArray(),
             ["repository.rootAccess"] = rootAccess.ToString(),
-            ["repository.authenticatedDefaultAccess"] = repo.AuthenticatedDefaultAccess?.ToString(),
+            ["repository.inheritedContentGrants"] = repo.IncludeInheritedContentGrants,
+            ["repository.inheritedManagementGrants"] = repo.IncludeInheritedManagementGrants,
             ["indexed.headRevision"] = youngestRevision,
             ["indexed.revision"] = indexedRevision,
             ["indexed.headTreeRevision"] = headTreeRevision,
@@ -563,7 +564,8 @@ public sealed class RepositoryIndexQueryService
                 "name" or "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "revision" or "latestrevision" => "latest.revision",
                 "author" or "latestauthor" => "latest.author",
                 "date" or "latestdate" => "latest.date",
@@ -582,7 +584,8 @@ public sealed class RepositoryIndexQueryService
                 "name" or "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "revision" or "commitrevision" => "commit.revision",
                 "author" or "commitauthor" => "commit.author",
                 "date" or "commitdate" => "commit.date",
@@ -596,7 +599,8 @@ public sealed class RepositoryIndexQueryService
                 "name" or "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "revision" or "commitrevision" => "commit.revision",
                 "author" or "commitauthor" => "commit.author",
                 "date" or "commitdate" => "commit.date",
@@ -610,7 +614,8 @@ public sealed class RepositoryIndexQueryService
                 "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "revision" or "snapshotrevision" or "treerevision" => "tree.revision",
                 "path" or "treepath" => "tree.path",
                 "name" or "filename" or "entryname" or "treename" => "tree.name",
@@ -629,7 +634,8 @@ public sealed class RepositoryIndexQueryService
                 "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "snapshotrevision" or "headrevision" => "external.snapshotRevision",
                 "parent" or "parentpath" => "external.parentPath",
                 "name" or "target" or "targetpath" or "externalname" => "external.targetPath",
@@ -650,7 +656,8 @@ public sealed class RepositoryIndexQueryService
                 "repositoryname" or "repo" or "reponame" => "repository.name",
                 "createdat" or "created" => "repository.createdAt",
                 "rootaccess" or "access" => "repository.rootAccess",
-                "authenticateddefaultaccess" or "defaultaccess" => "repository.authenticatedDefaultAccess",
+                "inheritedcontentgrants" => "repository.inheritedContentGrants",
+                "inheritedmanagementgrants" => "repository.inheritedManagementGrants",
                 "snapshotrevision" or "headrevision" => "property.snapshotRevision",
                 "path" or "propertypath" => "property.path",
                 "nodekind" or "kind" => "property.nodeKind",
@@ -1044,7 +1051,8 @@ public sealed class RepositoryIndexQueryService
     private static bool IsAllowedField(string from, string field)
     {
         if (field is "repository.name" or "repository.createdat" or "repository.labels" or
-            "repository.rootaccess" or "repository.authenticateddefaultaccess" or
+            "repository.rootaccess" or
+            "repository.inheritedcontentgrants" or "repository.inheritedmanagementgrants" or
             "indexed.headrevision" or "indexed.revision" or "indexed.headtreerevision" or "indexed.propertiesrevision" or "indexed.externalsrevision" or
             "indexed.remainingrevisions" or "indexed.complete" or
             "indexed.lastsuccessat" or "indexed.lasterror" or "indexed.ismissing")

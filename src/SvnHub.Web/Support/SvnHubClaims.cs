@@ -15,32 +15,42 @@ public static class SvnHubClaims
 
         if (user.Roles.HasFlag(PortalUserRoles.Owner))
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.Owner)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.OwnerClaim));
         }
 
-        if (user.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo))
+        if (user.Roles.HasEffectiveRole(PortalUserRoles.RepoAdmin))
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminRepo)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.RepoAdminClaim));
         }
 
         if (user.Roles.HasEffectiveRole(PortalUserRoles.AdminSystem))
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminSystem)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.AdminSystemClaim));
         }
 
-        if (user.Roles.HasEffectiveRole(PortalUserRoles.AdminHooks))
+        if (user.Roles.HasEffectiveRole(PortalUserRoles.RepoHooks))
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminHooks)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.RepoHooksClaim));
         }
 
         if (user.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.AdminUsers)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.AdminUsersClaim));
         }
 
         if (user.Roles.CanCreateRepositories())
         {
-            claims.Add(new Claim(ClaimTypes.Role, nameof(PortalUserRoles.RepoCreator)));
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.RepoCreateClaim));
+        }
+
+        if (user.Roles.HasGlobalRepositoryRead())
+        {
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.RepoReadClaim));
+        }
+
+        if (user.Roles.HasGlobalRepositoryWrite())
+        {
+            claims.Add(new Claim(ClaimTypes.Role, PortalUserRoleExtensions.RepoWriteClaim));
         }
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType));

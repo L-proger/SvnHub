@@ -10,7 +10,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminSystem")]
+[Authorize(Roles = "admin.system")]
 public sealed class SettingsModel : PageModel
 {
     private readonly SettingsService _settings;
@@ -147,7 +147,6 @@ public sealed class SettingsModel : PageModel
             Input.OrganizationName,
             Input.SvnBaseUrl,
             Input.SvnBaseUrlAliases,
-            Input.DefaultAuthenticatedAccess,
             (long)Math.Max(1, Input.MaxUploadMegabytes) * 1024 * 1024,
             Input.IndexingEnabled,
             Input.IndexingScanIntervalSeconds,
@@ -253,7 +252,6 @@ public sealed class SettingsModel : PageModel
         Input.SvnBaseUrlAliases = string.Join(Environment.NewLine, _settings.GetEffectiveSvnBaseUrls()
             .Where(url => !string.Equals(url, Input.SvnBaseUrl, StringComparison.OrdinalIgnoreCase)));
         Input.MaxUploadMegabytes = (int)Math.Clamp(_settings.GetEffectiveMaxUploadBytes() / (1024 * 1024), 1, int.MaxValue);
-        Input.DefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
 
         var indexing = _settings.GetEffectiveIndexingSettings();
         Input.IndexingEnabled = indexing.Enabled;
@@ -352,9 +350,6 @@ public sealed class SettingsModel : PageModel
 
         [Display(Name = "SVN base URL aliases")]
         public string SvnBaseUrlAliases { get; set; } = "";
-
-        [Display(Name = "Default access for authenticated users")]
-        public AccessLevel DefaultAuthenticatedAccess { get; set; } = AccessLevel.Write;
 
         [Range(1, 2048)]
         [Display(Name = "Max upload size (MB)")]

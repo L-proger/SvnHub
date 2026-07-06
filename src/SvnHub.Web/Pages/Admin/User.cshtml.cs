@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminUsers")]
+[Authorize(Roles = "admin.users")]
 public sealed class UserModel : PageModel
 {
     private readonly UserService _users;
@@ -80,10 +80,12 @@ public sealed class UserModel : PageModel
         var newRoles = PortalUserRoles.None;
         if (RolesInput.Owner) newRoles |= PortalUserRoles.Owner;
         if (RolesInput.AdminUsers) newRoles |= PortalUserRoles.AdminUsers;
-        if (RolesInput.AdminRepo) newRoles |= PortalUserRoles.AdminRepo;
+        if (RolesInput.RepoAdmin) newRoles |= PortalUserRoles.RepoAdmin;
+        if (RolesInput.RepoRead) newRoles |= PortalUserRoles.RepoRead;
+        if (RolesInput.RepoWrite) newRoles |= PortalUserRoles.RepoWrite;
         if (RolesInput.AdminSystem) newRoles |= PortalUserRoles.AdminSystem;
-        if (RolesInput.AdminHooks) newRoles |= PortalUserRoles.AdminHooks;
-        if (RolesInput.RepoCreator) newRoles |= PortalUserRoles.RepoCreator;
+        if (RolesInput.RepoHooks) newRoles |= PortalUserRoles.RepoHooks;
+        if (RolesInput.RepoCreate) newRoles |= PortalUserRoles.RepoCreate;
 
         var result = await _users.ChangeRolesAsync(actorId, userId, newRoles, cancellationToken);
         if (!result.Success)
@@ -192,15 +194,17 @@ public sealed class UserModel : PageModel
             {
                 Owner = user.Roles.HasFlag(PortalUserRoles.Owner),
                 AdminUsers = user.Roles.HasFlag(PortalUserRoles.AdminUsers),
-                AdminRepo = user.Roles.HasFlag(PortalUserRoles.AdminRepo),
-                RepoCreator = user.Roles.HasFlag(PortalUserRoles.RepoCreator),
+                RepoAdmin = user.Roles.HasFlag(PortalUserRoles.RepoAdmin),
+                RepoCreate = user.Roles.HasFlag(PortalUserRoles.RepoCreate),
+                RepoRead = user.Roles.HasFlag(PortalUserRoles.RepoRead),
+                RepoWrite = user.Roles.HasFlag(PortalUserRoles.RepoWrite),
                 AdminSystem = user.Roles.HasFlag(PortalUserRoles.AdminSystem),
-                AdminHooks = user.Roles.HasFlag(PortalUserRoles.AdminHooks),
+                RepoHooks = user.Roles.HasFlag(PortalUserRoles.RepoHooks),
             };
         }
 
-        var isOwner = User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
-        var isUserAdmin = User?.IsInRole(nameof(PortalUserRoles.AdminUsers)) ?? false;
+        var isOwner = User?.IsInRole(PortalUserRoleExtensions.OwnerClaim) ?? false;
+        var isUserAdmin = User?.IsInRole(PortalUserRoleExtensions.AdminUsersClaim) ?? false;
         var isSelf = Guid.TryParse(User?.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId) &&
             actorId == user.Id;
 
@@ -212,23 +216,29 @@ public sealed class UserModel : PageModel
 
     public sealed class RolesInputModel
     {
-        [Display(Name = "Owner")]
+        [Display(Name = "owner")]
         public bool Owner { get; set; }
 
-        [Display(Name = "AdminUsers")]
+        [Display(Name = "admin.users")]
         public bool AdminUsers { get; set; }
 
-        [Display(Name = "AdminRepo")]
-        public bool AdminRepo { get; set; }
+        [Display(Name = "repo.admin")]
+        public bool RepoAdmin { get; set; }
 
-        [Display(Name = "RepoCreator")]
-        public bool RepoCreator { get; set; }
+        [Display(Name = "repo.create")]
+        public bool RepoCreate { get; set; }
 
-        [Display(Name = "AdminSystem")]
+        [Display(Name = "repo.read")]
+        public bool RepoRead { get; set; }
+
+        [Display(Name = "repo.write")]
+        public bool RepoWrite { get; set; }
+
+        [Display(Name = "admin.system")]
         public bool AdminSystem { get; set; }
 
-        [Display(Name = "AdminHooks")]
-        public bool AdminHooks { get; set; }
+        [Display(Name = "repo.hooks")]
+        public bool RepoHooks { get; set; }
     }
 
     public sealed class PasswordInputModel

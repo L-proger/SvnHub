@@ -248,32 +248,42 @@ public sealed class AccountModel : PageModel
         var names = new List<string>();
         if (roles.HasFlag(PortalUserRoles.Owner))
         {
-            names.Add("Owner");
+            names.Add(PortalUserRoleExtensions.OwnerClaim);
         }
 
         if (roles.HasFlag(PortalUserRoles.AdminUsers))
         {
-            names.Add("AdminUsers");
+            names.Add(PortalUserRoleExtensions.AdminUsersClaim);
         }
 
-        if (roles.HasFlag(PortalUserRoles.AdminRepo))
+        if (roles.HasFlag(PortalUserRoles.RepoRead))
         {
-            names.Add("AdminRepo");
+            names.Add("repo.read");
         }
 
-        if (roles.HasFlag(PortalUserRoles.RepoCreator))
+        if (roles.HasFlag(PortalUserRoles.RepoWrite))
         {
-            names.Add("RepoCreator");
+            names.Add("repo.write");
+        }
+
+        if (roles.HasFlag(PortalUserRoles.RepoAdmin))
+        {
+            names.Add("repo.admin");
+        }
+
+        if (roles.HasFlag(PortalUserRoles.RepoCreate))
+        {
+            names.Add("repo.create");
         }
 
         if (roles.HasFlag(PortalUserRoles.AdminSystem))
         {
-            names.Add("AdminSystem");
+            names.Add(PortalUserRoleExtensions.AdminSystemClaim);
         }
 
-        if (roles.HasFlag(PortalUserRoles.AdminHooks))
+        if (roles.HasFlag(PortalUserRoles.RepoHooks))
         {
-            names.Add("AdminHooks");
+            names.Add(PortalUserRoleExtensions.RepoHooksClaim);
         }
 
         return names.Count == 0 ? "User" : string.Join(", ", names);

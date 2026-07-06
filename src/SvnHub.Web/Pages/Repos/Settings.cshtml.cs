@@ -17,41 +17,31 @@ public sealed class SettingsModel : PageModel
     private readonly PermissionService _permissions;
     private readonly UserService _users;
     private readonly GroupService _groups;
-    private readonly SettingsService _settings;
 
     public SettingsModel(
         RepositoryService repos,
         RepositoryManagementService management,
         PermissionService permissions,
         UserService users,
-        GroupService groups,
-        SettingsService settings)
+        GroupService groups)
     {
         _repos = repos;
         _management = management;
         _permissions = permissions;
         _users = users;
         _groups = groups;
-        _settings = settings;
     }
 
     public string RepoName { get; private set; } = "";
     public Guid RepoId { get; private set; }
-    public AccessLevel ServerDefaultAuthenticatedAccess { get; private set; } = AccessLevel.Write;
-    public AccessLevel? RepoAuthenticatedDefaultAccess { get; private set; }
-    public bool IncludeDefaultManagementGrants { get; private set; } = true;
-
-    public AccessLevel EffectiveAuthenticatedDefaultAccess =>
-        RepoAuthenticatedDefaultAccess ?? ServerDefaultAuthenticatedAccess;
+    public bool IncludeInheritedContentGrants { get; private set; } = true;
+    public bool IncludeInheritedManagementGrants { get; private set; } = true;
 
     [BindProperty]
     public RenameInputModel RenameInput { get; set; } = new();
 
     [BindProperty]
     public DeleteInputModel DeleteInput { get; set; } = new();
-
-    [BindProperty]
-    public DefaultAccessInputModel DefaultAccessInput { get; set; } = new();
 
     [BindProperty]
     public LabelsInputModel LabelsInput { get; set; } = new();
@@ -63,16 +53,16 @@ public sealed class SettingsModel : PageModel
     public AddManagementGrantInputModel ManagementGrantInput { get; set; } = new();
 
     [BindProperty]
-    public DefaultManagementInputModel DefaultManagementInput { get; set; } = new();
+    public InheritedGrantsInputModel InheritedGrantsInput { get; set; } = new();
 
     public IReadOnlyList<PermissionRow> AccessRules { get; private set; } = [];
     public IReadOnlyList<ManagementGrantRow> ManagementGrants { get; private set; } = [];
     public IReadOnlyList<PortalUser> UserOptions { get; private set; } = [];
     public IReadOnlyList<Group> GroupOptions { get; private set; } = [];
     public IReadOnlyList<string> LabelSuggestions { get; private set; } = [];
-    public bool CanMaintainRepository { get; private set; }
+    public bool CanAdministerRepository { get; private set; }
     public bool CanAdminRepository { get; private set; }
-    public bool DisablingDefaultGrantRemovesYourAdminAccess { get; private set; }
+    public bool DisablingInheritedManagementGrantsRemovesYourAdminAccess { get; private set; }
 
     public string? Error { get; private set; }
     public string? Success { get; private set; }
@@ -91,7 +81,7 @@ public sealed class SettingsModel : PageModel
         }
 
         Load(repo, actorId);
-        if (!CanMaintainRepository)
+        if (!CanAdministerRepository)
         {
             return Forbid();
         }
@@ -201,47 +191,6 @@ public sealed class SettingsModel : PageModel
         }
 
         return RedirectToPage("/Repos/Index");
-    }
-
-    public async Task<IActionResult> OnPostDefaultAccessAsync(string repoName, CancellationToken cancellationToken)
-    {
-        var repo = _repos.FindByName(repoName);
-        if (repo is null || repo.IsArchived)
-        {
-            return NotFound();
-        }
-
-        if (!TryGetActorId(out var actorId))
-        {
-            return Forbid();
-        }
-
-        Load(repo, actorId, resetDefaultAccessInput: false);
-
-        // Validate only default access input for this handler.
-        ModelState.Clear();
-        if (!TryValidateModel(DefaultAccessInput, nameof(DefaultAccessInput)))
-        {
-            return Page();
-        }
-
-        if (!TryParseDefaultAccess(DefaultAccessInput.DefaultAuthenticatedAccess, out var parsed))
-        {
-            Error = "Invalid default access value.";
-            return Page();
-        }
-
-        var result = await _repos.SetAuthenticatedDefaultAccessAsync(actorId, repo.Id, parsed, cancellationToken);
-        if (!result.Success || result.Value is null)
-        {
-            Error = result.Error ?? "Failed to update default access.";
-            return Page();
-        }
-
-        // Keep other form defaults populated.
-        Load(result.Value, actorId);
-        Success = "Repository default access updated.";
-        return Page();
     }
 
     public async Task<IActionResult> OnPostAddAccessRuleAsync(string repoName, CancellationToken cancellationToken)
@@ -417,28 +366,24 @@ public sealed class SettingsModel : PageModel
             return Page();
         }
 
-        var role = string.Equals(ManagementGrantInput.Role, "Admin", StringComparison.OrdinalIgnoreCase)
-            ? RepositoryManagementRole.Admin
-            : RepositoryManagementRole.Maintainer;
-
         var result = await _management.AddGrantAsync(
             actorId,
             repo.Id,
             subjectType,
             subjectId.Value,
-            role,
+            RepositoryManagementRole.Admin,
             cancellationToken);
 
         if (!result.Success)
         {
-            Error = result.Error ?? "Failed to add repository management grant.";
+            Error = result.Error ?? "Failed to add repository administrator.";
             return Page();
         }
 
         return RedirectToPage(new { repoName = repo.Name });
     }
 
-    public async Task<IActionResult> OnPostDefaultManagementAsync(string repoName, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostInheritedGrantsAsync(string repoName, CancellationToken cancellationToken)
     {
         var repo = _repos.FindByName(repoName);
         if (repo is null || repo.IsArchived)
@@ -451,28 +396,29 @@ public sealed class SettingsModel : PageModel
             return Forbid();
         }
 
-        Load(repo, actorId, resetDefaultManagementInput: false);
+        Load(repo, actorId, resetInheritedGrantsInput: false);
 
         ModelState.Clear();
-        if (!TryValidateModel(DefaultManagementInput, nameof(DefaultManagementInput)))
+        if (!TryValidateModel(InheritedGrantsInput, nameof(InheritedGrantsInput)))
         {
             return Page();
         }
 
-        var result = await _repos.SetIncludeDefaultManagementGrantsAsync(
+        var result = await _repos.SetInheritedRepositoryGrantsAsync(
             actorId,
             repo.Id,
-            DefaultManagementInput.IncludeDefaultManagementGrants,
+            InheritedGrantsInput.IncludeInheritedContentGrants,
+            InheritedGrantsInput.IncludeInheritedManagementGrants,
             cancellationToken);
 
         if (!result.Success || result.Value is null)
         {
-            Error = result.Error ?? "Failed to update repository management defaults.";
+            Error = result.Error ?? "Failed to update inherited repository grants.";
             return Page();
         }
 
         Load(result.Value, actorId);
-        Success = "Repository management inheritance updated.";
+        Success = "Inherited repository grants updated.";
         return Page();
     }
 
@@ -512,28 +458,21 @@ public sealed class SettingsModel : PageModel
         Repository repo,
         Guid actorId,
         bool resetRenameInput = true,
-        bool resetDefaultAccessInput = true,
         bool resetLabelsInput = true,
-        bool resetDefaultManagementInput = true)
+        bool resetInheritedGrantsInput = true)
     {
         RepoName = repo.Name;
         RepoId = repo.Id;
-        ServerDefaultAuthenticatedAccess = _settings.GetEffectiveDefaultAuthenticatedAccess();
-        RepoAuthenticatedDefaultAccess = repo.AuthenticatedDefaultAccess;
-        IncludeDefaultManagementGrants = repo.IncludeDefaultManagementGrants;
-        CanMaintainRepository = _management.CanMaintainRepository(actorId, repo.Id);
+        IncludeInheritedContentGrants = repo.IncludeInheritedContentGrants;
+        IncludeInheritedManagementGrants = repo.IncludeInheritedManagementGrants;
+        CanAdministerRepository = _management.CanAdminRepository(actorId, repo.Id);
         CanAdminRepository = _management.CanAdminRepository(actorId, repo.Id);
-        DisablingDefaultGrantRemovesYourAdminAccess =
-            _management.WouldDisablingDefaultGrantRemoveAdmin(actorId, repo.Id);
+        DisablingInheritedManagementGrantsRemovesYourAdminAccess =
+            _management.WouldDisablingInheritedManagementGrantsRemoveAdmin(actorId, repo.Id);
 
         if (resetRenameInput)
         {
             RenameInput.NewName = repo.Name;
-        }
-
-        if (resetDefaultAccessInput)
-        {
-            DefaultAccessInput.DefaultAuthenticatedAccess = FormatDefaultAccess(repo.AuthenticatedDefaultAccess);
         }
 
         if (resetLabelsInput)
@@ -541,9 +480,10 @@ public sealed class SettingsModel : PageModel
             LabelsInput.Labels = string.Join(", ", RepositoryLabels.Normalize(repo.Labels));
         }
 
-        if (resetDefaultManagementInput)
+        if (resetInheritedGrantsInput)
         {
-            DefaultManagementInput.IncludeDefaultManagementGrants = repo.IncludeDefaultManagementGrants;
+            InheritedGrantsInput.IncludeInheritedContentGrants = repo.IncludeInheritedContentGrants;
+            InheritedGrantsInput.IncludeInheritedManagementGrants = repo.IncludeInheritedManagementGrants;
         }
 
         LabelSuggestions = RepositoryLabels.Collect(_repos.List());
@@ -600,13 +540,6 @@ public sealed class SettingsModel : PageModel
         public string ConfirmName { get; set; } = "";
     }
 
-    public sealed class DefaultAccessInputModel
-    {
-        [Required]
-        [Display(Name = "Default access for authenticated users")]
-        public string DefaultAuthenticatedAccess { get; set; } = "Inherit";
-    }
-
     public sealed class LabelsInputModel
     {
         [Display(Name = "Labels")]
@@ -633,6 +566,11 @@ public sealed class SettingsModel : PageModel
     {
         public Guid Id => Grant.Id;
         public RepositoryManagementRole Role => Grant.Role;
+        public string RoleDisplay => Role switch
+        {
+            RepositoryManagementRole.Admin => "Repository Admin",
+            _ => Role.ToString(),
+        };
         public DateTimeOffset CreatedAt => Grant.CreatedAt;
     }
 
@@ -662,57 +600,19 @@ public sealed class SettingsModel : PageModel
         public Guid? UserId { get; set; }
 
         public Guid? GroupId { get; set; }
-
-        [Required]
-        public string Role { get; set; } = "Maintainer";
     }
 
-    public sealed class DefaultManagementInputModel
+    public sealed class InheritedGrantsInputModel
     {
-        [Display(Name = "Include AdminRepo default grant")]
-        public bool IncludeDefaultManagementGrants { get; set; } = true;
-    }
+        [Display(Name = "Inherit global SVN content grants")]
+        public bool IncludeInheritedContentGrants { get; set; } = true;
 
-    private static string FormatDefaultAccess(AccessLevel? value) =>
-        value switch
-        {
-            null => "Inherit",
-            AccessLevel.None => "None",
-            AccessLevel.Read => "Read",
-            AccessLevel.Write => "Write",
-            _ => "Inherit",
-        };
+        [Display(Name = "Inherit global repo.admin grants")]
+        public bool IncludeInheritedManagementGrants { get; set; } = true;
+
+    }
 
     private bool TryGetActorId(out Guid actorId) =>
         Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out actorId);
 
-    private static bool TryParseDefaultAccess(string? value, out AccessLevel? result)
-    {
-        if (string.Equals(value, "Inherit", StringComparison.OrdinalIgnoreCase))
-        {
-            result = null;
-            return true;
-        }
-
-        if (string.Equals(value, "None", StringComparison.OrdinalIgnoreCase))
-        {
-            result = AccessLevel.None;
-            return true;
-        }
-
-        if (string.Equals(value, "Read", StringComparison.OrdinalIgnoreCase))
-        {
-            result = AccessLevel.Read;
-            return true;
-        }
-
-        if (string.Equals(value, "Write", StringComparison.OrdinalIgnoreCase))
-        {
-            result = AccessLevel.Write;
-            return true;
-        }
-
-        result = null;
-        return false;
-    }
 }

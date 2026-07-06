@@ -8,7 +8,7 @@ using SvnHub.App.Services;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminUsers")]
+[Authorize(Roles = "admin.users")]
 public sealed class UsersImportModel : PageModel
 {
     private const long MaxImportBytes = 2 * 1024 * 1024;

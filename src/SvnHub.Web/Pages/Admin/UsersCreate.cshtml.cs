@@ -8,7 +8,7 @@ using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
-[Authorize(Roles = "AdminUsers")]
+[Authorize(Roles = "admin.users")]
 public sealed class UsersCreateModel : PageModel
 {
     private readonly UserService _users;
@@ -23,7 +23,7 @@ public sealed class UsersCreateModel : PageModel
 
     public string? Error { get; private set; }
 
-    public bool CanAssignRoles => User?.IsInRole(nameof(PortalUserRoles.Owner)) ?? false;
+    public bool CanAssignRoles => User?.IsInRole(PortalUserRoleExtensions.OwnerClaim) ?? false;
 
     public IActionResult OnGet()
     {
@@ -47,10 +47,16 @@ public sealed class UsersCreateModel : PageModel
         {
             if (Input.Owner) roles |= PortalUserRoles.Owner;
             if (Input.AdminUsers) roles |= PortalUserRoles.AdminUsers;
-            if (Input.AdminRepo) roles |= PortalUserRoles.AdminRepo;
+            if (Input.RepoAdmin) roles |= PortalUserRoles.RepoAdmin;
+            if (Input.RepoRead) roles |= PortalUserRoles.RepoRead;
+            if (Input.RepoWrite) roles |= PortalUserRoles.RepoWrite;
             if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
-            if (Input.AdminHooks) roles |= PortalUserRoles.AdminHooks;
-            if (Input.RepoCreator) roles |= PortalUserRoles.RepoCreator;
+            if (Input.RepoHooks) roles |= PortalUserRoles.RepoHooks;
+            if (Input.RepoCreate) roles |= PortalUserRoles.RepoCreate;
+        }
+        else
+        {
+            roles |= PortalUserRoles.RepoWrite;
         }
 
         var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, roles, cancellationToken);
@@ -74,22 +80,28 @@ public sealed class UsersCreateModel : PageModel
         [MinLength(8)]
         public string Password { get; set; } = "";
 
-        [Display(Name = "AdminRepo")]
-        public bool AdminRepo { get; set; }
+        [Display(Name = "repo.admin")]
+        public bool RepoAdmin { get; set; }
 
-        [Display(Name = "RepoCreator")]
-        public bool RepoCreator { get; set; }
+        [Display(Name = "repo.create")]
+        public bool RepoCreate { get; set; }
 
-        [Display(Name = "AdminSystem")]
+        [Display(Name = "repo.read")]
+        public bool RepoRead { get; set; } = false;
+
+        [Display(Name = "repo.write")]
+        public bool RepoWrite { get; set; } = true;
+
+        [Display(Name = "admin.system")]
         public bool AdminSystem { get; set; }
 
-        [Display(Name = "AdminHooks")]
-        public bool AdminHooks { get; set; }
+        [Display(Name = "repo.hooks")]
+        public bool RepoHooks { get; set; }
 
-        [Display(Name = "AdminUsers")]
+        [Display(Name = "admin.users")]
         public bool AdminUsers { get; set; }
 
-        [Display(Name = "Owner")]
+        [Display(Name = "owner")]
         public bool Owner { get; set; }
     }
 }

@@ -6,9 +6,10 @@ public sealed record Repository(
     string LocalPath,
     DateTimeOffset CreatedAt,
     bool IsArchived,
-    AccessLevel? AuthenticatedDefaultAccess = null,
     IReadOnlyList<string>? Labels = null
 )
 {
-    public bool IncludeDefaultManagementGrants { get; init; } = true;
+    public bool IncludeInheritedContentGrants { get; init; } = true;
+
+    public bool IncludeInheritedManagementGrants { get; init; } = true;
 }

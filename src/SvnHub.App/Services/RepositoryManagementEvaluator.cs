@@ -26,7 +26,7 @@ public static class RepositoryManagementEvaluator
         var groupIds = ExpandGroupIdsForUser(state, userId).ToHashSet();
         RepositoryManagementRole? best = null;
 
-        if (repo.IncludeDefaultManagementGrants && user.Roles.HasFlag(PortalUserRoles.AdminRepo))
+        if (repo.IncludeInheritedManagementGrants && user.Roles.HasGlobalRepositoryAdmin())
         {
             best = Better(best, RepositoryManagementRole.Admin);
         }
@@ -44,17 +44,36 @@ public static class RepositoryManagementEvaluator
         return best;
     }
 
-    public static bool CanManageRepositoryPolicy(PortalState state, Guid actorUserId) =>
+    public static bool CanDiscoverRepositories(PortalState state, Guid actorUserId) =>
         state.Users.Any(u =>
             u.Id == actorUserId &&
             u.IsActive &&
-            u.Roles.HasEffectiveRole(PortalUserRoles.AdminRepo));
-
-    public static bool CanMaintainRepository(PortalState state, Guid actorUserId, Guid repositoryId) =>
-        GetRole(state, actorUserId, repositoryId) is { } role && role >= RepositoryManagementRole.Maintainer;
+            u.Roles.HasEffectiveRole(PortalUserRoles.AdminSystem));
 
     public static bool CanAdminRepository(PortalState state, Guid actorUserId, Guid repositoryId) =>
         GetRole(state, actorUserId, repositoryId) is { } role && role >= RepositoryManagementRole.Admin;
+
+    public static bool CanManageRepositoryHooks(PortalState state, Guid actorUserId, Guid repositoryId)
+    {
+        var user = state.Users.FirstOrDefault(u => u.Id == actorUserId);
+        if (user is null || !user.IsActive)
+        {
+            return false;
+        }
+
+        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
+        if (repo is null || repo.IsArchived)
+        {
+            return false;
+        }
+
+        if (IsOwner(user))
+        {
+            return true;
+        }
+
+        return user.Roles.HasGlobalRepositoryHooks() && CanAdminRepository(state, actorUserId, repositoryId);
+    }
 
     private static bool IsOwner(PortalUser user) =>
         user.Roles.HasFlag(PortalUserRoles.Owner);

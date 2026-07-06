@@ -23,15 +23,9 @@ public static class RepositoryAccessEvaluator
             return AccessLevel.Write;
         }
 
-        var defaultAuthenticatedAccess = repo.AuthenticatedDefaultAccess ?? state.Settings.DefaultAuthenticatedAccess;
-        if (defaultAuthenticatedAccess is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
-        {
-            defaultAuthenticatedAccess = AccessLevel.Write;
-        }
-
         var normalized = NormalizePath(path);
         var groupIds = ExpandGroupIdsForUser(state, userId).ToHashSet();
-        var access = defaultAuthenticatedAccess;
+        var access = GetInheritedAccess(repo, user.Roles);
 
         foreach (var rule in state.PermissionRules)
         {
@@ -64,6 +58,21 @@ public static class RepositoryAccessEvaluator
         }
 
         return access;
+    }
+
+    private static AccessLevel GetInheritedAccess(Repository repo, PortalUserRoles roles)
+    {
+        if (!repo.IncludeInheritedContentGrants)
+        {
+            return AccessLevel.None;
+        }
+
+        if (roles.HasGlobalRepositoryWrite())
+        {
+            return AccessLevel.Write;
+        }
+
+        return roles.HasGlobalRepositoryRead() ? AccessLevel.Read : AccessLevel.None;
     }
 
     private static bool IsPathUnder(string requested, string rulePath)

@@ -8,10 +8,10 @@
 
 <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
     <h1 class="mb-0">Repositories</h1>
-    @if ((User?.IsInRole("AdminRepo") ?? false) || (User?.IsInRole("RepoCreator") ?? false))
+    @if ((User?.IsInRole("admin.system") ?? false) || (User?.IsInRole("repo.create") ?? false))
     {
         <div class="d-flex gap-2 ms-auto">
-            @if (User?.IsInRole("AdminRepo") ?? false)
+            @if (User?.IsInRole("admin.system") ?? false)
             {
                 <form method="post" asp-page-handler="Discover" class="d-inline">
                     <input type="hidden" name="p" value="@Model.PageNumber" />
@@ -21,7 +21,10 @@
                     <button class="btn btn-outline-secondary" type="submit">Discover</button>
                 </form>
             }
-            <a class="btn btn-primary" asp-page="/Repos/Create">Create</a>
+            @if (User?.IsInRole("repo.create") ?? false)
+            {
+                <a class="btn btn-primary" asp-page="/Repos/Create">Create</a>
+            }
         </div>
     }
 </div>
