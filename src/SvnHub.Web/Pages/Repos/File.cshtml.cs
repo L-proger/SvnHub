@@ -403,15 +403,12 @@ public sealed class FileModel : PageModel
         long maxPreviewBytes,
         CancellationToken cancellationToken)
     {
-        var entries = await _svnlook.ListTreeAsync(repoLocalPath, ParentPath, revision, cancellationToken);
-        var candidates = entries
-            .Where(e => !e.IsDirectory)
-            .Where(e => ModelPreviewFileClassifier.IsRelatedModelPath(e.Path))
-            .Where(e => _access.GetAccess(userId, repoId, e.Path) >= AccessLevel.Read)
-            .OrderByDescending(e => string.Equals(e.Path, Path, StringComparison.Ordinal))
-            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(96)
-            .ToArray();
+        var candidates = await GetModelPreviewCandidatesAsync(
+            repoId,
+            repoLocalPath,
+            userId,
+            revision,
+            cancellationToken);
 
         if (candidates.Length == 0)
         {
@@ -447,6 +444,40 @@ public sealed class FileModel : PageModel
         }
 
         return files;
+    }
+
+    private async Task<SvnTreeEntry[]> GetModelPreviewCandidatesAsync(
+        Guid repoId,
+        string repoLocalPath,
+        Guid userId,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        if (ModelPreviewFileClassifier.IsStandaloneModelPath(Path))
+        {
+            if (_access.GetAccess(userId, repoId, Path) < AccessLevel.Read)
+            {
+                return [];
+            }
+
+            return
+            [
+                new SvnTreeEntry(
+                    System.IO.Path.GetFileName(Path),
+                    Path,
+                    IsDirectory: false),
+            ];
+        }
+
+        var entries = await _svnlook.ListTreeAsync(repoLocalPath, ParentPath, revision, cancellationToken);
+        return entries
+            .Where(e => !e.IsDirectory)
+            .Where(e => ModelPreviewFileClassifier.ShouldIncludeInPreviewSet(Path, e.Path))
+            .Where(e => _access.GetAccess(userId, repoId, e.Path) >= AccessLevel.Read)
+            .OrderByDescending(e => string.Equals(e.Path, Path, StringComparison.Ordinal))
+            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(96)
+            .ToArray();
     }
 
     private static string FormatByteSize(long bytes)

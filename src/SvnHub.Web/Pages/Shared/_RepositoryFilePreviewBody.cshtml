@@ -89,7 +89,15 @@ else if (Model.IsModelPreview)
         <div class="model-preview-toolbar d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
             <div>
                 <div class="fw-semibold">3D model preview</div>
-                <div class="text-muted small">@Model.ModelPreviewFiles.Count model files/assets in this directory</div>
+                @if (Model.ModelPreviewFiles.Count == 1)
+                {
+                    var file = Model.ModelPreviewFiles[0];
+                    <div class="text-muted small">@file.Name <span class="mx-1">|</span> @file.Kind <span class="mx-1">|</span> @file.SizeLabel</div>
+                }
+                else
+                {
+                    <div class="text-muted small">@Model.ModelPreviewFiles.Count model files/assets used for preview</div>
+                }
             </div>
             <button type="button" class="btn btn-sm btn-outline-secondary" data-model-reset>Reset view</button>
         </div>
@@ -97,16 +105,19 @@ else if (Model.IsModelPreview)
             Loading model preview...
         </div>
         <div class="model-preview-stage" data-model-stage></div>
-        <div class="model-preview-files mt-3">
-            @foreach (var file in Model.ModelPreviewFiles)
-            {
-                <div class="model-preview-file">
-                    <span class="text-truncate">@file.Name</span>
-                    <span class="text-muted">@file.Kind</span>
-                    <span class="text-muted">@file.SizeLabel</span>
-                </div>
-            }
-        </div>
+        @if (Model.ModelPreviewFiles.Count > 1)
+        {
+            <div class="model-preview-files mt-3">
+                @foreach (var file in Model.ModelPreviewFiles)
+                {
+                    <div class="model-preview-file">
+                        <span class="text-truncate">@file.Name</span>
+                        <span class="text-muted">@file.Kind</span>
+                        <span class="text-muted">@file.SizeLabel</span>
+                    </div>
+                }
+            </div>
+        }
     </div>
     <script type="application/json" id="model-preview-files">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(modelPreviewFiles))</script>
 }
