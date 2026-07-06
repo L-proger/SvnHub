@@ -510,6 +510,10 @@
   color: var(--bs-secondary-color);
 }
 
+.label-editor-has-labels .label-editor-input::placeholder {
+  color: transparent;
+}
+
 .label-editor-error {
   min-height: 1.25rem;
   color: var(--bs-danger);

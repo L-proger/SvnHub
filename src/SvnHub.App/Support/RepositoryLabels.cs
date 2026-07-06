@@ -29,7 +29,9 @@ public static class RepositoryLabels
             }
         }
 
-        return normalized;
+        return normalized
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public static bool TryParse(string? input, out IReadOnlyList<string> labels, out string? error)
@@ -70,7 +72,9 @@ public static class RepositoryLabels
             return false;
         }
 
-        labels = parsed;
+        labels = parsed
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         return true;
     }
 

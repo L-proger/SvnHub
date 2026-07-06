@@ -224,6 +224,7 @@
         }
 
         function render() {
+            editor.classList.toggle('label-editor-has-labels', labels.length > 0);
             tokensEl.replaceChildren();
             for (const label of labels) {
                 const token = document.createElement('span');
@@ -244,6 +245,7 @@
                     sync();
                     render();
                     input.focus();
+                    renderSuggestions();
                 });
                 token.appendChild(remove);
                 tokensEl.appendChild(token);
@@ -330,7 +332,7 @@
             setError('');
             sync();
             render();
-            hideSuggestions();
+            renderSuggestions();
             return true;
         }
 
@@ -391,6 +393,23 @@
 
         input.addEventListener('input', renderSuggestions);
         input.addEventListener('focus', renderSuggestions);
+        input.addEventListener('click', () => {
+            if (!suggestionsOpen) {
+                renderSuggestions();
+            }
+        });
+
+        const control = editor.querySelector('[data-label-editor-control]');
+        if (control) {
+            control.addEventListener('click', (event) => {
+                if (event.target.closest('.label-editor-remove')) {
+                    return;
+                }
+
+                input.focus();
+                renderSuggestions();
+            });
+        }
 
         input.addEventListener('blur', () => {
             if (addFromText(input.value)) {

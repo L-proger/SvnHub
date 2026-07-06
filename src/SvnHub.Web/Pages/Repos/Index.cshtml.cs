@@ -49,7 +49,8 @@ public sealed class IndexModel : PageModel
     public int ToIndex { get; private set; }
 
     public string? SearchQuery { get; private set; }
-    public string? LabelFilter { get; private set; }
+    public IReadOnlyList<string> SelectedLabels { get; private set; } = [];
+    public string? LabelsFilter { get; private set; }
     public IReadOnlyList<string> LabelOptions { get; private set; } = [];
 
     public IReadOnlyDictionary<string, DateTimeOffset?> UpdatedAtByRepoName { get; private set; } =
@@ -61,7 +62,7 @@ public sealed class IndexModel : PageModel
 
     public string? GetCheckoutUrl(string repoName) => SvnCheckoutUrl.Build(SvnBaseUrl, repoName, "/");
 
-    public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null, string? label = null)
+    public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null, string? labels = null, string? label = null)
     {
         var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
         if (userId is null)
@@ -74,7 +75,8 @@ public sealed class IndexModel : PageModel
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);
-        LabelFilter = NormalizeSearchQuery(label);
+        SelectedLabels = ParseSelectedLabels(labels, label);
+        LabelsFilter = SelectedLabels.Count == 0 ? null : string.Join(", ", SelectedLabels);
 
         var browseable = new HashSet<Guid>();
         var manageable = new HashSet<Guid>();
@@ -114,10 +116,10 @@ public sealed class IndexModel : PageModel
                 .ToArray();
         }
 
-        if (!string.IsNullOrWhiteSpace(LabelFilter))
+        if (SelectedLabels.Count > 0)
         {
             accessible = accessible
-                .Where(r => RepositoryLabels.Contains(r.Labels, LabelFilter))
+                .Where(r => SelectedLabels.All(selected => RepositoryLabels.Contains(r.Labels, selected)))
                 .ToArray();
         }
 
@@ -147,7 +149,7 @@ public sealed class IndexModel : PageModel
         UpdatedAtByRepoName = await LoadUpdatedDatesAsync(Repositories, HttpContext.RequestAborted);
     }
 
-    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, string? label = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, string? labels = null, CancellationToken cancellationToken = default)
     {
         if (!(User?.IsInRole("admin.system") ?? false))
         {
@@ -164,11 +166,11 @@ public sealed class IndexModel : PageModel
         if (!result.Success)
         {
             Message = result.Error ?? "Discover failed.";
-            return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, label });
+            return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
         }
 
         Message = result.Value == 0 ? "No new repositories found." : $"Discovered {result.Value} repository(ies).";
-        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, label });
+        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
     }
 
     public static string FormatUpdatedAgo(DateTimeOffset updatedAt, DateTimeOffset now)
@@ -221,6 +223,19 @@ public sealed class IndexModel : PageModel
 
         var trimmed = q.Trim();
         return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    private static IReadOnlyList<string> ParseSelectedLabels(string? labels, string? legacyLabel)
+    {
+        var value = !string.IsNullOrWhiteSpace(labels) ? labels : legacyLabel;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return RepositoryLabels.TryParse(value, out var parsed, out _)
+            ? parsed
+            : [];
     }
 
     private async Task<IReadOnlyDictionary<string, DateTimeOffset?>> LoadUpdatedDatesAsync(

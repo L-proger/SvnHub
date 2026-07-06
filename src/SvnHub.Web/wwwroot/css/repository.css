@@ -127,6 +127,36 @@
   white-space: nowrap;
 }
 
+.repo-label-filter {
+  min-width: min(22rem, 100%);
+  width: 22rem;
+  white-space: normal;
+}
+
+.repo-label-filter .label-editor-control {
+  min-height: calc(1.5em + 0.5rem + 2px);
+  padding: 0.125rem 0.35rem;
+}
+
+.repo-label-filter .label-editor-token {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.45rem;
+}
+
+.repo-label-filter .label-editor-input {
+  flex-basis: 7rem;
+  min-width: 6rem;
+}
+
+.repo-label-filter.label-editor-has-labels .label-editor-input {
+  flex-basis: 2rem;
+  min-width: 2rem;
+}
+
+.repo-label-filter .label-editor-suggestions {
+  top: calc(100% + 0.25rem);
+}
+
 @media (max-width: 767.98px) {
   .repo-filterbar {
     grid-template-columns: 1fr;
