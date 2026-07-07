@@ -211,6 +211,93 @@
             .replaceAll('>', '&gt;');
     }
 
+    function sanitizeGerberText(text) {
+        return String(text || '').replace(/^\s*\*\s*(?:\r?\n)+/, '');
+    }
+
+    function getGerberFileFunction(text) {
+        const match = String(text || '').match(/%TF\.FileFunction,([^*%]+)\*%/i);
+        if (!match) return null;
+
+        return match[1]
+            .split(',')
+            .map((part) => part.trim())
+            .filter(Boolean);
+    }
+
+    function hasFunctionToken(tokens, value) {
+        const normalizedValue = value.toLowerCase();
+        return tokens.some((token) => token.toLowerCase() === normalizedValue);
+    }
+
+    function getLayerNumber(tokens) {
+        for (const token of tokens) {
+            const match = token.match(/^L(\d+)$/i);
+            if (match) {
+                return Number.parseInt(match[1], 10);
+            }
+        }
+
+        return null;
+    }
+
+    function getStackupExtensionFromFileFunction(tokens) {
+        if (!tokens || tokens.length === 0) return null;
+
+        const functionName = tokens[0].toLowerCase();
+        const isTop = hasFunctionToken(tokens, 'Top');
+        const isBottom = hasFunctionToken(tokens, 'Bot') || hasFunctionToken(tokens, 'Bottom');
+
+        switch (functionName) {
+            case 'copper': {
+                if (isTop) return '.GTL';
+                if (isBottom) return '.GBL';
+
+                const layerNumber = getLayerNumber(tokens);
+                return layerNumber ? `.G${layerNumber}` : null;
+            }
+            case 'soldermask':
+                if (isTop) return '.GTS';
+                if (isBottom) return '.GBS';
+                return null;
+            case 'legend':
+            case 'silkscreen':
+                if (isTop) return '.GTO';
+                if (isBottom) return '.GBO';
+                return null;
+            case 'paste':
+            case 'solderpaste':
+                if (isTop) return '.GTP';
+                if (isBottom) return '.GBP';
+                return null;
+            case 'profile':
+            case 'rout':
+            case 'route':
+                return '.GKO';
+            case 'drill':
+            case 'drillmap':
+            case 'plated':
+            case 'nonplated':
+                return '.DRL';
+            default:
+                return null;
+        }
+    }
+
+    function getStackupFileName(file, gerberText, index) {
+        const fileFunction = getGerberFileFunction(gerberText);
+        const fileFunctionExtension = getStackupExtensionFromFileFunction(fileFunction);
+        if (fileFunctionExtension) {
+            return `x2-layer-${index + 1}${fileFunctionExtension}`;
+        }
+
+        return file.stackupName || file.name;
+    }
+
+    function getEntryForLayer(layer) {
+        return fileEntriesByName.get((layer.filename || '').toLowerCase());
+    }
+
     function getLayerSortWeight(layer) {
         const side = (layer.side || '').toLowerCase();
         const type = (layer.type || '').toLowerCase();
@@ -276,7 +363,8 @@
 
             const id = escapeAttribute(getLayerId(layer));
             const color = escapeAttribute(getLayerColor(layer));
-            const label = escapeAttribute(`${getLayerLabel(layer)} ${layer.filename || ''}`.trim());
+            const entry = getEntryForLayer(layer);
+            const label = escapeAttribute(`${getLayerLabel(layer)} ${entry?.name || layer.filename || ''}`.trim());
             const defs = (converter.defs || []).join('');
             const content = (converter.layer || []).join('');
             const scale = getLayerScale(layer);
@@ -382,7 +470,7 @@
 
             for (const layer of groupLayers) {
                 const id = getLayerId(layer);
-                const entry = fileEntriesByName.get((layer.filename || '').toLowerCase());
+                const entry = getEntryForLayer(layer);
                 const tooltip = [entry?.name || layer.filename, entry?.sizeLabel]
                     .filter((value) => value && String(value).trim().length > 0)
                     .join(' - ');
@@ -436,9 +524,15 @@
             throw new Error(`${file.name}: HTTP ${response.status}`);
         }
 
+        const gerber = sanitizeGerberText(await response.text());
+        const filename = getStackupFileName(file, gerber, index);
+        if (filename) {
+            fileEntriesByName.set(filename.toLowerCase(), file);
+        }
+
         return {
-            filename: file.name,
-            gerber: await response.text(),
+            filename,
+            gerber,
         };
     }
 
@@ -451,7 +545,15 @@
         if (entries.length === 0) {
             throw new Error('No CAM files are available for preview.');
         }
-        fileEntriesByName = new Map(entries.map((entry) => [(entry.name || '').toLowerCase(), entry]));
+        fileEntriesByName = new Map();
+        for (const entry of entries) {
+            if (entry.name) {
+                fileEntriesByName.set(entry.name.toLowerCase(), entry);
+            }
+            if (entry.stackupName) {
+                fileEntriesByName.set(entry.stackupName.toLowerCase(), entry);
+            }
+        }
 
         const layers = [];
         for (let i = 0; i < entries.length; i += 1) {

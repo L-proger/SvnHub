@@ -389,7 +389,8 @@ public sealed class FileModel : PageModel
                 entry.Path,
                 GerberDrillFileClassifier.Describe(entry.Path),
                 size,
-                FormatByteSize(size)));
+                FormatByteSize(size),
+                GerberDrillFileClassifier.GetStackupFileName(entry.Path)));
         }
 
         return files;

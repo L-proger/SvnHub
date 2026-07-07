@@ -6,6 +6,7 @@
             name = f.Name,
             kind = f.Kind,
             sizeLabel = f.SizeLabel,
+            stackupName = f.StackupFileName,
             url = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(f.Path), rev = Model.ViewRevision }, null),
         })
         .ToArray();
