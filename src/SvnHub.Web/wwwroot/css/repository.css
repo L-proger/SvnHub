@@ -252,16 +252,17 @@
 }
 
 .sp-tree-list .sp-entry-meta {
+  flex: 0 1 65%;
   gap: 0.85rem;
   font-size: 0.875rem;
 }
 
 .sp-entry-meta .sp-entry-msg {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 42vw;
 }
 
 .sp-entry-meta .sp-entry-date,
@@ -271,7 +272,7 @@
 }
 
 .sp-entry-meta .sp-entry-author {
-  width: 6.5rem;
+  width: 10rem;
   text-align: right;
 }
 
@@ -280,7 +281,7 @@
 }
 
 .sp-entry-meta .sp-entry-rev {
-  width: 3.5rem;
+  width: 2.5rem;
 }
 
 .sp-row-actions {

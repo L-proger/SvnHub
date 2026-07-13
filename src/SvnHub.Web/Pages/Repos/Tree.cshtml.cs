@@ -342,7 +342,7 @@ public sealed class TreeModel : PageModel
             revInfoByRev.TryGetValue(lastRev, out var info);
 
             var age = info.Date is null ? null : IndexModel.FormatUpdatedAgo(info.Date.Value, now);
-            var msg = CommitMessageFormatter.FirstLine(info.Log, 80);
+            var msg = CommitMessageFormatter.FirstLine(info.Log);
             var author = string.IsNullOrWhiteSpace(info.Author) ? null : info.Author.Trim();
 
             return new TreeRow(e, msg, author, age, info.Date, lastRev);
