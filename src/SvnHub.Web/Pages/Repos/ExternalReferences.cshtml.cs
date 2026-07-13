@@ -50,11 +50,6 @@ public sealed class ExternalReferencesModel : PageModel
     public IReadOnlyList<string> TargetBranchOptions { get; private set; } = [];
     public IReadOnlyList<string> SourceBranchOptions { get; private set; } = [];
     public IReadOnlyList<RepositoryExternalReference> Rows { get; private set; } = [];
-    public bool HasFilters =>
-        Query.Length > 0 ||
-        TargetBranch.Length > 0 ||
-        SourceBranch.Length > 0 ||
-        Pinning.Length > 0;
 
     public async Task<IActionResult> OnGetAsync(
         string repoName,

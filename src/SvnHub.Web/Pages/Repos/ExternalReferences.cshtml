@@ -32,7 +32,7 @@
 }
 
 <form method="get" class="row g-2 align-items-end mt-2">
-    <div class="col-xl-4 col-md-6">
+    <div class="col-xl-3 col-md-6">
         <label class="form-label" for="external-reference-search">Search</label>
         <input id="external-reference-search"
                class="form-control"
@@ -78,15 +78,12 @@
             }
         </select>
     </div>
-    <div class="col-xl-auto col-md-3 d-flex gap-2">
+    <div class="col-xl-2 col-md-6 d-flex gap-2">
         <button class="btn btn-primary" type="submit">Filter</button>
-        @if (Model.HasFilters)
-        {
-            <a class="btn btn-outline-secondary"
-               asp-page="/Repos/ExternalReferences"
-               asp-route-repoName="@Model.RepoName"
-               asp-route-pageSize="@Model.PageSize">Clear</a>
-        }
+        <a class="btn btn-outline-secondary"
+           asp-page="/Repos/ExternalReferences"
+           asp-route-repoName="@Model.RepoName"
+           asp-route-pageSize="@Model.PageSize">Clear</a>
     </div>
 </form>
 
@@ -119,8 +116,7 @@ else
         <table class="table table-hover align-middle mb-0">
             <thead>
             <tr>
-                <th>Source repository</th>
-                <th>Declared at</th>
+                <th>Used by</th>
                 <th>Mounted at</th>
                 <th>Target</th>
                 <th>Pinning</th>
@@ -133,14 +129,9 @@ else
                     <td>
                         <a class="fw-semibold text-decoration-none"
                            asp-page="/Repos/Tree"
-                           asp-route-repoName="@row.SourceRepositoryName">@row.SourceRepositoryName</a>
-                        <div class="text-muted small">@row.SourceBranch</div>
-                    </td>
-                    <td>
-                        <a class="font-monospace small text-decoration-none"
-                           asp-page="/Repos/Tree"
                            asp-route-repoName="@row.SourceRepositoryName"
-                           asp-route-path="@RepositoryPath.ToRouteValue(row.SourceParentPath)">@row.SourceParentPath</a>
+                           asp-route-path="@RepositoryPath.ToRouteValue(row.SourceParentPath)">@row.SourceRepositoryName</a>
+                        <div class="text-muted small">@row.SourceBranch</div>
                     </td>
                     <td>
                         <div class="font-monospace small">@row.MountedPath</div>
