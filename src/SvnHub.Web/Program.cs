@@ -145,6 +145,7 @@ builder.Services.AddSingleton<AltiumProjectBomLoader>();
 builder.Services.AddSingleton<InteractiveBomHtmlBuilder>();
 builder.Services.AddSingleton<RepositoryFileResponseService>();
 builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
+builder.Services.AddSingleton<RepositoryExternalTargetIndexService>();
 builder.Services.AddSingleton<RepositoryIndexService>();
 builder.Services.AddSingleton<RepositoryIndexQueryService>();
 builder.Services.AddSingleton<RepositoryExternalReferenceService>();

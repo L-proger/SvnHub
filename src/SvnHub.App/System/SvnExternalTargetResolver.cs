@@ -11,6 +11,24 @@ public static class SvnExternalTargetResolver
         IReadOnlyList<string> svnBaseUrls,
         string? externalUrl)
     {
+        var repositoriesByName = repositories.ToDictionary(
+            repository => repository.Name,
+            StringComparer.OrdinalIgnoreCase);
+        return Resolve(
+            sourceRepositoryName,
+            sourceParentPath,
+            repositoriesByName,
+            svnBaseUrls,
+            externalUrl);
+    }
+
+    public static SvnExternalTarget? Resolve(
+        string sourceRepositoryName,
+        string sourceParentPath,
+        IReadOnlyDictionary<string, Repository> repositoriesByName,
+        IReadOnlyList<string> svnBaseUrls,
+        string? externalUrl)
+    {
         if (string.IsNullOrWhiteSpace(externalUrl))
         {
             return null;
@@ -22,7 +40,7 @@ public static class SvnExternalTargetResolver
             return ResolveRelative(
                 [sourceRepositoryName],
                 value[2..],
-                repositories);
+                repositoriesByName);
         }
 
         if (value.StartsWith("../", StringComparison.Ordinal) ||
@@ -30,7 +48,7 @@ public static class SvnExternalTargetResolver
         {
             var sourceSegments = new List<string> { sourceRepositoryName };
             sourceSegments.AddRange(SplitPath(sourceParentPath));
-            return ResolveRelative(sourceSegments, value, repositories);
+            return ResolveRelative(sourceSegments, value, repositoriesByName);
         }
 
         if (value.StartsWith("//", StringComparison.Ordinal))
@@ -40,7 +58,7 @@ public static class SvnExternalTargetResolver
                 if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) &&
                     Uri.TryCreate($"{baseUri.Scheme}:{value}", UriKind.Absolute, out var absoluteUri))
                 {
-                    var target = ResolveAbsolute(absoluteUri, repositories, svnBaseUrls);
+                    var target = ResolveAbsolute(absoluteUri, repositoriesByName, svnBaseUrls);
                     if (target is not null)
                     {
                         return target;
@@ -61,7 +79,7 @@ public static class SvnExternalTargetResolver
                     continue;
                 }
 
-                var target = ResolveAbsolute(absoluteUri, repositories, svnBaseUrls);
+                var target = ResolveAbsolute(absoluteUri, repositoriesByName, svnBaseUrls);
                 if (target is not null)
                 {
                     return target;
@@ -72,13 +90,13 @@ public static class SvnExternalTargetResolver
         }
 
         return Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            ? ResolveAbsolute(uri, repositories, svnBaseUrls)
+            ? ResolveAbsolute(uri, repositoriesByName, svnBaseUrls)
             : null;
     }
 
     private static SvnExternalTarget? ResolveAbsolute(
         Uri externalUri,
-        IReadOnlyCollection<Repository> repositories,
+        IReadOnlyDictionary<string, Repository> repositoriesByName,
         IReadOnlyList<string> svnBaseUrls)
     {
         foreach (var baseUrl in svnBaseUrls)
@@ -98,7 +116,7 @@ public static class SvnExternalTargetResolver
             }
 
             var relativePath = Uri.UnescapeDataString(externalPath[(basePath.Length + 1)..]);
-            return ResolveRelative([], relativePath, repositories);
+            return ResolveRelative([], relativePath, repositoriesByName);
         }
 
         return null;
@@ -107,7 +125,7 @@ public static class SvnExternalTargetResolver
     private static SvnExternalTarget? ResolveRelative(
         IReadOnlyCollection<string> baseSegments,
         string relativePath,
-        IReadOnlyCollection<Repository> repositories)
+        IReadOnlyDictionary<string, Repository> repositoriesByName)
     {
         var segments = new List<string>(baseSegments);
         foreach (var rawSegment in SplitPath(Uri.UnescapeDataString(relativePath)))
@@ -135,9 +153,7 @@ public static class SvnExternalTargetResolver
             return null;
         }
 
-        var repository = repositories.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, segments[0], StringComparison.OrdinalIgnoreCase));
-        if (repository is null)
+        if (!repositoriesByName.TryGetValue(segments[0], out var repository))
         {
             return null;
         }

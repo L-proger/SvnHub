@@ -1,6 +1,5 @@
 using SvnHub.App.Indexing;
 using SvnHub.App.Storage;
-using SvnHub.App.System;
 using SvnHub.Domain;
 
 namespace SvnHub.App.Services;
@@ -9,16 +8,16 @@ public sealed class RepositoryExternalReferenceService
 {
     private readonly IPortalStore _store;
     private readonly IRepositoryIndexStore _indexStore;
-    private readonly SettingsService _settings;
+    private readonly RepositoryExternalTargetIndexService _externalTargets;
 
     public RepositoryExternalReferenceService(
         IPortalStore store,
         IRepositoryIndexStore indexStore,
-        SettingsService settings)
+        RepositoryExternalTargetIndexService externalTargets)
     {
         _store = store;
         _indexStore = indexStore;
-        _settings = settings;
+        _externalTargets = externalTargets;
     }
 
     public async Task<RepositoryExternalReferenceSnapshot> ListIncomingAsync(
@@ -27,22 +26,25 @@ public sealed class RepositoryExternalReferenceService
         CancellationToken cancellationToken = default)
     {
         var state = _store.Read();
+        var access = RepositoryAccessEvaluator.CreateContext(state, userId);
         var repositories = state.Repositories
             .Where(repository => repository.IsAvailable)
             .ToArray();
         var targetRepository = repositories.FirstOrDefault(repository => repository.Id == targetRepositoryId);
         if (targetRepository is null ||
-            RepositoryAccessEvaluator.GetAccess(state, userId, targetRepository.Id, "/") < AccessLevel.Read)
+            access.GetAccess(targetRepository.Id, "/") < AccessLevel.Read)
         {
             return RepositoryExternalReferenceSnapshot.Empty;
         }
 
         var visibleSourceRepositories = repositories
             .Where(repository =>
-                RepositoryAccessEvaluator.GetAccess(state, userId, repository.Id, "/") >= AccessLevel.Read)
+                access.GetAccess(repository.Id, "/") >= AccessLevel.Read)
             .ToDictionary(repository => repository.Id);
-        var svnBaseUrls = _settings.GetEffectiveSvnBaseUrls(state);
-        var externals = await _indexStore.ListHeadExternalsAsync(cancellationToken);
+        await _externalTargets.EnsureCurrentAsync(cancellationToken);
+        var externals = await _indexStore.ListHeadExternalsByTargetAsync(
+            targetRepository.Id,
+            cancellationToken);
         var rows = new List<RepositoryExternalReference>();
 
         foreach (var external in externals)
@@ -53,20 +55,14 @@ public sealed class RepositoryExternalReferenceService
             }
 
             var sourceAccessPath = external.ResolvedPath ?? external.ParentPath;
-            if (RepositoryAccessEvaluator.GetAccess(state, userId, sourceRepository.Id, external.ParentPath) < AccessLevel.Read ||
-                RepositoryAccessEvaluator.GetAccess(state, userId, sourceRepository.Id, sourceAccessPath) < AccessLevel.Read)
+            if (access.GetAccess(sourceRepository.Id, external.ParentPath) < AccessLevel.Read ||
+                access.GetAccess(sourceRepository.Id, sourceAccessPath) < AccessLevel.Read)
             {
                 continue;
             }
 
-            var target = SvnExternalTargetResolver.Resolve(
-                sourceRepository.Name,
-                external.ParentPath,
-                repositories,
-                svnBaseUrls,
-                external.Url);
-            if (target is null || target.RepositoryId != targetRepository.Id ||
-                RepositoryAccessEvaluator.GetAccess(state, userId, targetRepository.Id, target.Path) < AccessLevel.Read)
+            if (external.TargetRepositoryPath is not { } targetPath ||
+                access.GetAccess(targetRepository.Id, targetPath) < AccessLevel.Read)
             {
                 continue;
             }
@@ -77,9 +73,9 @@ public sealed class RepositoryExternalReferenceService
                 sourceRepository.Name,
                 external.ParentPath,
                 external.ResolvedPath ?? external.TargetPath ?? external.ParentPath,
-                target.Path,
+                targetPath,
                 ClassifyBranch(external.ParentPath),
-                ClassifyBranch(target.Path),
+                ClassifyBranch(targetPath),
                 external.Revision,
                 external.PegRevision,
                 external.IsPinned,

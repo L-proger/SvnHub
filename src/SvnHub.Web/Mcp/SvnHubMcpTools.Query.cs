@@ -20,14 +20,14 @@ public sealed partial class SvnHubMcpTools
         "Use from=tree for current HEAD file/folder existence by path, name, extension, and isDirectory. " +
         "tree.extension result values include the leading dot, for example .pri, but filters accept either pri or .pri for eq/neq/in. " +
         "Use from=properties for current HEAD SVN properties on repository root and directories only; file properties are not indexed. " +
-        "Use from=externals for current HEAD svn:externals declarations; it indexes declarations only and does not scan external targets recursively. " +
+        "Use from=externals for current HEAD svn:externals declarations; repository.name is the repository declaring the external, while external.targetRepositoryName and external.targetRepositoryPath identify a registered SvnHub target when it can be resolved and read by the user. Exact eq/in filters on targetRepositoryName use the reverse index and are the preferred way to find where a repository is referenced. External targets are not scanned recursively. " +
         "This tool does not read file contents, file sizes, or diffs; use svnhub_read_file, svnhub_list_tree, and svnhub_get_diff for live details. " +
         "Query shape: {from, scan?, where?, select?, groupBy?, orderBy?, limit?, offset?}. " +
         "scan supports repositoryNames and repositoryNameContains. " +
         "Repository labels are available on every source as repository.labels. Aliases label and labels are accepted; eq/in match any label in the repository label list. " +
         "Pagination: default limit is 100, maximum limit is 1000, default offset is 0. If truncated=true, matchedRows is the real total count; repeat the same query with a higher limit or with offset=previous offset+limit until truncated=false. For all rows over 1000, use multiple pages with a stable orderBy. " +
         "Operators: eq, neq, contains, startsWith, endsWith, gt, gte, lt, lte, in, exists. " +
-        "Aliases are accepted as standalone fields: repositoryName, label, labels, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. Do not combine aliases with slash characters. " +
+        "Aliases are accepted as standalone fields: repositoryName, label, labels, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, targetRepository, targetRepositoryName, targetRepositoryPath, isPinned. Do not combine aliases with slash characters. " +
         "Example repositories where latest indexed commit is by user: {\"from\":\"repositories\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"select\":[\"repositoryName\",\"revision\",\"author\",\"date\",\"message\",\"indexed.remainingRevisions\"]}. " +
         "Example repositories with label PewCB: {\"from\":\"repositories\",\"where\":[{\"field\":\"label\",\"op\":\"eq\",\"value\":\"PewCB\"}],\"select\":[\"repositoryName\",\"labels\",\"revision\",\"author\"]}. " +
         "Example repositories where user participated: {\"from\":\"commits\",\"where\":[{\"field\":\"author\",\"op\":\"eq\",\"value\":\"USER\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\",\"latest.commit.revision\",\"latest.commit.date\",\"latest.commit.message\"]}. " +
@@ -35,6 +35,7 @@ public sealed partial class SvnHubMcpTools
         "Example repositories with README.md in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"README.md\"}],\"select\":[\"repositoryName\",\"path\",\"isDirectory\"]}. " +
         "Example repositories with .pri files in HEAD: {\"from\":\"tree\",\"where\":[{\"field\":\"extension\",\"op\":\"eq\",\"value\":\"pri\"}],\"groupBy\":[\"repositoryName\"],\"select\":[\"repositoryName\",\"count\"]}. " +
         "Example directory properties: {\"from\":\"properties\",\"where\":[{\"field\":\"name\",\"op\":\"eq\",\"value\":\"svn:externals\"}],\"select\":[\"repositoryName\",\"path\",\"nodeKind\",\"name\",\"value\"]}. " +
+        "Example repositories that reference another registered repository: {\"from\":\"externals\",\"where\":[{\"field\":\"targetRepositoryName\",\"op\":\"eq\",\"value\":\"TARGET_REPOSITORY\"}],\"select\":[\"repositoryName\",\"parentPath\",\"resolvedPath\",\"targetRepositoryName\",\"targetRepositoryPath\",\"isPinned\"]}. " +
         "Example unpinned externals: {\"from\":\"externals\",\"where\":[{\"field\":\"isPinned\",\"op\":\"eq\",\"value\":\"false\"}],\"select\":[\"repositoryName\",\"parentPath\",\"targetPath\",\"url\",\"isPinned\",\"raw\"]}. " +
         "Call svnhub_index_query_schema for the full schema and examples.")]
     public static async Task<RepositoryIndexQueryResult> IndexQueryAsync(
@@ -47,8 +48,8 @@ public sealed partial class SvnHubMcpTools
             "changedPaths fields: commit.revision, commit.author, commit.date, commit.message, change.action, change.path. " +
             "tree fields: tree.revision, tree.path, tree.name, tree.extension, tree.isDirectory. tree.extension returns values with a leading dot, for example .pri; filters accept pri or .pri. " +
             "properties fields: property.snapshotRevision, property.path, property.nodeKind, property.name, property.value. Properties are indexed only on root and directories. " +
-            "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.revision, external.pegRevision, external.isPinned, external.raw. " +
-            "Aliases, each used as its own field string: repositoryName, label, labels, inheritedContentGrants, inheritedManagementGrants, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, isPinned. label/labels match repository.labels. Never send repositoryName/name.")]
+            "externals fields: external.snapshotRevision, external.parentPath, external.targetPath, external.resolvedPath, external.url, external.targetRepositoryName, external.targetRepositoryPath, external.revision, external.pegRevision, external.isPinned, external.raw. repository.name is the declaring repository. Use targetRepositoryName eq/in for an indexed reverse lookup. " +
+            "Aliases, each used as its own field string: repositoryName, label, labels, inheritedContentGrants, inheritedManagementGrants, revision, author, date, message, path, action, name, value, nodeKind, extension, isDirectory, targetPath, resolvedPath, url, targetRepository, targetRepositoryName, targetRepositoryPath, isPinned. label/labels match repository.labels. Never send repositoryName/name.")]
         RepositoryIndexQueryRequest query,
         RepositoryIndexQueryService indexQuery,
         IHttpContextAccessor httpContextAccessor,
@@ -241,7 +242,7 @@ public sealed partial class SvnHubMcpTools
                     }),
                 new McpIndexQuerySourceSchema(
                     "externals",
-                    "One row per visible svn:externals declaration in the indexed HEAD snapshot. External targets are not recursively scanned.",
+                    "One row per visible svn:externals declaration in the indexed HEAD snapshot. repository.name is the declaring repository. Resolved target repository fields are exposed only when the registered target and target path are readable. Exact eq/in filters on targetRepositoryName use the reverse index. External targets are not recursively scanned.",
                     Fields:
                     [
                         "repository.name",
@@ -262,6 +263,8 @@ public sealed partial class SvnHubMcpTools
                         "external.targetPath",
                         "external.resolvedPath",
                         "external.url",
+                        "external.targetRepositoryName",
+                        "external.targetRepositoryPath",
                         "external.revision",
                         "external.pegRevision",
                         "external.isPinned",
@@ -281,6 +284,9 @@ public sealed partial class SvnHubMcpTools
                         ["path"] = "external.resolvedPath",
                         ["resolvedPath"] = "external.resolvedPath",
                         ["url"] = "external.url",
+                        ["targetRepository"] = "external.targetRepositoryName",
+                        ["targetRepositoryName"] = "external.targetRepositoryName",
+                        ["targetRepositoryPath"] = "external.targetRepositoryPath",
                         ["revision"] = "external.revision",
                         ["pegRevision"] = "external.pegRevision",
                         ["isPinned"] = "external.isPinned",
@@ -395,12 +401,12 @@ public sealed partial class SvnHubMcpTools
                         Select = ["repositoryName", "count"],
                     }),
                 new McpIndexQueryExample(
-                    "Repositories where Math is declared as an svn:externals target",
+                    "Repositories that reference another registered repository",
                     new RepositoryIndexQueryRequest
                     {
                         From = "externals",
-                        Where = [new RepositoryIndexQueryCondition { Field = "targetPath", Op = "contains", Value = "Math" }],
-                        Select = ["repositoryName", "parentPath", "targetPath", "resolvedPath", "url", "revision", "isPinned"],
+                        Where = [new RepositoryIndexQueryCondition { Field = "targetRepositoryName", Op = "eq", Value = "TARGET_REPOSITORY" }],
+                        Select = ["repositoryName", "parentPath", "resolvedPath", "targetRepositoryName", "targetRepositoryPath", "revision", "isPinned"],
                     }),
                 new McpIndexQueryExample(
                     "Directory/root svn:externals properties in current HEAD",

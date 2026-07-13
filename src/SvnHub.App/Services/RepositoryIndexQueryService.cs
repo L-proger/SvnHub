@@ -13,15 +13,18 @@ public sealed class RepositoryIndexQueryService
     private readonly IRepositoryIndexStore _store;
     private readonly RepositoryService _repositories;
     private readonly AccessService _access;
+    private readonly RepositoryExternalTargetIndexService _externalTargets;
 
     public RepositoryIndexQueryService(
         IRepositoryIndexStore store,
         RepositoryService repositories,
-        AccessService access)
+        AccessService access,
+        RepositoryExternalTargetIndexService externalTargets)
     {
         _store = store;
         _repositories = repositories;
         _access = access;
+        _externalTargets = externalTargets;
     }
 
     public async Task<RepositoryIndexQueryResult> QueryAsync(
@@ -53,8 +56,9 @@ public sealed class RepositoryIndexQueryService
             return QueryError(query.From, ex.Message);
         }
 
+        var access = _access.CreateEvaluationContext(userId);
         var allRepositories = _repositories.List()
-            .Where(r => _access.GetAccess(userId, r.Id, "/") >= AccessLevel.Read)
+            .Where(r => access.GetAccess(r.Id, "/") >= AccessLevel.Read)
             .ToArray();
 
         var visibleRepositories = FilterRepositoriesForQuery(allRepositories, query.Scan)
@@ -95,12 +99,16 @@ public sealed class RepositoryIndexQueryService
 
         var rows = from switch
         {
-            "repositories" => await BuildRepositoryRowsAsync(repositoryById, userId, cancellationToken),
-            "commits" => await BuildCommitRowsAsync(repositoryById, userId, cancellationToken),
-            "changedpaths" => await BuildChangedPathRowsAsync(repositoryById, userId, cancellationToken),
-            "tree" => await BuildTreeRowsAsync(repositoryById, userId, cancellationToken),
-            "properties" => await BuildPropertyRowsAsync(repositoryById, userId, cancellationToken),
-            "externals" => await BuildExternalRowsAsync(repositoryById, userId, cancellationToken),
+            "repositories" => await BuildRepositoryRowsAsync(repositoryById, access, cancellationToken),
+            "commits" => await BuildCommitRowsAsync(repositoryById, access, cancellationToken),
+            "changedpaths" => await BuildChangedPathRowsAsync(repositoryById, access, cancellationToken),
+            "tree" => await BuildTreeRowsAsync(repositoryById, access, cancellationToken),
+            "properties" => await BuildPropertyRowsAsync(repositoryById, access, cancellationToken),
+            "externals" => await BuildExternalRowsAsync(
+                repositoryById,
+                query.Where,
+                access,
+                cancellationToken),
             _ => throw new InvalidOperationException("Unsupported query source."),
         };
 
@@ -148,7 +156,7 @@ public sealed class RepositoryIndexQueryService
 
     private async Task<List<Dictionary<string, object?>>> BuildRepositoryRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
         var heads = await _store.ListRepositoryHeadsAsync(cancellationToken);
@@ -163,7 +171,7 @@ public sealed class RepositoryIndexQueryService
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 head.YoungestRevision,
                 head.IndexedRevision,
                 head.HeadTreeRevision,
@@ -184,7 +192,7 @@ public sealed class RepositoryIndexQueryService
 
     private async Task<List<Dictionary<string, object?>>> BuildCommitRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
         var commits = await _store.ListCommitsAsync(cancellationToken);
@@ -198,7 +206,7 @@ public sealed class RepositoryIndexQueryService
             }
 
             var visibleChangedPaths = commit.ChangedPaths
-                .Where(p => _access.GetAccess(userId, repo.Id, p.Path) >= AccessLevel.Read)
+                .Where(p => access.GetAccess(repo.Id, p.Path) >= AccessLevel.Read)
                 .ToArray();
             if (visibleChangedPaths.Length == 0)
             {
@@ -207,7 +215,7 @@ public sealed class RepositoryIndexQueryService
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 commit.YoungestRevision,
                 commit.IndexedRevision,
                 0,
@@ -226,7 +234,7 @@ public sealed class RepositoryIndexQueryService
 
     private async Task<List<Dictionary<string, object?>>> BuildChangedPathRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
         var changes = await _store.ListChangedPathsAsync(cancellationToken);
@@ -239,14 +247,14 @@ public sealed class RepositoryIndexQueryService
                 continue;
             }
 
-            if (_access.GetAccess(userId, repo.Id, change.Path) < AccessLevel.Read)
+            if (access.GetAccess(repo.Id, change.Path) < AccessLevel.Read)
             {
                 continue;
             }
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 change.YoungestRevision,
                 change.IndexedRevision,
                 0,
@@ -266,7 +274,7 @@ public sealed class RepositoryIndexQueryService
 
     private async Task<List<Dictionary<string, object?>>> BuildTreeRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
         var entries = await _store.ListHeadTreeEntriesAsync(cancellationToken);
@@ -279,14 +287,14 @@ public sealed class RepositoryIndexQueryService
                 continue;
             }
 
-            if (_access.GetAccess(userId, repo.Id, entry.Path) < AccessLevel.Read)
+            if (access.GetAccess(repo.Id, entry.Path) < AccessLevel.Read)
             {
                 continue;
             }
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 entry.YoungestRevision,
                 entry.IndexedRevision,
                 entry.HeadTreeRevision,
@@ -308,10 +316,33 @@ public sealed class RepositoryIndexQueryService
 
     private async Task<List<Dictionary<string, object?>>> BuildExternalRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        IReadOnlyList<RepositoryIndexQueryCondition> conditions,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
-        var externals = await _store.ListHeadExternalsAsync(cancellationToken);
+        await _externalTargets.EnsureCurrentAsync(cancellationToken);
+        var targetRepositoryIds = ResolveExternalTargetRepositoryFilter(
+            visibleRepositories.Values,
+            conditions);
+        IReadOnlyList<RepositoryIndexExternal> externals;
+        if (targetRepositoryIds is null)
+        {
+            externals = await _store.ListHeadExternalsAsync(cancellationToken);
+        }
+        else
+        {
+            var filteredExternals = new List<RepositoryIndexExternal>();
+            foreach (var targetRepositoryId in targetRepositoryIds)
+            {
+                filteredExternals.AddRange(
+                    await _store.ListHeadExternalsByTargetAsync(
+                        targetRepositoryId,
+                        cancellationToken));
+            }
+
+            externals = filteredExternals;
+        }
+
         var rows = new List<Dictionary<string, object?>>();
 
         foreach (var external in externals)
@@ -322,14 +353,14 @@ public sealed class RepositoryIndexQueryService
             }
 
             var accessPath = external.ResolvedPath ?? external.ParentPath;
-            if (_access.GetAccess(userId, repo.Id, accessPath) < AccessLevel.Read)
+            if (access.GetAccess(repo.Id, accessPath) < AccessLevel.Read)
             {
                 continue;
             }
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 external.YoungestRevision,
                 external.IndexedRevision,
                 0,
@@ -347,15 +378,76 @@ public sealed class RepositoryIndexQueryService
             row["external.pegRevision"] = external.PegRevision;
             row["external.isPinned"] = external.IsPinned;
             row["external.raw"] = external.RawDefinition;
+            if (external.TargetRepositoryId is { } targetRepositoryId &&
+                external.TargetRepositoryPath is { } targetRepositoryPath &&
+                visibleRepositories.TryGetValue(targetRepositoryId, out var targetRepository) &&
+                access.GetAccess(targetRepositoryId, targetRepositoryPath) >= AccessLevel.Read)
+            {
+                row["external.targetRepositoryName"] = targetRepository.Name;
+                row["external.targetRepositoryPath"] = targetRepositoryPath;
+            }
+            else
+            {
+                row["external.targetRepositoryName"] = null;
+                row["external.targetRepositoryPath"] = null;
+            }
+
             rows.Add(row);
         }
 
         return rows;
     }
 
+    private static IReadOnlyCollection<Guid>? ResolveExternalTargetRepositoryFilter(
+        IEnumerable<Repository> visibleRepositories,
+        IReadOnlyList<RepositoryIndexQueryCondition> conditions)
+    {
+        var targetConditions = conditions
+            .Where(condition =>
+                string.Equals(
+                    condition.Field,
+                    "external.targetRepositoryName",
+                    StringComparison.OrdinalIgnoreCase) &&
+                NormalizeQueryToken(condition.Op) is "eq" or "in")
+            .ToArray();
+        if (targetConditions.Length == 0)
+        {
+            return null;
+        }
+
+        var repositoriesByName = visibleRepositories.ToDictionary(
+            repository => repository.Name,
+            StringComparer.OrdinalIgnoreCase);
+        HashSet<Guid>? matchedRepositoryIds = null;
+        foreach (var condition in targetConditions)
+        {
+            var names = NormalizeQueryToken(condition.Op) == "in"
+                ? condition.Values
+                : [condition.Value ?? ""];
+            var conditionMatches = names
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(repositoriesByName.ContainsKey)
+                .Select(name => repositoriesByName[name].Id)
+                .ToHashSet();
+
+            if (matchedRepositoryIds is null)
+            {
+                matchedRepositoryIds = conditionMatches;
+            }
+            else
+            {
+                matchedRepositoryIds.IntersectWith(conditionMatches);
+            }
+        }
+
+        return matchedRepositoryIds ?? [];
+    }
+
     private async Task<List<Dictionary<string, object?>>> BuildPropertyRowsAsync(
         IReadOnlyDictionary<Guid, Repository> visibleRepositories,
-        Guid userId,
+        RepositoryAccessEvaluator.EvaluationContext access,
         CancellationToken cancellationToken)
     {
         var properties = await _store.ListHeadPropertiesAsync(cancellationToken);
@@ -368,14 +460,14 @@ public sealed class RepositoryIndexQueryService
                 continue;
             }
 
-            if (_access.GetAccess(userId, repo.Id, property.Path) < AccessLevel.Read)
+            if (access.GetAccess(repo.Id, property.Path) < AccessLevel.Read)
             {
                 continue;
             }
 
             var row = CreateBaseRow(
                 repo,
-                _access.GetAccess(userId, repo.Id, "/"),
+                access.GetAccess(repo.Id, "/"),
                 property.YoungestRevision,
                 property.IndexedRevision,
                 0,
@@ -641,6 +733,8 @@ public sealed class RepositoryIndexQueryService
                 "name" or "target" or "targetpath" or "externalname" => "external.targetPath",
                 "path" or "resolvedpath" or "externalpath" => "external.resolvedPath",
                 "url" or "externalurl" => "external.url",
+                "targetrepository" or "targetrepositoryname" or "externalrepository" => "external.targetRepositoryName",
+                "targetrepositorypath" or "externaltargetrepositorypath" => "external.targetRepositoryPath",
                 "revision" or "externalrevision" => "external.revision",
                 "pegrevision" => "external.pegRevision",
                 "ispinned" or "pinned" => "external.isPinned",
@@ -941,7 +1035,7 @@ public sealed class RepositoryIndexQueryService
             "changedpaths" => ["repository.name", "commit.revision", "commit.author", "commit.date", "change.action", "change.path"],
             "tree" => ["repository.name", "tree.path", "tree.name", "tree.extension", "tree.isDirectory", "tree.revision"],
             "properties" => ["repository.name", "property.path", "property.nodeKind", "property.name", "property.value", "property.snapshotRevision"],
-            "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.revision", "external.isPinned"],
+            "externals" => ["repository.name", "external.parentPath", "external.targetPath", "external.resolvedPath", "external.url", "external.targetRepositoryName", "external.targetRepositoryPath", "external.revision", "external.isPinned"],
             _ => ["repository.name", "repository.labels", "latest.revision", "latest.author", "latest.date", "latest.message", "indexed.remainingRevisions"],
         };
     }
@@ -1068,7 +1162,8 @@ public sealed class RepositoryIndexQueryService
             "tree" => field is "tree.revision" or "tree.path" or "tree.name" or "tree.extension" or "tree.isdirectory",
             "properties" => field is "property.snapshotrevision" or "property.path" or "property.nodekind" or "property.name" or "property.value",
             "externals" => field is "external.snapshotrevision" or "external.parentpath" or "external.targetpath" or
-                "external.resolvedpath" or "external.url" or "external.revision" or "external.pegrevision" or "external.ispinned" or "external.raw",
+                "external.resolvedpath" or "external.url" or "external.targetrepositoryname" or "external.targetrepositorypath" or
+                "external.revision" or "external.pegrevision" or "external.ispinned" or "external.raw",
             _ => false,
         };
     }

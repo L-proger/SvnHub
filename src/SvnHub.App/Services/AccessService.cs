@@ -19,6 +19,9 @@ public sealed class AccessService
         return RepositoryAccessEvaluator.GetAccess(state, userId, repositoryId, path);
     }
 
+    public RepositoryAccessEvaluator.EvaluationContext CreateEvaluationContext(Guid userId) =>
+        RepositoryAccessEvaluator.CreateContext(_store.Read(), userId);
+
     public static Guid? GetUserIdFromClaimsPrincipal(ClaimsPrincipal principal)
     {
         var idStr = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;

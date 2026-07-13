@@ -6,40 +6,92 @@ public static class RepositoryAccessEvaluator
 {
     public static AccessLevel GetAccess(PortalState state, Guid userId, Guid repositoryId, string path)
     {
-        var user = state.Users.FirstOrDefault(u => u.Id == userId);
+        var user = state.Users.FirstOrDefault(candidate => candidate.Id == userId);
         if (user is null || !user.IsActive)
         {
             return AccessLevel.None;
         }
 
-        var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || !repo.IsAvailable)
+        var repository = state.Repositories.FirstOrDefault(candidate => candidate.Id == repositoryId);
+        if (repository is null || !repository.IsAvailable)
         {
             return AccessLevel.None;
         }
 
-        if (user.Roles.HasFlag(PortalUserRoles.Owner))
+        return EvaluateAccess(
+            repository,
+            user.Roles,
+            userId,
+            ExpandGroupIdsForUser(state, userId).ToHashSet(),
+            path,
+            state.PermissionRules);
+    }
+
+    public static EvaluationContext CreateContext(PortalState state, Guid userId) =>
+        new(state, userId);
+
+    public sealed class EvaluationContext
+    {
+        private readonly Guid _userId;
+        private readonly PortalUserRoles _roles;
+        private readonly bool _isActive;
+        private readonly IReadOnlyDictionary<Guid, Repository> _repositories;
+        private readonly IReadOnlyDictionary<Guid, PermissionRule[]> _rulesByRepository;
+        private readonly HashSet<Guid> _groupIds;
+
+        internal EvaluationContext(PortalState state, Guid userId)
+        {
+            _userId = userId;
+            var user = state.Users.FirstOrDefault(candidate => candidate.Id == userId);
+            _roles = user?.Roles ?? PortalUserRoles.None;
+            _isActive = user?.IsActive == true;
+            _repositories = state.Repositories.ToDictionary(repository => repository.Id);
+            _rulesByRepository = state.PermissionRules
+                .GroupBy(rule => rule.RepositoryId)
+                .ToDictionary(group => group.Key, group => group.ToArray());
+            _groupIds = ExpandGroupIdsForUser(state, userId).ToHashSet();
+        }
+
+        public AccessLevel GetAccess(Guid repositoryId, string path)
+        {
+            if (!_isActive ||
+                !_repositories.TryGetValue(repositoryId, out var repository) ||
+                !repository.IsAvailable)
+            {
+                return AccessLevel.None;
+            }
+
+            return EvaluateAccess(
+                repository,
+                _roles,
+                _userId,
+                _groupIds,
+                path,
+                _rulesByRepository.GetValueOrDefault(repositoryId) ?? []);
+        }
+    }
+
+    private static AccessLevel EvaluateAccess(
+        Repository repository,
+        PortalUserRoles roles,
+        Guid userId,
+        HashSet<Guid> groupIds,
+        string path,
+        IEnumerable<PermissionRule> rules)
+    {
+        if (roles.HasFlag(PortalUserRoles.Owner))
         {
             return AccessLevel.Write;
         }
 
         var normalized = NormalizePath(path);
-        var groupIds = ExpandGroupIdsForUser(state, userId).ToHashSet();
-        var access = GetInheritedAccess(repo, user.Roles);
+        var access = GetInheritedAccess(repository, roles);
 
-        foreach (var rule in state.PermissionRules)
+        foreach (var rule in rules)
         {
-            if (rule.RepositoryId != repositoryId)
-            {
-                continue;
-            }
-
-            if (rule.Access is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write))
-            {
-                continue;
-            }
-
-            if (!IsPathUnder(normalized, rule.Path))
+            if (rule.RepositoryId != repository.Id ||
+                rule.Access is not (AccessLevel.None or AccessLevel.Read or AccessLevel.Write) ||
+                !IsPathUnder(normalized, rule.Path))
             {
                 continue;
             }

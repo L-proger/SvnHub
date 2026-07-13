@@ -285,7 +285,10 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                    he.revision,
                    he.peg_revision,
                    he.is_pinned,
-                   he.raw_definition
+                   he.raw_definition,
+                   he.ordinal,
+                   he.target_repository_id,
+                   he.target_repository_path
               from head_externals he
               join index_repositories ir on ir.repository_id = he.repository_id
              order by lower(ir.repository_name) asc, he.parent_path asc, he.ordinal asc;
@@ -307,10 +310,146 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 reader.GetInt64(11) != 0,
-                reader.GetString(12)));
+                reader.GetString(12),
+                reader.GetInt32(13),
+                reader.IsDBNull(14) ? null : ParseGuid(reader.GetString(14)),
+                reader.IsDBNull(15) ? null : reader.GetString(15)));
         }
 
         return rows;
+    }
+
+    public async Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsByTargetAsync(
+        Guid targetRepositoryId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = new List<RepositoryIndexExternal>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select ir.repository_id,
+                   ir.repository_name,
+                   ir.youngest_revision,
+                   ir.indexed_revision,
+                   ir.externals_revision,
+                   he.parent_path,
+                   he.target_path,
+                   he.resolved_path,
+                   he.url,
+                   he.revision,
+                   he.peg_revision,
+                   he.is_pinned,
+                   he.raw_definition,
+                   he.ordinal,
+                   he.target_repository_id,
+                   he.target_repository_path
+              from head_externals he
+              join index_repositories ir on ir.repository_id = he.repository_id
+             where he.target_repository_id = $targetRepositoryId;
+            """;
+        command.Parameters.AddWithValue("$targetRepositoryId", FormatGuid(targetRepositoryId));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new RepositoryIndexExternal(
+                ParseGuid(reader.GetString(0)),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3),
+                reader.GetInt64(4),
+                reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.GetInt64(11) != 0,
+                reader.GetString(12),
+                reader.GetInt32(13),
+                reader.IsDBNull(14) ? null : ParseGuid(reader.GetString(14)),
+                reader.IsDBNull(15) ? null : reader.GetString(15)));
+        }
+
+        return rows;
+    }
+
+    public async Task<string?> GetExternalTargetIndexSignatureAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select value from index_metadata where key = 'external_target_signature';";
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull
+            ? null
+            : Convert.ToString(value, global::System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task RebuildExternalTargetsAsync(
+        string signature,
+        IReadOnlyList<RepositoryIndexExternalTargetUpdate> targets,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "update head_externals set target_repository_id = null, target_repository_path = null;",
+            [],
+            cancellationToken);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                update head_externals
+                   set target_repository_id = $targetRepositoryId,
+                       target_repository_path = $targetRepositoryPath
+                 where repository_id = $repositoryId
+                   and ordinal = $ordinal;
+                """;
+            var targetRepositoryId = command.Parameters.Add("$targetRepositoryId", SqliteType.Text);
+            var targetRepositoryPath = command.Parameters.Add("$targetRepositoryPath", SqliteType.Text);
+            var repositoryId = command.Parameters.Add("$repositoryId", SqliteType.Text);
+            var ordinal = command.Parameters.Add("$ordinal", SqliteType.Integer);
+            await command.PrepareAsync(cancellationToken);
+
+            foreach (var target in targets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                targetRepositoryId.Value = FormatGuid(target.TargetRepositoryId);
+                targetRepositoryPath.Value = target.TargetRepositoryPath;
+                repositoryId.Value = FormatGuid(target.RepositoryId);
+                ordinal.Value = target.Ordinal;
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            """
+            insert into index_metadata (key, value)
+            values ('external_target_signature', $signature)
+            on conflict(key) do update set value = excluded.value;
+            """,
+            [("$signature", signature)],
+            cancellationToken);
+
+        transaction.Commit();
     }
 
     public async Task<RepositoryIndexStoreStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -806,6 +945,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     peg_revision,
                     is_pinned,
                     raw_definition,
+                    target_repository_id,
+                    target_repository_path,
                     snapshot_revision
                 ) values (
                     $repositoryId,
@@ -818,6 +959,8 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     $pegRevision,
                     $isPinned,
                     $rawDefinition,
+                    $targetRepositoryId,
+                    $targetRepositoryPath,
                     $snapshotRevision
                 );
                 """,
@@ -832,6 +975,11 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     ("$pegRevision", DbValue(external.PegRevision)),
                     ("$isPinned", external.IsPinned ? 1 : 0),
                     ("$rawDefinition", external.RawDefinition),
+                    ("$targetRepositoryId", DbValue(
+                        external.TargetRepositoryId is null
+                            ? null
+                            : FormatGuid(external.TargetRepositoryId.Value))),
+                    ("$targetRepositoryPath", DbValue(external.TargetRepositoryPath)),
                     ("$snapshotRevision", revision),
                 ],
                 cancellationToken);
@@ -1027,9 +1175,16 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                     peg_revision text null,
                     is_pinned integer not null default 0,
                     raw_definition text not null,
+                    target_repository_id text null,
+                    target_repository_path text null,
                     snapshot_revision integer not null,
                     primary key (repository_id, ordinal),
                     foreign key (repository_id) references index_repositories(repository_id) on delete cascade
+                );
+
+                create table if not exists index_metadata (
+                    key text primary key,
+                    value text not null
                 );
 
                 create table if not exists index_statistics (
@@ -1087,10 +1242,31 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
                 "is_pinned integer not null default 0",
                 cancellationToken);
 
+            await EnsureColumnAsync(
+                connection,
+                "head_externals",
+                "target_repository_id",
+                "target_repository_id text null",
+                cancellationToken);
+
+            await EnsureColumnAsync(
+                connection,
+                "head_externals",
+                "target_repository_path",
+                "target_repository_path text null",
+                cancellationToken);
+
             await ExecuteNonQueryAsync(
                 connection,
                 null,
                 "create index if not exists ix_head_externals_is_pinned on head_externals(is_pinned);",
+                [],
+                cancellationToken);
+
+            await ExecuteNonQueryAsync(
+                connection,
+                null,
+                "create index if not exists ix_head_externals_target_repository_id on head_externals(target_repository_id);",
                 [],
                 cancellationToken);
 

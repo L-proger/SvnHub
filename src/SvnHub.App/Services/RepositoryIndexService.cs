@@ -10,6 +10,7 @@ public sealed class RepositoryIndexService
     private readonly RepositoryService _repositories;
     private readonly SettingsService _settings;
     private readonly ISvnLookClient _svnlook;
+    private readonly RepositoryExternalTargetIndexService _externalTargets;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly object _statusGate = new();
 
@@ -30,12 +31,14 @@ public sealed class RepositoryIndexService
         IRepositoryIndexStore store,
         RepositoryService repositories,
         SettingsService settings,
-        ISvnLookClient svnlook)
+        ISvnLookClient svnlook,
+        RepositoryExternalTargetIndexService externalTargets)
     {
         _store = store;
         _repositories = repositories;
         _settings = settings;
         _svnlook = svnlook;
+        _externalTargets = externalTargets;
     }
 
     public async Task<RepositoryIndexStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -330,6 +333,7 @@ public sealed class RepositoryIndexService
 
         var properties = new List<RepositoryIndexPropertyDefinition>();
         var externals = new List<RepositoryIndexExternalDefinition>();
+        var externalTargetContext = _externalTargets.CreateResolutionContext();
         foreach (var directory in directories)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -352,7 +356,11 @@ public sealed class RepositoryIndexService
                 string.Equals(p.Name, "svn:externals", StringComparison.Ordinal));
             if (!string.IsNullOrWhiteSpace(externalsProperty?.Value))
             {
-                externals.AddRange(ParseExternalDefinitions(directory, externalsProperty.Value));
+                externals.AddRange(ParseExternalDefinitions(
+                    repository.Name,
+                    directory,
+                    externalsProperty.Value,
+                    externalTargetContext));
             }
         }
 
@@ -380,19 +388,30 @@ public sealed class RepositoryIndexService
     }
 
     private static IReadOnlyList<RepositoryIndexExternalDefinition> ParseExternalDefinitions(
+        string repositoryName,
         string parentPath,
-        string value)
+        string value,
+        SvnExternalTargetResolutionContext targetContext)
     {
         return SvnExternalDefinitionParser.Parse(parentPath, value)
-            .Select(external => new RepositoryIndexExternalDefinition(
-                external.ParentPath,
-                external.TargetPath,
-                external.ResolvedPath,
-                external.Url,
-                external.Revision,
-                external.PegRevision,
-                external.IsPinned,
-                external.RawDefinition))
+            .Select(external =>
+            {
+                var target = targetContext.Resolve(
+                    repositoryName,
+                    external.ParentPath,
+                    external.Url);
+                return new RepositoryIndexExternalDefinition(
+                    external.ParentPath,
+                    external.TargetPath,
+                    external.ResolvedPath,
+                    external.Url,
+                    external.Revision,
+                    external.PegRevision,
+                    external.IsPinned,
+                    external.RawDefinition,
+                    target?.RepositoryId,
+                    target?.Path);
+            })
             .ToArray();
     }
 

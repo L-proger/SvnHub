@@ -27,6 +27,18 @@ public interface IRepositoryIndexStore
     Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<RepositoryIndexExternal>> ListHeadExternalsByTargetAsync(
+        Guid targetRepositoryId,
+        CancellationToken cancellationToken = default);
+
+    Task<string?> GetExternalTargetIndexSignatureAsync(
+        CancellationToken cancellationToken = default);
+
+    Task RebuildExternalTargetsAsync(
+        string signature,
+        IReadOnlyList<RepositoryIndexExternalTargetUpdate> targets,
+        CancellationToken cancellationToken = default);
+
     Task<RepositoryIndexRepositoryState?> GetRepositoryAsync(
         Guid repositoryId,
         CancellationToken cancellationToken = default);
@@ -181,7 +193,9 @@ public sealed record RepositoryIndexExternalDefinition(
     string? Revision,
     string? PegRevision,
     bool IsPinned,
-    string RawDefinition);
+    string RawDefinition,
+    Guid? TargetRepositoryId,
+    string? TargetRepositoryPath);
 
 public sealed record RepositoryIndexExternal(
     Guid RepositoryId,
@@ -196,4 +210,13 @@ public sealed record RepositoryIndexExternal(
     string? Revision,
     string? PegRevision,
     bool IsPinned,
-    string RawDefinition);
+    string RawDefinition,
+    int Ordinal,
+    Guid? TargetRepositoryId,
+    string? TargetRepositoryPath);
+
+public sealed record RepositoryIndexExternalTargetUpdate(
+    Guid RepositoryId,
+    int Ordinal,
+    Guid TargetRepositoryId,
+    string TargetRepositoryPath);
