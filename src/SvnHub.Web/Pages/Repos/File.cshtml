@@ -68,7 +68,7 @@
     <div class="d-flex align-items-center gap-2">
         <a class="btn btn-sm btn-outline-secondary"
            asp-page="/Repos/ExternalReferences"
-           asp-route-repoName="@Model.RepoName">Used by</a>
+           asp-route-repoName="@Model.RepoName">External references</a>
         @if (Model.CanOpenSettings)
         {
             <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>

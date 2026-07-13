@@ -113,13 +113,19 @@
 else
 {
     <div class="table-responsive border rounded">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 repo-external-references-table">
+            <colgroup>
+                <col class="repo-external-used-by-column" />
+                <col class="repo-external-mounted-column" />
+                <col class="repo-external-target-column" />
+                <col class="repo-external-pinning-column" />
+            </colgroup>
             <thead>
             <tr>
                 <th>Used by</th>
                 <th>Mounted at</th>
                 <th>Target</th>
-                <th class="text-end text-nowrap" style="width: 1%">Pinning</th>
+                <th class="text-end text-nowrap">Pinning</th>
             </tr>
             </thead>
             <tbody>
@@ -131,19 +137,18 @@ else
                            asp-page="/Repos/Tree"
                            asp-route-repoName="@row.SourceRepositoryName"
                            asp-route-path="@RepositoryPath.ToRouteValue(row.SourceParentPath)">@row.SourceRepositoryName</a>
-                        <div class="text-muted small">@row.SourceBranch</div>
                     </td>
                     <td>
-                        <div class="font-monospace small">@row.MountedPath</div>
+                        <div class="font-monospace small repo-external-path">@row.MountedPath</div>
                     </td>
                     <td>
-                        <a class="font-monospace small text-decoration-none"
+                        <a class="font-monospace small text-decoration-none repo-external-path"
                            asp-page="/Repos/Tree"
                            asp-route-repoName="@Model.RepoName"
                            asp-route-path="@RepositoryPath.ToRouteValue(row.TargetPath)"
                            asp-route-rev="@row.NumericRevision">@row.TargetPath</a>
                     </td>
-                    <td class="text-end text-nowrap" style="width: 1%">
+                    <td class="text-end text-nowrap">
                         @if (row.IsPinned)
                         {
                             var pinnedRevision = !string.IsNullOrWhiteSpace(row.Revision)

@@ -323,3 +323,28 @@
 .sp-icon-btn::after {
   display: none;
 }
+
+.repo-external-references-table {
+  table-layout: fixed;
+  min-width: 60rem;
+}
+
+.repo-external-references-table .repo-external-used-by-column {
+  width: 32%;
+}
+
+.repo-external-references-table .repo-external-mounted-column {
+  width: 45%;
+}
+
+.repo-external-references-table .repo-external-target-column {
+  width: 15%;
+}
+
+.repo-external-references-table .repo-external-pinning-column {
+  width: 8%;
+}
+
+.repo-external-references-table .repo-external-path {
+  overflow-wrap: anywhere;
+}
