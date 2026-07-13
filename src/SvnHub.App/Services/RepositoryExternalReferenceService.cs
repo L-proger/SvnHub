@@ -25,44 +25,16 @@ public sealed class RepositoryExternalReferenceService
         Guid targetRepositoryId,
         CancellationToken cancellationToken = default)
     {
-        var state = _store.Read();
-        var access = RepositoryAccessEvaluator.CreateContext(state, userId);
-        var repositories = state.Repositories
-            .Where(repository => repository.IsAvailable)
-            .ToArray();
-        var targetRepository = repositories.FirstOrDefault(repository => repository.Id == targetRepositoryId);
-        if (targetRepository is null ||
-            access.GetAccess(targetRepository.Id, "/") < AccessLevel.Read)
+        var context = await LoadIncomingContextAsync(userId, targetRepositoryId, cancellationToken);
+        if (context is null)
         {
             return RepositoryExternalReferenceSnapshot.Empty;
         }
 
-        var visibleSourceRepositories = repositories
-            .Where(repository =>
-                access.GetAccess(repository.Id, "/") >= AccessLevel.Read)
-            .ToDictionary(repository => repository.Id);
-        await _externalTargets.EnsureCurrentAsync(cancellationToken);
-        var externals = await _indexStore.ListHeadExternalsByTargetAsync(
-            targetRepository.Id,
-            cancellationToken);
         var rows = new List<RepositoryExternalReference>();
-
-        foreach (var external in externals)
+        foreach (var external in context.Externals)
         {
-            if (!visibleSourceRepositories.TryGetValue(external.RepositoryId, out var sourceRepository))
-            {
-                continue;
-            }
-
-            var sourceAccessPath = external.ResolvedPath ?? external.ParentPath;
-            if (access.GetAccess(sourceRepository.Id, external.ParentPath) < AccessLevel.Read ||
-                access.GetAccess(sourceRepository.Id, sourceAccessPath) < AccessLevel.Read)
-            {
-                continue;
-            }
-
-            if (external.TargetRepositoryPath is not { } targetPath ||
-                access.GetAccess(targetRepository.Id, targetPath) < AccessLevel.Read)
+            if (!TryGetVisibleReference(context, external, out var sourceRepository, out var targetPath))
             {
                 continue;
             }
@@ -86,7 +58,7 @@ public sealed class RepositoryExternalReferenceService
 
         var status = await _indexStore.GetStatusAsync(cancellationToken);
         var indexedRepositories = status.Repositories.ToDictionary(repository => repository.RepositoryId);
-        var incompleteRepositoryCount = visibleSourceRepositories.Keys.Count(repositoryId =>
+        var incompleteRepositoryCount = context.VisibleSourceRepositories.Keys.Count(repositoryId =>
             !indexedRepositories.TryGetValue(repositoryId, out var indexed) ||
             indexed.IsMissing ||
             indexed.IndexedRevision < indexed.YoungestRevision ||
@@ -101,6 +73,93 @@ public sealed class RepositoryExternalReferenceService
                 .ToArray(),
             incompleteRepositoryCount,
             status.LastSuccessAt);
+    }
+
+    public async Task<RepositoryExternalReferenceSummary> GetIncomingSummaryAsync(
+        Guid userId,
+        Guid targetRepositoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await LoadIncomingContextAsync(userId, targetRepositoryId, cancellationToken);
+        if (context is null)
+        {
+            return RepositoryExternalReferenceSummary.Empty;
+        }
+
+        var repositoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referenceCount = 0;
+        foreach (var external in context.Externals)
+        {
+            if (TryGetVisibleReference(context, external, out var sourceRepository, out _))
+            {
+                repositoryNames.Add(sourceRepository.Name);
+                referenceCount++;
+            }
+        }
+
+        return new RepositoryExternalReferenceSummary(repositoryNames.Count, referenceCount);
+    }
+
+    private async Task<IncomingExternalContext?> LoadIncomingContextAsync(
+        Guid userId,
+        Guid targetRepositoryId,
+        CancellationToken cancellationToken)
+    {
+        var state = _store.Read();
+        var access = RepositoryAccessEvaluator.CreateContext(state, userId);
+        var repositories = state.Repositories
+            .Where(repository => repository.IsAvailable)
+            .ToArray();
+        var targetRepository = repositories.FirstOrDefault(repository => repository.Id == targetRepositoryId);
+        if (targetRepository is null ||
+            access.GetAccess(targetRepository.Id, "/") < AccessLevel.Read)
+        {
+            return null;
+        }
+
+        var visibleSourceRepositories = repositories
+            .Where(repository =>
+                access.GetAccess(repository.Id, "/") >= AccessLevel.Read)
+            .ToDictionary(repository => repository.Id);
+        await _externalTargets.EnsureCurrentAsync(cancellationToken);
+        var externals = await _indexStore.ListHeadExternalsByTargetAsync(
+            targetRepository.Id,
+            cancellationToken);
+        return new IncomingExternalContext(
+            access,
+            targetRepository,
+            visibleSourceRepositories,
+            externals);
+    }
+
+    private static bool TryGetVisibleReference(
+        IncomingExternalContext context,
+        RepositoryIndexExternal external,
+        out Repository sourceRepository,
+        out string targetPath)
+    {
+        sourceRepository = null!;
+        targetPath = "";
+        if (!context.VisibleSourceRepositories.TryGetValue(
+                external.RepositoryId,
+                out var resolvedSourceRepository))
+        {
+            return false;
+        }
+
+        sourceRepository = resolvedSourceRepository;
+
+        var sourceAccessPath = external.ResolvedPath ?? external.ParentPath;
+        if (context.Access.GetAccess(sourceRepository.Id, external.ParentPath) < AccessLevel.Read ||
+            context.Access.GetAccess(sourceRepository.Id, sourceAccessPath) < AccessLevel.Read ||
+            external.TargetRepositoryPath is not { } resolvedTargetPath ||
+            context.Access.GetAccess(context.TargetRepository.Id, resolvedTargetPath) < AccessLevel.Read)
+        {
+            return false;
+        }
+
+        targetPath = resolvedTargetPath;
+        return true;
     }
 
     private static string ClassifyBranch(string path)
@@ -128,6 +187,12 @@ public sealed class RepositoryExternalReferenceService
 
     private static string? FirstNonEmpty(string? first, string? second) =>
         !string.IsNullOrWhiteSpace(first) ? first : second;
+
+    private sealed record IncomingExternalContext(
+        RepositoryAccessEvaluator.EvaluationContext Access,
+        Repository TargetRepository,
+        IReadOnlyDictionary<Guid, Repository> VisibleSourceRepositories,
+        IReadOnlyList<RepositoryIndexExternal> Externals);
 }
 
 public sealed record RepositoryExternalReference(
@@ -151,4 +216,11 @@ public sealed record RepositoryExternalReferenceSnapshot(
     DateTimeOffset? LastIndexSuccessAt)
 {
     public static RepositoryExternalReferenceSnapshot Empty { get; } = new([], 0, null);
+}
+
+public sealed record RepositoryExternalReferenceSummary(
+    int RepositoryCount,
+    int ReferenceCount)
+{
+    public static RepositoryExternalReferenceSummary Empty { get; } = new(0, 0);
 }

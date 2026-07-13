@@ -17,5 +17,21 @@
                 </div>
             </section>
         }
+        @if (Model.IncomingReferenceCount > 0)
+        {
+            <section class="repo-context-section @(Model.Labels.Count > 0 ? "mt-3" : null)">
+                <div class="repo-context-title">External references</div>
+                <a class="text-decoration-none"
+                   asp-page="/Repos/ExternalReferences"
+                   asp-route-repoName="@Model.RepositoryName">
+                    <span class="d-block">
+                        @Model.IncomingRepositoryCount @(Model.IncomingRepositoryCount == 1 ? "repository" : "repositories")
+                    </span>
+                    <span class="d-block small text-body-secondary">
+                        @Model.IncomingReferenceCount @(Model.IncomingReferenceCount == 1 ? "reference" : "references")
+                    </span>
+                </a>
+            </section>
+        }
     </aside>
 }

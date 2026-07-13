@@ -39,6 +39,7 @@ public sealed class TreeModel : PageModel
     private readonly SettingsService _settings;
     private readonly ICommandRunner _runner;
     private readonly SvnHubOptions _options;
+    private readonly RepositoryExternalReferenceService _externalReferences;
 
     public TreeModel(
         RepositoryService repos,
@@ -48,7 +49,8 @@ public sealed class TreeModel : PageModel
         ISvnRepositoryWriter svnWriter,
         SettingsService settings,
         ICommandRunner runner,
-        SvnHubOptions options)
+        SvnHubOptions options,
+        RepositoryExternalReferenceService externalReferences)
     {
         _repos = repos;
         _management = management;
@@ -58,6 +60,7 @@ public sealed class TreeModel : PageModel
         _settings = settings;
         _runner = runner;
         _options = options;
+        _externalReferences = externalReferences;
     }
 
     public string RepoName { get; private set; } = "";
@@ -77,6 +80,8 @@ public sealed class TreeModel : PageModel
     public int DirectoryCount { get; private set; }
     public int FileCount { get; private set; }
     public int ExternalCount { get; private set; }
+    public int IncomingRepositoryCount { get; private set; }
+    public int IncomingReferenceCount { get; private set; }
     public string? Error { get; private set; }
     public bool HasReadme { get; private set; }
     public string ReadmeHtml { get; private set; } = "";
@@ -146,6 +151,8 @@ public sealed class TreeModel : PageModel
                 }
             }
 
+            await LoadIncomingSummaryAsync(repo.Id, userId.Value, cancellationToken);
+
             Entries = preloadedEntries ?? await _svnlook.ListTreeAsync(repo.LocalPath, Path, Revision, cancellationToken);
             DirectoryCount = Entries.Count(e => e.IsDirectory);
             FileCount = Entries.Count(e => !e.IsDirectory);
@@ -214,6 +221,31 @@ public sealed class TreeModel : PageModel
         }
 
         return Page();
+    }
+
+    private async Task LoadIncomingSummaryAsync(
+        Guid repositoryId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summary = await _externalReferences.GetIncomingSummaryAsync(
+                userId,
+                repositoryId,
+                cancellationToken);
+            IncomingRepositoryCount = summary.RepositoryCount;
+            IncomingReferenceCount = summary.ReferenceCount;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            IncomingRepositoryCount = 0;
+            IncomingReferenceCount = 0;
+        }
     }
 
     private static bool IsReadmeFileName(string name) =>

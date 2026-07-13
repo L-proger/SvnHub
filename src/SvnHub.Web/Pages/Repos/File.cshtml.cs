@@ -25,6 +25,7 @@ public sealed class FileModel : PageModel
     private readonly SvnHubOptions _options;
     private readonly AltiumPreviewRenderer _altiumPreview;
     private readonly InteractiveBomHtmlBuilder _interactiveBomHtml;
+    private readonly RepositoryExternalReferenceService _externalReferences;
 
     public FileModel(
         RepositoryService repos,
@@ -35,7 +36,8 @@ public sealed class FileModel : PageModel
         SettingsService settings,
         SvnHubOptions options,
         AltiumPreviewRenderer altiumPreview,
-        InteractiveBomHtmlBuilder interactiveBomHtml)
+        InteractiveBomHtmlBuilder interactiveBomHtml,
+        RepositoryExternalReferenceService externalReferences)
     {
         _repos = repos;
         _management = management;
@@ -46,6 +48,7 @@ public sealed class FileModel : PageModel
         _options = options;
         _altiumPreview = altiumPreview;
         _interactiveBomHtml = interactiveBomHtml;
+        _externalReferences = externalReferences;
     }
 
     [TempData]
@@ -87,6 +90,8 @@ public sealed class FileModel : PageModel
     public int? LineCount { get; private set; }
     public bool CanWrite { get; private set; }
     public bool CanOpenSettings { get; private set; }
+    public int IncomingRepositoryCount { get; private set; }
+    public int IncomingReferenceCount { get; private set; }
     public string? CheckoutUrl { get; private set; }
     public bool CanEdit { get; private set; }
     public bool CanServeFile { get; private set; }
@@ -144,6 +149,7 @@ public sealed class FileModel : PageModel
         CanOpenSettings = _management.CanAdminRepository(userId.Value, repo.Id);
         CanWrite = _access.GetAccess(userId.Value, repo.Id, Path) >= AccessLevel.Write;
         ViewRevision = rev;
+        await LoadIncomingSummaryAsync(repo.Id, userId.Value, cancellationToken);
 
         try
         {
@@ -322,6 +328,31 @@ public sealed class FileModel : PageModel
         }
 
         return Page();
+    }
+
+    private async Task LoadIncomingSummaryAsync(
+        Guid repositoryId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var summary = await _externalReferences.GetIncomingSummaryAsync(
+                userId,
+                repositoryId,
+                cancellationToken);
+            IncomingRepositoryCount = summary.RepositoryCount;
+            IncomingReferenceCount = summary.ReferenceCount;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            IncomingRepositoryCount = 0;
+            IncomingReferenceCount = 0;
+        }
     }
 
     private void ClearTextPreviewState()
