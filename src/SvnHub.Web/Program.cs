@@ -147,6 +147,7 @@ builder.Services.AddSingleton<RepositoryFileResponseService>();
 builder.Services.AddSingleton<IRepositoryIndexStore, SqliteRepositoryIndexStore>();
 builder.Services.AddSingleton<RepositoryIndexService>();
 builder.Services.AddSingleton<RepositoryIndexQueryService>();
+builder.Services.AddSingleton<RepositoryExternalReferenceService>();
 builder.Services.AddHostedService<AuthFilesStartupSyncService>();
 builder.Services.AddHostedService<RepositoryIndexHostedService>();
 

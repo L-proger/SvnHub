@@ -84,10 +84,15 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h1 class="mb-0">@Model.RepoName</h1>
-    @if (Model.CanOpenSettings)
-    {
-        <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
-    }
+    <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-sm btn-outline-secondary"
+           asp-page="/Repos/ExternalReferences"
+           asp-route-repoName="@Model.RepoName">Used by</a>
+        @if (Model.CanOpenSettings)
+        {
+            <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Settings" asp-route-repoName="@Model.RepoName">Settings</a>
+        }
+    </div>
 </div>
 <div class="text-muted">r@(Model.Revision)</div>
 

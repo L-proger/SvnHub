@@ -1,0 +1,210 @@
+@page "/repos/{repoName}/externals"
+@model SvnHub.Web.Pages.Repos.ExternalReferencesModel
+@{
+    ViewData["Title"] = $"{Model.RepoName} external references";
+}
+
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+    <div>
+        <h1 class="mb-1">External references</h1>
+        <div class="text-muted">Repositories that include paths from <strong>@Model.RepoName</strong> through <code>svn:externals</code>.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary"
+       asp-page="/Repos/Tree"
+       asp-route-repoName="@Model.RepoName">Back to repository</a>
+</div>
+
+<nav class="mt-3" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item">
+            <a asp-page="/Repos/Tree" asp-route-repoName="@Model.RepoName">@Model.RepoName</a>
+        </li>
+        <li class="breadcrumb-item active" aria-current="page">External references</li>
+    </ol>
+</nav>
+
+@if (Model.IncompleteRepositoryCount > 0)
+{
+    <div class="alert alert-warning mt-3 mb-0">
+        Results may be incomplete: external snapshots are missing or stale for
+        @Model.IncompleteRepositoryCount visible @(Model.IncompleteRepositoryCount == 1 ? "repository" : "repositories").
+    </div>
+}
+
+<form method="get" class="row g-2 align-items-end mt-2">
+    <div class="col-xl-4 col-md-6">
+        <label class="form-label" for="external-reference-search">Search</label>
+        <input id="external-reference-search"
+               class="form-control"
+               type="search"
+               name="q"
+               value="@Model.Query"
+               placeholder="Repository, path, or definition" />
+    </div>
+    <div class="col-xl-2 col-md-3">
+        <label class="form-label" for="target-branch">Target branch</label>
+        <select id="target-branch" name="targetBranch" class="form-select">
+            <option value="">All</option>
+            @foreach (var branch in Model.TargetBranchOptions)
+            {
+                <option value="@branch" selected="@(branch == Model.TargetBranch)">@branch</option>
+            }
+        </select>
+    </div>
+    <div class="col-xl-2 col-md-3">
+        <label class="form-label" for="source-branch">Source branch</label>
+        <select id="source-branch" name="sourceBranch" class="form-select">
+            <option value="">All</option>
+            @foreach (var branch in Model.SourceBranchOptions)
+            {
+                <option value="@branch" selected="@(branch == Model.SourceBranch)">@branch</option>
+            }
+        </select>
+    </div>
+    <div class="col-xl-2 col-md-3">
+        <label class="form-label" for="pinning">Pinning</label>
+        <select id="pinning" name="pinning" class="form-select">
+            <option value="">All</option>
+            <option value="pinned" selected="@(Model.Pinning == "pinned")">Pinned</option>
+            <option value="unpinned" selected="@(Model.Pinning == "unpinned")">Unpinned</option>
+        </select>
+    </div>
+    <div class="col-xl-1 col-md-3">
+        <label class="form-label" for="external-reference-page-size">Per page</label>
+        <select id="external-reference-page-size" name="pageSize" class="form-select">
+            @foreach (var pageSize in Model.PageSizeOptions)
+            {
+                <option value="@pageSize" selected="@(Model.PageSize == pageSize)">@pageSize</option>
+            }
+        </select>
+    </div>
+    <div class="col-xl-auto col-md-3 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Filter</button>
+        @if (Model.HasFilters)
+        {
+            <a class="btn btn-outline-secondary"
+               asp-page="/Repos/ExternalReferences"
+               asp-route-repoName="@Model.RepoName"
+               asp-route-pageSize="@Model.PageSize">Clear</a>
+        }
+    </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 mb-2">
+    <div class="text-muted">
+        Showing @Model.ShowingStart-@Model.ShowingEnd of @Model.TotalRows
+        @(Model.TotalRows == 1 ? "reference" : "references")
+    </div>
+    <div class="text-muted small">
+        @Model.TotalReferenceCount total from @Model.SourceRepositoryCount
+        @(Model.SourceRepositoryCount == 1 ? "repository" : "repositories")
+    </div>
+</div>
+
+@if (Model.Rows.Count == 0)
+{
+    <div class="border rounded p-4 text-center text-muted">
+        No incoming external references match the current filters.
+    </div>
+}
+else
+{
+    <div class="table-responsive border rounded">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Source repository</th>
+                <th>Declared at</th>
+                <th>Mounted at</th>
+                <th>Target</th>
+                <th>Pinning</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td>
+                        <a class="fw-semibold text-decoration-none"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@row.SourceRepositoryName">@row.SourceRepositoryName</a>
+                        <div class="text-muted small">@row.SourceBranch</div>
+                    </td>
+                    <td>
+                        <a class="font-monospace small text-decoration-none"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@row.SourceRepositoryName"
+                           asp-route-path="@RepositoryPath.ToRouteValue(row.SourceParentPath)">@row.SourceParentPath</a>
+                    </td>
+                    <td>
+                        <div class="font-monospace small">@row.MountedPath</div>
+                        <div class="text-muted small text-truncate" style="max-width: 24rem" title="@row.RawDefinition">
+                            @row.RawDefinition
+                        </div>
+                    </td>
+                    <td>
+                        <a class="font-monospace small text-decoration-none"
+                           asp-page="/Repos/Tree"
+                           asp-route-repoName="@Model.RepoName"
+                           asp-route-path="@RepositoryPath.ToRouteValue(row.TargetPath)"
+                           asp-route-rev="@row.NumericRevision">@row.TargetPath</a>
+                        <div class="text-muted small">@row.TargetBranch</div>
+                    </td>
+                    <td class="text-nowrap">
+                        @if (row.IsPinned)
+                        {
+                            <span class="badge text-bg-secondary">Pinned</span>
+                            @if (!string.IsNullOrWhiteSpace(row.Revision))
+                            {
+                                <div class="small mt-1"><code>-r @row.Revision</code></div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(row.PegRevision))
+                            {
+                                <div class="small"><code>@($"@{row.PegRevision}")</code></div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-warning">Unpinned</span>
+                            <div class="text-muted small mt-1">HEAD</div>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Model.TotalPages > 1)
+{
+    <nav class="mt-3" aria-label="External references pages">
+        <ul class="pagination pagination-sm justify-content-center mb-0">
+            <li class="page-item @(Model.PageNumber <= 1 ? "disabled" : null)">
+                <a class="page-link"
+                   asp-page="/Repos/ExternalReferences"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-q="@Model.Query"
+                   asp-route-targetBranch="@Model.TargetBranch"
+                   asp-route-sourceBranch="@Model.SourceBranch"
+                   asp-route-pinning="@Model.Pinning"
+                   asp-route-pageSize="@Model.PageSize"
+                   asp-route-p="@(Model.PageNumber - 1)">Previous</a>
+            </li>
+            <li class="page-item disabled">
+                <span class="page-link">Page @Model.PageNumber of @Model.TotalPages</span>
+            </li>
+            <li class="page-item @(Model.PageNumber >= Model.TotalPages ? "disabled" : null)">
+                <a class="page-link"
+                   asp-page="/Repos/ExternalReferences"
+                   asp-route-repoName="@Model.RepoName"
+                   asp-route-q="@Model.Query"
+                   asp-route-targetBranch="@Model.TargetBranch"
+                   asp-route-sourceBranch="@Model.SourceBranch"
+                   asp-route-pinning="@Model.Pinning"
+                   asp-route-pageSize="@Model.PageSize"
+                   asp-route-p="@(Model.PageNumber + 1)">Next</a>
+            </li>
+        </ul>
+    </nav>
+}

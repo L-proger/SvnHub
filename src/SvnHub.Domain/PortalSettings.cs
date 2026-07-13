@@ -19,6 +19,12 @@ public sealed record PortalSettings
     public string SvnBaseUrl { get; init; } = "";
 
     /// <summary>
+    /// Distinguishes an explicitly disabled public URL from an older configuration
+    /// that has not overridden the deployment default yet.
+    /// </summary>
+    public bool SvnBaseUrlConfigured { get; init; } = false;
+
+    /// <summary>
     /// Legacy or alternate SVN base URLs that should still be treated as internal SvnHub repository URLs.
     /// Used when resolving svn:externals.
     /// </summary>

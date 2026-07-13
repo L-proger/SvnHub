@@ -58,7 +58,8 @@ public sealed class SettingsService
 
     public string GetEffectiveSvnBaseUrl(PortalState state)
     {
-        if (!string.IsNullOrWhiteSpace(state.Settings.SvnBaseUrl))
+        if (state.Settings.SvnBaseUrlConfigured ||
+            !string.IsNullOrWhiteSpace(state.Settings.SvnBaseUrl))
         {
             return state.Settings.SvnBaseUrl;
         }
@@ -69,6 +70,11 @@ public sealed class SettingsService
     public IReadOnlyList<string> GetEffectiveSvnBaseUrls()
     {
         var state = _store.Read();
+        return GetEffectiveSvnBaseUrls(state);
+    }
+
+    public IReadOnlyList<string> GetEffectiveSvnBaseUrls(PortalState state)
+    {
         var urls = new List<string>
         {
             GetEffectiveSvnBaseUrl(state),
@@ -254,6 +260,7 @@ public sealed class SettingsService
             OrganizationName = normalizedOrganizationName,
             RepositoriesRootPath = normalized,
             SvnBaseUrl = normalizedSvnBaseUrl,
+            SvnBaseUrlConfigured = true,
             SvnBaseUrlAliases = normalizedSvnBaseUrlAliases,
             MaxUploadBytes = maxUploadBytes,
             IndexingEnabled = indexingEnabled,

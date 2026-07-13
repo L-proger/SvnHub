@@ -38,7 +38,7 @@
     <div class="mb-3">
         <label asp-for="Input.SvnBaseUrl" class="form-label"></label>
         <input asp-for="Input.SvnBaseUrl" class="form-control" placeholder="https://svn.example.com/svn" />
-        <div class="form-text">Used to build "Copy SVN URL" links for files and folders. Leave empty to disable.</div>
+        <div class="form-text">Used to build checkout and "Copy SVN URL" links. Leave empty to disable these links. A local F5 run does not host the SVN HTTP/DAV endpoint.</div>
         <span asp-validation-for="Input.SvnBaseUrl" class="text-danger"></span>
     </div>
 
