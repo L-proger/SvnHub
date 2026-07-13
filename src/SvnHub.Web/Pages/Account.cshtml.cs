@@ -27,6 +27,8 @@ public sealed class AccountModel : PageModel
 
     public string ThemeLabel { get; private set; } = "";
 
+    public string RepositoryOpenBehaviorLabel { get; private set; } = "";
+
     public IReadOnlyList<ApiToken> Tokens { get; private set; } = [];
 
     [BindProperty]
@@ -163,6 +165,34 @@ public sealed class AccountModel : PageModel
         return RedirectToLocal(returnUrl);
     }
 
+    public IActionResult OnPostChangeRepositoryOpenBehavior(string repositoryOpenBehavior)
+    {
+        if (!LoadAccount(out var userId))
+        {
+            return Forbid();
+        }
+
+        if (!Enum.TryParse<PortalRepositoryOpenBehavior>(
+                repositoryOpenBehavior,
+                ignoreCase: true,
+                out var parsedBehavior) ||
+            !Enum.IsDefined(parsedBehavior))
+        {
+            Error = "Invalid repository open behavior.";
+            return RedirectToPage();
+        }
+
+        var result = _users.ChangeOwnRepositoryOpenBehavior(userId, parsedBehavior);
+        if (!result.Success)
+        {
+            Error = result.Error ?? "Failed to change repository open behavior.";
+            return RedirectToPage();
+        }
+
+        Success = $"Repository open behavior changed to {ToRepositoryOpenBehaviorLabel(parsedBehavior)}.";
+        return RedirectToPage();
+    }
+
     public IActionResult OnPostRevokeToken(Guid tokenId)
     {
         if (!LoadAccount(out var userId))
@@ -214,6 +244,7 @@ public sealed class AccountModel : PageModel
         CurrentUser = user;
         RolesLabel = ToRolesLabel(user.Roles);
         ThemeLabel = UserThemeAccessor.ToLabel(user.Theme);
+        RepositoryOpenBehaviorLabel = ToRepositoryOpenBehaviorLabel(user.RepositoryOpenBehavior);
         Tokens = _tokens.ListForUser(userId);
         return true;
     }
@@ -237,6 +268,13 @@ public sealed class AccountModel : PageModel
 
         return int.TryParse(value, out var days) && days is 30 or 90 or 365 ? days : -1;
     }
+
+    public static string ToRepositoryOpenBehaviorLabel(PortalRepositoryOpenBehavior behavior) =>
+        behavior switch
+        {
+            PortalRepositoryOpenBehavior.RepositoryRoot => "Repository root",
+            _ => "Trunk when available",
+        };
 
     private static string ToRolesLabel(PortalUserRoles roles)
     {

@@ -406,6 +406,47 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
         return await reader.ReadAsync(cancellationToken) ? ReadRepositoryState(reader) : null;
     }
 
+    public async Task DeleteRepositoryAsync(
+        Guid repositoryId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
+
+        var revisionCount = await CountByRepositoryAsync(
+            connection, transaction, "revisions", repositoryId, cancellationToken);
+        var changedPathCount = await CountByRepositoryAsync(
+            connection, transaction, "changed_paths", repositoryId, cancellationToken);
+        var headTreeEntryCount = await CountByRepositoryAsync(
+            connection, transaction, "head_tree_entries", repositoryId, cancellationToken);
+        var headPropertyCount = await CountByRepositoryAsync(
+            connection, transaction, "head_properties", repositoryId, cancellationToken);
+        var headExternalCount = await CountByRepositoryAsync(
+            connection, transaction, "head_externals", repositoryId, cancellationToken);
+
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "delete from index_repositories where repository_id = $repositoryId;",
+            [("$repositoryId", FormatGuid(repositoryId))],
+            cancellationToken);
+
+        await AdjustStatisticsAsync(
+            connection,
+            transaction,
+            -revisionCount,
+            -changedPathCount,
+            -headTreeEntryCount,
+            -headPropertyCount,
+            -headExternalCount,
+            cancellationToken);
+
+        transaction.Commit();
+    }
+
     public async Task MarkActiveRepositoriesAsync(
         IReadOnlyCollection<Guid> activeRepositoryIds,
         DateTimeOffset now,
@@ -1070,6 +1111,7 @@ public sealed class SqliteRepositoryIndexStore : IRepositoryIndexStore
             DataSource = _databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
+            ForeignKeys = true,
         };
         return new SqliteConnection(builder.ToString());
     }

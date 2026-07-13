@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SvnHub.App.Services;
+using SvnHub.Domain;
 
 namespace SvnHub.Web.Pages.Admin;
 
@@ -26,6 +27,13 @@ public sealed class UsersImportModel : PageModel
     public string? Error { get; private set; }
 
     public HtpasswdImportResult? Result { get; private set; }
+
+    public string ImportedRepositoryGrant =>
+        User?.IsInRole(PortalUserRoleExtensions.RepoWriteClaim) ?? false
+            ? PortalUserRoleExtensions.RepoWriteClaim
+            : User?.IsInRole(PortalUserRoleExtensions.RepoReadClaim) ?? false
+                ? PortalUserRoleExtensions.RepoReadClaim
+                : "no inherited repository access";
 
     public void OnGet()
     {

@@ -1,6 +1,7 @@
 using SvnHub.App.Configuration;
 using SvnHub.App.Storage;
 using SvnHub.App.Support;
+using SvnHub.App.System;
 using SvnHub.Domain;
 
 namespace SvnHub.App.Services;
@@ -18,11 +19,13 @@ public sealed class SettingsService
 
     private readonly IPortalStore _store;
     private readonly SvnHubOptions _options;
+    private readonly IAuthFilesWriter _authFilesWriter;
 
-    public SettingsService(IPortalStore store, SvnHubOptions options)
+    public SettingsService(IPortalStore store, SvnHubOptions options, IAuthFilesWriter authFilesWriter)
     {
         _store = store;
         _options = options;
+        _authFilesWriter = authFilesWriter;
     }
 
     public string GetEffectiveRepositoriesRootPath()
@@ -223,6 +226,29 @@ public sealed class SettingsService
                 $"Index batch size must be between {MinIndexingMaxRevisionsPerRepositoryPerScan} and {MaxIndexingMaxRevisionsPerRepositoryPerScan} revisions (0 means unlimited).");
         }
 
+        var previousRoot = GetEffectiveRepositoriesRootPath(state);
+        var rootChanged = !PathEquals(previousRoot, normalized);
+        var now = DateTimeOffset.UtcNow;
+        var repositories = rootChanged
+            ? state.Repositories.Select(repository =>
+            {
+                if (repository.IsArchived || IsPathInsideRoot(repository.LocalPath, normalized))
+                {
+                    return repository;
+                }
+
+                return repository with
+                {
+                    Availability = RepositoryAvailability.Missing,
+                    MissingSince = repository.MissingSince ?? now,
+                    AvailabilityDetails =
+                        "Repository registration has not been synchronized with the configured root.",
+                    DetectedPath = null,
+                    DetectedSvnUuid = null,
+                };
+            }).ToList()
+            : state.Repositories;
+
         var newSettings = state.Settings with
         {
             OrganizationName = normalizedOrganizationName,
@@ -238,6 +264,7 @@ public sealed class SettingsService
         var newState = state with
         {
             Settings = newSettings,
+            Repositories = repositories,
             AuditEvents =
             [
                 ..state.AuditEvents,
@@ -281,7 +308,19 @@ public sealed class SettingsService
         };
 
         _store.Write(newState);
-        await Task.CompletedTask;
+        if (rootChanged)
+        {
+            try
+            {
+                await _authFilesWriter.WriteAuthzAsync(newState, cancellationToken);
+                await _authFilesWriter.ReloadApacheAsync(cancellationToken);
+            }
+            catch
+            {
+                // Settings are durable; startup sync can retry authz generation.
+            }
+        }
+
         return OperationResult.Ok();
     }
 
@@ -351,6 +390,20 @@ public sealed class SettingsService
 
         var trimmed = organizationName.Trim();
         return trimmed.Length <= 80 ? trimmed : null;
+    }
+
+    private static bool PathEquals(string left, string right) =>
+        (OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .Equals(Path.GetFullPath(left), Path.GetFullPath(right));
+
+    private static bool IsPathInsideRoot(string path, string root)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return relative == "." ||
+            (!Path.IsPathRooted(relative) &&
+             !relative.Equals("..", StringComparison.Ordinal) &&
+             !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+             !relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal));
     }
 
     private static bool CanManageSystemSettings(PortalState state, Guid actorUserId) =>

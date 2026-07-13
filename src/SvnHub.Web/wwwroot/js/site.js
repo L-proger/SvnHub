@@ -441,6 +441,42 @@
     document.querySelectorAll('[data-label-editor]').forEach(initLabelEditor);
     initLocalDateTimes();
 
+    const registrationForm = document.querySelector('[data-forget-repository-registrations]');
+    if (registrationForm) {
+        const selectAll = document.querySelector('[data-repository-registration-select-all]');
+        const selections = Array.from(document.querySelectorAll('[data-repository-registration-select]'));
+        const submit = registrationForm.querySelector('[data-forget-repository-registrations-button]');
+
+        const updateRegistrationSelection = () => {
+            const selectedCount = selections.filter(checkbox => checkbox.checked).length;
+            submit.disabled = selectedCount === 0;
+            submit.textContent = selectedCount === 0
+                ? 'Forget selected'
+                : `Forget selected (${selectedCount})`;
+
+            selectAll.checked = selections.length > 0 && selectedCount === selections.length;
+            selectAll.indeterminate = selectedCount > 0 && selectedCount < selections.length;
+        };
+
+        selectAll.addEventListener('change', () => {
+            selections.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            updateRegistrationSelection();
+        });
+        selections.forEach(checkbox => checkbox.addEventListener('change', updateRegistrationSelection));
+
+        registrationForm.addEventListener('submit', event => {
+            const selectedCount = selections.filter(checkbox => checkbox.checked).length;
+            if (selectedCount === 0 || !window.confirm(
+                `Forget ${selectedCount} selected registration(s)? Labels, grants, and indexed metadata will be removed. Files on disk will not be touched.`)) {
+                event.preventDefault();
+            }
+        });
+
+        updateRegistrationSelection();
+    }
+
     // Run after the DOM is ready; site.js is loaded at the end of <body> so this is effectively immediate.
     highlightAllCode();
 })();

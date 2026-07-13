@@ -64,6 +64,10 @@
             <td>@Model.ThemeLabel</td>
         </tr>
         <tr>
+            <th scope="row">Repository open behavior</th>
+            <td>@Model.RepositoryOpenBehaviorLabel</td>
+        </tr>
+        <tr>
             <th scope="row">Created</th>
             <td>@Model.CurrentUser.CreatedAt.ToString("u")</td>
         </tr>
@@ -98,6 +102,22 @@
             </select>
         </div>
         <div class="col-md-7 mb-3"></div>
+        <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end">
+            <button class="btn btn-primary w-100" type="submit">Update</button>
+        </div>
+    </div>
+</form>
+
+<form method="post" asp-page-handler="ChangeRepositoryOpenBehavior" class="mt-2" autocomplete="off">
+    <div class="row">
+        <div class="col-md-5 mb-3">
+            <label class="form-label" for="repositoryOpenBehavior">Repository open behavior</label>
+            <select id="repositoryOpenBehavior" name="repositoryOpenBehavior" class="form-select">
+                <option value="TrunkWhenAvailable" selected="@(Model.CurrentUser.RepositoryOpenBehavior == PortalRepositoryOpenBehavior.TrunkWhenAvailable ? "selected" : null)">Open trunk when available</option>
+                <option value="RepositoryRoot" selected="@(Model.CurrentUser.RepositoryOpenBehavior == PortalRepositoryOpenBehavior.RepositoryRoot ? "selected" : null)">Open repository root</option>
+            </select>
+        </div>
+        <div class="col-md-5 mb-3"></div>
         <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end">
             <button class="btn btn-primary w-100" type="submit">Update</button>
         </div>

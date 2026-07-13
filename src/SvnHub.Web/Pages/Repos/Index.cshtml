@@ -2,6 +2,7 @@
 @model SvnHub.Web.Pages.Repos.IndexModel
 @inject SvnHub.Web.Support.MaterialFileIconService FileIcons
 @using SvnHub.App.Support
+@using SvnHub.Domain
 @{
     ViewData["Title"] = "Repositories";
 }
@@ -13,12 +14,12 @@
         <div class="d-flex gap-2 ms-auto">
             @if (User?.IsInRole("admin.system") ?? false)
             {
-                <form method="post" asp-page-handler="Discover" class="d-inline">
+                <form method="post" asp-page-handler="Synchronize" class="d-inline">
                     <input type="hidden" name="p" value="@Model.PageNumber" />
                     <input type="hidden" name="pageSize" value="@Model.PageSize" />
                     <input type="hidden" name="q" value="@Model.SearchQuery" />
                     <input type="hidden" name="labels" value="@Model.LabelsFilter" />
-                    <button class="btn btn-outline-secondary" type="submit">Discover</button>
+                    <button class="btn btn-outline-secondary" type="submit">Synchronize</button>
                 </form>
             }
             @if (User?.IsInRole("repo.create") ?? false)
@@ -94,6 +95,123 @@
     <div class="alert alert-info mt-3">@Model.Message</div>
 }
 
+@if (Model.UnavailableRegistrations.Count > 0)
+{
+    <details class="alert alert-warning mt-3 mb-0" open>
+        <summary class="fw-semibold">
+            @Model.UnavailableRegistrationCount repository registration(s) need attention
+        </summary>
+        <p class="small mt-2 mb-3">
+            Missing registrations are hidden from users and excluded from SVN authorization output.
+            Synchronize again after restoring storage, or forget a registration to remove only SvnHub metadata.
+        </p>
+        @if (Model.UnavailableRegistrationCount > Model.UnavailableRegistrations.Count)
+        {
+            <p class="small mb-3">
+                Showing the first @Model.UnavailableRegistrations.Count entries, with conflicts first.
+                More entries will appear as these are resolved.
+            </p>
+        }
+        <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="select-all-unavailable"
+                       data-repository-registration-select-all />
+                <label class="form-check-label" for="select-all-unavailable">Select all shown</label>
+            </div>
+            <form id="forget-repository-registrations" method="post"
+                  asp-page-handler="ForgetRegistrations"
+                  data-forget-repository-registrations>
+                <input type="hidden" name="p" value="@Model.PageNumber" />
+                <input type="hidden" name="pageSize" value="@Model.PageSize" />
+                <input type="hidden" name="q" value="@Model.SearchQuery" />
+                <input type="hidden" name="labels" value="@Model.LabelsFilter" />
+                <button class="btn btn-sm btn-outline-danger" type="submit"
+                        data-forget-repository-registrations-button disabled>
+                    Forget selected
+                </button>
+            </form>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 2.5rem"><span class="visually-hidden">Select</span></th>
+                        <th>Repository</th>
+                        <th>Status</th>
+                        <th>Registered location</th>
+                        <th>Detected location</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var repository in Model.UnavailableRegistrations)
+                    {
+                        <tr>
+                            <td class="text-center">
+                                <input class="form-check-input" type="checkbox"
+                                       name="repositoryIds" value="@repository.Id"
+                                       form="forget-repository-registrations"
+                                       aria-label="Select @repository.Name"
+                                       data-repository-registration-select />
+                            </td>
+                            <td>
+                                <div class="fw-semibold">@repository.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(repository.SvnUuid))
+                                {
+                                    <div class="small text-muted font-monospace">@repository.SvnUuid</div>
+                                }
+                            </td>
+                            <td>
+                                @if (repository.Availability == RepositoryAvailability.Conflict)
+                                {
+                                    <span class="badge text-bg-danger">Conflict</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-warning">Missing</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(repository.AvailabilityDetails))
+                                {
+                                    <div class="small mt-1">@repository.AvailabilityDetails</div>
+                                }
+                            </td>
+                            <td class="small font-monospace text-break">@repository.LocalPath</td>
+                            <td class="small font-monospace text-break">
+                                @if (!string.IsNullOrWhiteSpace(repository.DetectedPath))
+                                {
+                                    <div>@repository.DetectedPath</div>
+                                    <div class="text-muted">@repository.DetectedSvnUuid</div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="d-flex justify-content-end gap-2 flex-wrap">
+                                    @if (repository.Availability == RepositoryAvailability.Conflict &&
+                                         !string.IsNullOrWhiteSpace(repository.DetectedPath))
+                                    {
+                                        <form method="post" asp-page-handler="AdoptDetectedRepository"
+                                              onsubmit="return confirm('Adopt the detected SVN repository and keep the existing labels and grants?');">
+                                            <input type="hidden" name="repositoryId" value="@repository.Id" />
+                                            <input type="hidden" name="p" value="@Model.PageNumber" />
+                                            <input type="hidden" name="pageSize" value="@Model.PageSize" />
+                                            <input type="hidden" name="q" value="@Model.SearchQuery" />
+                                            <input type="hidden" name="labels" value="@Model.LabelsFilter" />
+                                            <button class="btn btn-sm btn-warning" type="submit">Adopt detected</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </details>
+}
+
 @if (Model.TotalCount > 0)
 {
     <div class="text-muted small mt-3">
@@ -111,6 +229,7 @@
         var repositoryIconHref = FileIcons.GetRepositoryIconHref();
         var labels = RepositoryLabels.Normalize(r.Labels);
         var canBrowse = Model.BrowseableRepositoryIds.Contains(r.Id);
+        var defaultPath = Model.OpenTrunkWhenAvailable ? "true" : null;
 
         <div class="list-group-item">
             <div class="d-flex align-items-start justify-content-between gap-3">
@@ -130,7 +249,7 @@
                         {
                             <a asp-page="/Repos/Tree"
                                asp-route-repoName="@r.Name"
-                               asp-route-defaultPath="true"
+                               asp-route-defaultPath="@defaultPath"
                                class="repo-name link-primary link-offset-2 link-underline-opacity-0 link-underline-opacity-100-hover">
                                 @r.Name
                             </a>

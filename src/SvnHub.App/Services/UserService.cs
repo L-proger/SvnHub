@@ -9,6 +9,19 @@ namespace SvnHub.App.Services;
 
 public sealed class UserService
 {
+    private const PortalUserRoles DelegableRepositoryRoles =
+        PortalUserRoles.RepoRead |
+        PortalUserRoles.RepoWrite |
+        PortalUserRoles.RepoAdmin |
+        PortalUserRoles.RepoCreate;
+
+    private const PortalUserRoles KnownRoles =
+        DelegableRepositoryRoles |
+        PortalUserRoles.AdminUsers |
+        PortalUserRoles.AdminSystem |
+        PortalUserRoles.RepoHooks |
+        PortalUserRoles.Owner;
+
     private readonly IPortalStore _store;
     private readonly IHtpasswdService _htpasswd;
     private readonly IAuthFilesWriter _authFilesWriter;
@@ -124,9 +137,12 @@ public sealed class UserService
             return OperationResult<PortalUser>.Fail("You don't have permission to create users.");
         }
 
-        if (roles.HasAnyAdminRole() && !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        var assignableRoles = GetAssignableRoles(actor);
+        if ((roles & ~KnownRoles) != PortalUserRoles.None ||
+            (roles & ~assignableRoles) != PortalUserRoles.None)
         {
-            return OperationResult<PortalUser>.Fail("Only an Owner can assign administrator roles.");
+            return OperationResult<PortalUser>.Fail(
+                "You can only assign repository grants that you hold. Administrative roles and repo.hooks require an Owner.");
         }
 
         if (state.Users.Any(u => string.Equals(u.UserName, userName, StringComparison.OrdinalIgnoreCase)))
@@ -200,6 +216,8 @@ public sealed class UserService
             return OperationResult<HtpasswdImportResult>.Fail("You don't have permission to import users.");
         }
 
+        var importedUserRoles = GetDefaultContentGrant(actor);
+
         if (string.IsNullOrWhiteSpace(htpasswdContent))
         {
             return OperationResult<HtpasswdImportResult>.Fail("Import file is empty.");
@@ -268,7 +286,7 @@ public sealed class UserService
                 UiPasswordHash: "imported:htpasswd",
                 SvnBcryptHash: hash,
                 IsActive: true,
-                Roles: PortalUserRoles.RepoWrite,
+                Roles: importedUserRoles,
                 CreatedAt: DateTimeOffset.UtcNow)
             {
                 RequiresUiPasswordMigration = true,
@@ -532,6 +550,50 @@ public sealed class UserService
         return OperationResult<PortalUser>.Ok(updated);
     }
 
+    public OperationResult<PortalUser> ChangeOwnRepositoryOpenBehavior(
+        Guid userId,
+        PortalRepositoryOpenBehavior behavior)
+    {
+        if (!Enum.IsDefined(behavior))
+        {
+            return OperationResult<PortalUser>.Fail("Invalid repository open behavior.");
+        }
+
+        var state = _store.Read();
+        var user = GetActiveUser(state, userId);
+        if (user is null)
+        {
+            return OperationResult<PortalUser>.Fail("User not found.");
+        }
+
+        if (user.RepositoryOpenBehavior == behavior)
+        {
+            return OperationResult<PortalUser>.Ok(user);
+        }
+
+        var updated = user with { RepositoryOpenBehavior = behavior };
+        var newState = state with
+        {
+            Users = state.Users.Select(u => u.Id == userId ? updated : u).ToList(),
+            AuditEvents =
+            [
+                ..state.AuditEvents,
+                new AuditEvent(
+                    Id: Guid.NewGuid(),
+                    CreatedAt: DateTimeOffset.UtcNow,
+                    ActorUserId: userId,
+                    Action: "user.change_repository_open_behavior",
+                    Target: user.UserName,
+                    Success: true,
+                    Details: behavior.ToString()
+                ),
+            ],
+        };
+
+        _store.Write(newState);
+        return OperationResult<PortalUser>.Ok(updated);
+    }
+
     public async Task<OperationResult> DeleteUserAsync(
         Guid actorUserId,
         Guid userId,
@@ -624,9 +686,9 @@ public sealed class UserService
     {
         var state = _store.Read();
         var actor = GetActiveUser(state, actorUserId);
-        if (actor is null || !actor.Roles.HasFlag(PortalUserRoles.Owner))
+        if (actor is null || !actor.Roles.HasEffectiveRole(PortalUserRoles.AdminUsers))
         {
-            return OperationResult<PortalUser>.Fail("Only an Owner can change administrator roles.");
+            return OperationResult<PortalUser>.Fail("You don't have permission to change user grants.");
         }
 
         var user = state.Users.FirstOrDefault(u => u.Id == userId);
@@ -638,6 +700,25 @@ public sealed class UserService
         if (!user.IsActive)
         {
             return OperationResult<PortalUser>.Fail("User is inactive.");
+        }
+
+        if ((newRoles & ~KnownRoles) != PortalUserRoles.None)
+        {
+            return OperationResult<PortalUser>.Fail("Unsupported user role.");
+        }
+
+        var actorIsOwner = actor.Roles.HasFlag(PortalUserRoles.Owner);
+        if (user.Roles.HasFlag(PortalUserRoles.Owner) && !actorIsOwner)
+        {
+            return OperationResult<PortalUser>.Fail("Only an Owner can change grants for an Owner user.");
+        }
+
+        var changedRoles = user.Roles ^ newRoles;
+        var assignableRoles = GetAssignableRoles(actor);
+        if ((changedRoles & ~assignableRoles) != PortalUserRoles.None)
+        {
+            return OperationResult<PortalUser>.Fail(
+                "You can only change repository grants that you hold. Administrative roles and repo.hooks require an Owner.");
         }
 
         if (user.Roles == newRoles)
@@ -692,6 +773,33 @@ public sealed class UserService
 
     private static PortalUser? GetActiveUser(PortalState state, Guid userId) =>
         state.Users.FirstOrDefault(u => u.Id == userId && u.IsActive);
+
+    private static PortalUserRoles GetAssignableRoles(PortalUser actor)
+    {
+        if (actor.Roles.HasFlag(PortalUserRoles.Owner))
+        {
+            return KnownRoles;
+        }
+
+        var roles = PortalUserRoles.None;
+        if (actor.Roles.HasGlobalRepositoryRead()) roles |= PortalUserRoles.RepoRead;
+        if (actor.Roles.HasGlobalRepositoryWrite()) roles |= PortalUserRoles.RepoWrite;
+        if (actor.Roles.HasGlobalRepositoryAdmin()) roles |= PortalUserRoles.RepoAdmin;
+        if (actor.Roles.CanCreateRepositories()) roles |= PortalUserRoles.RepoCreate;
+        return roles;
+    }
+
+    private static PortalUserRoles GetDefaultContentGrant(PortalUser actor)
+    {
+        if (actor.Roles.HasGlobalRepositoryWrite())
+        {
+            return PortalUserRoles.RepoWrite;
+        }
+
+        return actor.Roles.HasGlobalRepositoryRead()
+            ? PortalUserRoles.RepoRead
+            : PortalUserRoles.None;
+    }
 
     private static bool IsSupportedBcryptHash(string value) =>
         BcryptHtpasswdHashRegex.IsMatch(value);

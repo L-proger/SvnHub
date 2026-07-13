@@ -22,6 +22,16 @@ public sealed class UserModel : PageModel
 
     public bool CanAssignRoles { get; private set; }
 
+    public bool CanAssignAdministrativeRoles { get; private set; }
+
+    public bool CanAssignRepoRead { get; private set; }
+
+    public bool CanAssignRepoWrite { get; private set; }
+
+    public bool CanAssignRepoAdmin { get; private set; }
+
+    public bool CanAssignRepoCreate { get; private set; }
+
     public bool CanChangePassword { get; private set; }
 
     public bool CanDelete { get; private set; }
@@ -77,15 +87,15 @@ public sealed class UserModel : PageModel
             return Forbid();
         }
 
-        var newRoles = PortalUserRoles.None;
-        if (RolesInput.Owner) newRoles |= PortalUserRoles.Owner;
-        if (RolesInput.AdminUsers) newRoles |= PortalUserRoles.AdminUsers;
-        if (RolesInput.RepoAdmin) newRoles |= PortalUserRoles.RepoAdmin;
-        if (RolesInput.RepoRead) newRoles |= PortalUserRoles.RepoRead;
-        if (RolesInput.RepoWrite) newRoles |= PortalUserRoles.RepoWrite;
-        if (RolesInput.AdminSystem) newRoles |= PortalUserRoles.AdminSystem;
-        if (RolesInput.RepoHooks) newRoles |= PortalUserRoles.RepoHooks;
-        if (RolesInput.RepoCreate) newRoles |= PortalUserRoles.RepoCreate;
+        var newRoles = TargetUser!.Roles;
+        SetRole(ref newRoles, PortalUserRoles.RepoRead, RolesInput.RepoRead, CanAssignRepoRead);
+        SetRole(ref newRoles, PortalUserRoles.RepoWrite, RolesInput.RepoWrite, CanAssignRepoWrite);
+        SetRole(ref newRoles, PortalUserRoles.RepoAdmin, RolesInput.RepoAdmin, CanAssignRepoAdmin);
+        SetRole(ref newRoles, PortalUserRoles.RepoCreate, RolesInput.RepoCreate, CanAssignRepoCreate);
+        SetRole(ref newRoles, PortalUserRoles.Owner, RolesInput.Owner, CanAssignAdministrativeRoles);
+        SetRole(ref newRoles, PortalUserRoles.AdminUsers, RolesInput.AdminUsers, CanAssignAdministrativeRoles);
+        SetRole(ref newRoles, PortalUserRoles.AdminSystem, RolesInput.AdminSystem, CanAssignAdministrativeRoles);
+        SetRole(ref newRoles, PortalUserRoles.RepoHooks, RolesInput.RepoHooks, CanAssignAdministrativeRoles);
 
         var result = await _users.ChangeRolesAsync(actorId, userId, newRoles, cancellationToken);
         if (!result.Success)
@@ -205,13 +215,39 @@ public sealed class UserModel : PageModel
 
         var isOwner = User?.IsInRole(PortalUserRoleExtensions.OwnerClaim) ?? false;
         var isUserAdmin = User?.IsInRole(PortalUserRoleExtensions.AdminUsersClaim) ?? false;
+        var targetIsOwner = user.Roles.HasFlag(PortalUserRoles.Owner);
+        var canDelegateRepositoryGrants = isUserAdmin && !targetIsOwner;
         var isSelf = Guid.TryParse(User?.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId) &&
             actorId == user.Id;
 
-        CanAssignRoles = isOwner;
+        CanAssignAdministrativeRoles = isOwner;
+        CanAssignRepoRead = isOwner ||
+            (canDelegateRepositoryGrants && (User?.IsInRole(PortalUserRoleExtensions.RepoReadClaim) ?? false));
+        CanAssignRepoWrite = isOwner ||
+            (canDelegateRepositoryGrants && (User?.IsInRole(PortalUserRoleExtensions.RepoWriteClaim) ?? false));
+        CanAssignRepoAdmin = isOwner ||
+            (canDelegateRepositoryGrants && (User?.IsInRole(PortalUserRoleExtensions.RepoAdminClaim) ?? false));
+        CanAssignRepoCreate = isOwner ||
+            (canDelegateRepositoryGrants && (User?.IsInRole(PortalUserRoleExtensions.RepoCreateClaim) ?? false));
+        CanAssignRoles = CanAssignAdministrativeRoles || CanAssignRepoRead || CanAssignRepoWrite ||
+            CanAssignRepoAdmin || CanAssignRepoCreate;
         CanDelete = !isSelf && (isOwner || (isUserAdmin && !user.Roles.HasFlag(PortalUserRoles.Owner)));
         CanChangePassword = isOwner || (isUserAdmin && !user.Roles.HasFlag(PortalUserRoles.Owner));
         return true;
+    }
+
+    private static void SetRole(
+        ref PortalUserRoles roles,
+        PortalUserRoles role,
+        bool enabled,
+        bool canAssign)
+    {
+        if (!canAssign)
+        {
+            return;
+        }
+
+        roles = enabled ? roles | role : roles & ~role;
     }
 
     public sealed class RolesInputModel

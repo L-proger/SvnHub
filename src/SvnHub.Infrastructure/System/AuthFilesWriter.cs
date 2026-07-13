@@ -198,7 +198,7 @@ public sealed class AuthFilesWriter : IAuthFilesWriter
             .GroupBy(r => r.RepositoryId)
             .ToDictionary(g => g.Key, g => g.ToArray());
 
-        foreach (var repo in state.Repositories.Where(r => !r.IsArchived).OrderBy(r => r.Name, StringComparer.Ordinal))
+        foreach (var repo in state.Repositories.Where(r => r.IsAvailable).OrderBy(r => r.Name, StringComparer.Ordinal))
         {
             var repoRules = rulesByRepository.GetValueOrDefault(repo.Id) ?? [];
             var paths = repoRules

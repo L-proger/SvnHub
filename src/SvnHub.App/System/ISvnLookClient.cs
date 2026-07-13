@@ -4,6 +4,8 @@ namespace SvnHub.App.System;
 
 public interface ISvnLookClient
 {
+    Task<string> GetRepositoryUuidAsync(string repoLocalPath, CancellationToken cancellationToken = default);
+
     Task<long> GetYoungestRevisionAsync(string repoLocalPath, CancellationToken cancellationToken = default);
 
     Task<DateTimeOffset> GetHeadChangedAtAsync(string repoLocalPath, CancellationToken cancellationToken = default);

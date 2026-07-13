@@ -31,7 +31,7 @@
     <div class="mb-3">
         <label asp-for="Input.RepositoriesRootPath" class="form-label"></label>
         <input asp-for="Input.RepositoriesRootPath" class="form-control" />
-        <div class="form-text">Used when creating new repositories.</div>
+        <div class="form-text">Used when creating and synchronizing repositories. Registrations outside a newly selected root are preserved as missing until reviewed; run <a asp-page="/Repos/Index">Synchronize</a> from the repository list.</div>
         <span asp-validation-for="Input.RepositoriesRootPath" class="text-danger"></span>
     </div>
 

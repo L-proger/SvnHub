@@ -339,17 +339,17 @@ public sealed class SettingsModel : PageModel
     {
         [StringLength(80)]
         [Display(Name = "Organization")]
-        public string OrganizationName { get; set; } = "";
+        public string? OrganizationName { get; set; }
 
         [Required]
         [Display(Name = "Repositories root path")]
         public string RepositoriesRootPath { get; set; } = "";
 
         [Display(Name = "SVN base URL")]
-        public string SvnBaseUrl { get; set; } = "";
+        public string? SvnBaseUrl { get; set; }
 
         [Display(Name = "SVN base URL aliases")]
-        public string SvnBaseUrlAliases { get; set; } = "";
+        public string? SvnBaseUrlAliases { get; set; }
 
         [Range(1, 2048)]
         [Display(Name = "Max upload size (MB)")]

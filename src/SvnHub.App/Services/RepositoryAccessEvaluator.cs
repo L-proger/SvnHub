@@ -13,7 +13,7 @@ public static class RepositoryAccessEvaluator
         }
 
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || repo.IsArchived)
+        if (repo is null || !repo.IsAvailable)
         {
             return AccessLevel.None;
         }

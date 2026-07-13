@@ -17,25 +17,32 @@ public sealed class IndexModel : PageModel
     private readonly AccessService _access;
     private readonly ISvnLookClient _svnlook;
     private readonly SettingsService _settings;
+    private readonly UserService _users;
 
     public IndexModel(
         RepositoryService repos,
         RepositoryManagementService management,
         AccessService access,
         ISvnLookClient svnlook,
-        SettingsService settings)
+        SettingsService settings,
+        UserService users)
     {
         _repos = repos;
         _management = management;
         _access = access;
         _svnlook = svnlook;
         _settings = settings;
+        _users = users;
     }
 
     [TempData]
     public string? Message { get; set; }
 
     public IReadOnlyList<Repository> Repositories { get; private set; } = [];
+
+    public IReadOnlyList<Repository> UnavailableRegistrations { get; private set; } = [];
+
+    public int UnavailableRegistrationCount { get; private set; }
 
     public int PageNumber { get; set; } = 1;
 
@@ -60,6 +67,8 @@ public sealed class IndexModel : PageModel
 
     public string SvnBaseUrl { get; private set; } = "";
 
+    public bool OpenTrunkWhenAvailable { get; private set; } = true;
+
     public string? GetCheckoutUrl(string repoName) => SvnCheckoutUrl.Build(SvnBaseUrl, repoName, "/");
 
     public async Task OnGetAsync(int p = 1, int? pageSize = null, string? q = null, string? labels = null, string? label = null)
@@ -72,11 +81,24 @@ public sealed class IndexModel : PageModel
         }
 
         SvnBaseUrl = _settings.GetEffectiveSvnBaseUrl();
+        OpenTrunkWhenAvailable = GetRepositoryOpenBehavior(userId.Value) ==
+            PortalRepositoryOpenBehavior.TrunkWhenAvailable;
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
         PageNumber = Math.Max(1, p);
         SearchQuery = NormalizeSearchQuery(q);
         SelectedLabels = ParseSelectedLabels(labels, label);
         LabelsFilter = SelectedLabels.Count == 0 ? null : string.Join(", ", SelectedLabels);
+
+        if (User?.IsInRole("admin.system") ?? false)
+        {
+            var unavailable = _repos.ListRegistrations()
+                .Where(repository => !repository.IsAvailable)
+                .OrderBy(repository => repository.Availability == RepositoryAvailability.Conflict ? 0 : 1)
+                .ThenBy(repository => repository.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            UnavailableRegistrationCount = unavailable.Length;
+            UnavailableRegistrations = unavailable.Take(50).ToArray();
+        }
 
         var browseable = new HashSet<Guid>();
         var manageable = new HashSet<Guid>();
@@ -149,7 +171,7 @@ public sealed class IndexModel : PageModel
         UpdatedAtByRepoName = await LoadUpdatedDatesAsync(Repositories, HttpContext.RequestAborted);
     }
 
-    public async Task<IActionResult> OnPostDiscoverAsync(int p = 1, int? pageSize = null, string? q = null, string? labels = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostSynchronizeAsync(int p = 1, int? pageSize = null, string? q = null, string? labels = null, CancellationToken cancellationToken = default)
     {
         if (!(User?.IsInRole("admin.system") ?? false))
         {
@@ -162,14 +184,76 @@ public sealed class IndexModel : PageModel
             return Forbid();
         }
 
-        var result = await _repos.DiscoverAsync(userId.Value, cancellationToken);
+        var result = await _repos.SynchronizeAsync(userId.Value, cancellationToken);
         if (!result.Success)
         {
-            Message = result.Error ?? "Discover failed.";
+            Message = result.Error ?? "Synchronization failed.";
             return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
         }
 
-        Message = result.Value == 0 ? "No new repositories found." : $"Discovered {result.Value} repository(ies).";
+        var summary = result.Value!;
+        Message =
+            $"Synchronized {summary.ScannedRepositories} repositories: " +
+            $"{summary.AddedRepositories} added, {summary.ReconnectedRepositories} reconnected, " +
+            $"{summary.MissingRepositories} missing, {summary.ConflictRepositories} conflicts" +
+            (summary.InspectionFailures > 0
+                ? $", {summary.InspectionFailures} could not be inspected and were left unchanged."
+                : ".");
+        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
+    }
+
+    public async Task<IActionResult> OnPostAdoptDetectedRepositoryAsync(
+        Guid repositoryId,
+        int p = 1,
+        int? pageSize = null,
+        string? q = null,
+        string? labels = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!(User?.IsInRole("admin.system") ?? false))
+        {
+            return Forbid();
+        }
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var result = await _repos.AdoptDetectedRepositoryAsync(userId.Value, repositoryId, cancellationToken);
+        Message = result.Success
+            ? "Detected repository adopted. Existing labels and grants were preserved."
+            : result.Error ?? "Failed to adopt repository.";
+        return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
+    }
+
+    public async Task<IActionResult> OnPostForgetRegistrationsAsync(
+        Guid[]? repositoryIds,
+        int p = 1,
+        int? pageSize = null,
+        string? q = null,
+        string? labels = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!(User?.IsInRole("admin.system") ?? false))
+        {
+            return Forbid();
+        }
+
+        var userId = AccessService.GetUserIdFromClaimsPrincipal(User);
+        if (userId is null)
+        {
+            return Forbid();
+        }
+
+        var result = await _repos.ForgetRegistrationsAsync(
+            userId.Value,
+            repositoryIds ?? [],
+            cancellationToken);
+        Message = result.Success
+            ? $"Forgot {result.Value} repository registration(s), including grants and indexed metadata. Files on disk were not touched."
+            : result.Error ?? "Failed to forget repository registrations.";
         return RedirectToPage(new { p, pageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize), q, labels });
     }
 
@@ -236,6 +320,12 @@ public sealed class IndexModel : PageModel
         return RepositoryLabels.TryParse(value, out var parsed, out _)
             ? parsed
             : [];
+    }
+
+    private PortalRepositoryOpenBehavior GetRepositoryOpenBehavior(Guid userId)
+    {
+        var user = _users.ListUsers().FirstOrDefault(u => u.Id == userId && u.IsActive);
+        return user?.RepositoryOpenBehavior ?? PortalRepositoryOpenBehavior.TrunkWhenAvailable;
     }
 
     private async Task<IReadOnlyDictionary<string, DateTimeOffset?>> LoadUpdatedDatesAsync(

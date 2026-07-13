@@ -31,6 +31,10 @@ public interface IRepositoryIndexStore
         Guid repositoryId,
         CancellationToken cancellationToken = default);
 
+    Task DeleteRepositoryAsync(
+        Guid repositoryId,
+        CancellationToken cancellationToken = default);
+
     Task MarkActiveRepositoriesAsync(
         IReadOnlyCollection<Guid> activeRepositoryIds,
         DateTimeOffset now,

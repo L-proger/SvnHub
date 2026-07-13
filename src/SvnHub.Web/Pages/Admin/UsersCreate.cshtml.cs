@@ -23,10 +23,25 @@ public sealed class UsersCreateModel : PageModel
 
     public string? Error { get; private set; }
 
-    public bool CanAssignRoles => User?.IsInRole(PortalUserRoleExtensions.OwnerClaim) ?? false;
+    public bool CanAssignAdministrativeRoles =>
+        User?.IsInRole(PortalUserRoleExtensions.OwnerClaim) ?? false;
+
+    public bool CanAssignRepoRead =>
+        User?.IsInRole(PortalUserRoleExtensions.RepoReadClaim) ?? false;
+
+    public bool CanAssignRepoWrite =>
+        User?.IsInRole(PortalUserRoleExtensions.RepoWriteClaim) ?? false;
+
+    public bool CanAssignRepoAdmin =>
+        User?.IsInRole(PortalUserRoleExtensions.RepoAdminClaim) ?? false;
+
+    public bool CanAssignRepoCreate =>
+        User?.IsInRole(PortalUserRoleExtensions.RepoCreateClaim) ?? false;
 
     public IActionResult OnGet()
     {
+        Input.RepoWrite = CanAssignRepoWrite;
+        Input.RepoRead = !CanAssignRepoWrite && CanAssignRepoRead;
         return Page();
     }
 
@@ -43,20 +58,16 @@ public sealed class UsersCreateModel : PageModel
         }
 
         var roles = PortalUserRoles.None;
-        if (CanAssignRoles)
+        if (CanAssignRepoRead && Input.RepoRead) roles |= PortalUserRoles.RepoRead;
+        if (CanAssignRepoWrite && Input.RepoWrite) roles |= PortalUserRoles.RepoWrite;
+        if (CanAssignRepoAdmin && Input.RepoAdmin) roles |= PortalUserRoles.RepoAdmin;
+        if (CanAssignRepoCreate && Input.RepoCreate) roles |= PortalUserRoles.RepoCreate;
+        if (CanAssignAdministrativeRoles)
         {
             if (Input.Owner) roles |= PortalUserRoles.Owner;
             if (Input.AdminUsers) roles |= PortalUserRoles.AdminUsers;
-            if (Input.RepoAdmin) roles |= PortalUserRoles.RepoAdmin;
-            if (Input.RepoRead) roles |= PortalUserRoles.RepoRead;
-            if (Input.RepoWrite) roles |= PortalUserRoles.RepoWrite;
             if (Input.AdminSystem) roles |= PortalUserRoles.AdminSystem;
             if (Input.RepoHooks) roles |= PortalUserRoles.RepoHooks;
-            if (Input.RepoCreate) roles |= PortalUserRoles.RepoCreate;
-        }
-        else
-        {
-            roles |= PortalUserRoles.RepoWrite;
         }
 
         var result = await _users.CreateUserAsync(actorId, Input.UserName, Input.Password, roles, cancellationToken);
@@ -87,10 +98,10 @@ public sealed class UsersCreateModel : PageModel
         public bool RepoCreate { get; set; }
 
         [Display(Name = "repo.read")]
-        public bool RepoRead { get; set; } = false;
+        public bool RepoRead { get; set; }
 
         [Display(Name = "repo.write")]
-        public bool RepoWrite { get; set; } = true;
+        public bool RepoWrite { get; set; }
 
         [Display(Name = "admin.system")]
         public bool AdminSystem { get; set; }

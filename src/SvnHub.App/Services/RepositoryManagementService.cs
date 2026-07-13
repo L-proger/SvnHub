@@ -39,7 +39,7 @@ public sealed class RepositoryManagementService
     {
         var state = _store.Read();
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || repo.IsArchived || !repo.IncludeInheritedManagementGrants)
+        if (repo is null || !repo.IsAvailable || !repo.IncludeInheritedManagementGrants)
         {
             return false;
         }
@@ -97,7 +97,7 @@ public sealed class RepositoryManagementService
         cancellationToken.ThrowIfCancellationRequested();
 
         var state = _store.Read();
-        if (state.Repositories.All(r => r.Id != repositoryId || r.IsArchived))
+        if (state.Repositories.All(r => r.Id != repositoryId || !r.IsAvailable))
         {
             return OperationResult<RepositoryManagementGrant>.Fail("Repository not found.");
         }

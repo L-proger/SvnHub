@@ -15,5 +15,9 @@ public sealed record PortalUser(
     [JsonConverter(typeof(JsonStringEnumConverter<PortalUserTheme>))]
     public PortalUserTheme Theme { get; init; } = PortalUserTheme.System;
 
+    [JsonConverter(typeof(JsonStringEnumConverter<PortalRepositoryOpenBehavior>))]
+    public PortalRepositoryOpenBehavior RepositoryOpenBehavior { get; init; } =
+        PortalRepositoryOpenBehavior.TrunkWhenAvailable;
+
     public bool RequiresUiPasswordMigration { get; init; }
 }

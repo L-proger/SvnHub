@@ -39,7 +39,7 @@ public sealed class PermissionService
         }
 
         var state = _store.Read();
-        if (state.Repositories.All(r => r.Id != repositoryId))
+        if (state.Repositories.All(r => r.Id != repositoryId || !r.IsAvailable))
         {
             return OperationResult<PermissionRule>.Fail("Repository not found.");
         }

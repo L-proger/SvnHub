@@ -43,7 +43,8 @@
             <p class="text-muted">
                 Import users from an Apache htpasswd file. Only bcrypt hashes
                 (<code>$2y$</code>, <code>$2a$</code>, <code>$2b$</code>) are accepted.
-                Existing users are skipped. Imported users receive regular user access and no administrator roles.
+                Existing users are skipped. Imported users receive
+                <code>@Model.ImportedRepositoryGrant</code> and no administrative roles.
             </p>
 
             <div class="mb-3">

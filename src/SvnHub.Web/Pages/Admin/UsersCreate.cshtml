@@ -23,10 +23,42 @@
             <input asp-for="Input.Password" type="password" class="form-control" />
             <span asp-validation-for="Input.Password" class="text-danger"></span>
         </div>
-        @if (Model.CanAssignRoles)
-        {
-            <div class="col-md-4 mb-3">
-                <label class="form-label">Roles</label>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Repository grants</label>
+            <div class="d-flex flex-wrap gap-3">
+                @if (Model.CanAssignRepoRead)
+                {
+                    <div class="form-check">
+                        <input asp-for="Input.RepoRead" class="form-check-input" />
+                        <label asp-for="Input.RepoRead" class="form-check-label"></label>
+                    </div>
+                }
+                @if (Model.CanAssignRepoWrite)
+                {
+                    <div class="form-check">
+                        <input asp-for="Input.RepoWrite" class="form-check-input" />
+                        <label asp-for="Input.RepoWrite" class="form-check-label"></label>
+                    </div>
+                }
+                @if (Model.CanAssignRepoAdmin)
+                {
+                    <div class="form-check">
+                        <input asp-for="Input.RepoAdmin" class="form-check-input" />
+                        <label asp-for="Input.RepoAdmin" class="form-check-label"></label>
+                    </div>
+                }
+                @if (Model.CanAssignRepoCreate)
+                {
+                    <div class="form-check">
+                        <input asp-for="Input.RepoCreate" class="form-check-input" />
+                        <label asp-for="Input.RepoCreate" class="form-check-label"></label>
+                    </div>
+                }
+            </div>
+            <div class="form-text">You can delegate only repository grants that you hold yourself.</div>
+            @if (Model.CanAssignAdministrativeRoles)
+            {
+                <label class="form-label mt-3">Administrative roles</label>
                 <div class="d-flex flex-wrap gap-3">
                     <div class="form-check">
                         <input asp-for="Input.Owner" class="form-check-input" />
@@ -37,22 +69,6 @@
                         <label asp-for="Input.AdminUsers" class="form-check-label"></label>
                     </div>
                     <div class="form-check">
-                        <input asp-for="Input.RepoRead" class="form-check-input" />
-                        <label asp-for="Input.RepoRead" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="Input.RepoWrite" class="form-check-input" />
-                        <label asp-for="Input.RepoWrite" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="Input.RepoAdmin" class="form-check-input" />
-                        <label asp-for="Input.RepoAdmin" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="Input.RepoCreate" class="form-check-input" />
-                        <label asp-for="Input.RepoCreate" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
                         <input asp-for="Input.AdminSystem" class="form-check-input" />
                         <label asp-for="Input.AdminSystem" class="form-check-label"></label>
                     </div>
@@ -61,9 +77,9 @@
                         <label asp-for="Input.RepoHooks" class="form-check-label"></label>
                     </div>
                 </div>
-                <div class="form-text">Use repo.write for regular developers, repo.read for read-only service accounts, repo.admin/repo.create for repository administration, and repo.hooks for Owner-approved hook editing.</div>
-            </div>
-        }
+                <div class="form-text">Only Owners can assign administrative roles and repo.hooks.</div>
+            }
+        </div>
     </div>
 
     <div class="d-flex justify-content-end gap-2">

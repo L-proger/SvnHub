@@ -19,6 +19,26 @@ public sealed class SvnLookClient : ISvnLookClient
         _options = options;
     }
 
+    public async Task<string> GetRepositoryUuidAsync(
+        string repoLocalPath,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunAsync(_options.SvnlookCommand, ["uuid", repoLocalPath], cancellationToken);
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"svnlook uuid failed (exit {result.ExitCode}): {result.StandardError}".Trim());
+        }
+
+        var uuid = result.StandardOutput.Trim();
+        if (!Guid.TryParse(uuid, out var parsed))
+        {
+            throw new InvalidOperationException($"Unexpected svnlook uuid output: {uuid}");
+        }
+
+        return parsed.ToString("D");
+    }
+
     public async Task<long> GetYoungestRevisionAsync(string repoLocalPath, CancellationToken cancellationToken = default)
     {
         var result = await _runner.RunAsync(_options.SvnlookCommand, ["youngest", repoLocalPath], cancellationToken);

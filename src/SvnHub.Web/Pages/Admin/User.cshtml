@@ -42,47 +42,66 @@
 
 @if (Model.CanAssignRoles)
 {
-    <h2>Roles</h2>
+    <h2>Access</h2>
     <form method="post" asp-page-handler="ChangeRoles" class="mt-2">
         <input type="hidden" name="userId" value="@Model.TargetUser.Id" />
         <div class="row">
             <div class="col-md-8 mb-3">
-                <label class="form-label">Roles</label>
+                <label class="form-label">Repository grants</label>
                 <div class="d-flex flex-wrap gap-3">
-                    <div class="form-check">
-                        <input asp-for="RolesInput.Owner" class="form-check-input" />
-                        <label asp-for="RolesInput.Owner" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.AdminUsers" class="form-check-input" />
-                        <label asp-for="RolesInput.AdminUsers" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.RepoRead" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoRead" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.RepoWrite" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoWrite" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.RepoAdmin" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoAdmin" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.RepoCreate" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoCreate" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.AdminSystem" class="form-check-input" />
-                        <label asp-for="RolesInput.AdminSystem" class="form-check-label"></label>
-                    </div>
-                    <div class="form-check">
-                        <input asp-for="RolesInput.RepoHooks" class="form-check-input" />
-                        <label asp-for="RolesInput.RepoHooks" class="form-check-label"></label>
-                    </div>
+                    @if (Model.CanAssignRepoRead)
+                    {
+                        <div class="form-check">
+                            <input asp-for="RolesInput.RepoRead" class="form-check-input" />
+                            <label asp-for="RolesInput.RepoRead" class="form-check-label"></label>
+                        </div>
+                    }
+                    @if (Model.CanAssignRepoWrite)
+                    {
+                        <div class="form-check">
+                            <input asp-for="RolesInput.RepoWrite" class="form-check-input" />
+                            <label asp-for="RolesInput.RepoWrite" class="form-check-label"></label>
+                        </div>
+                    }
+                    @if (Model.CanAssignRepoAdmin)
+                    {
+                        <div class="form-check">
+                            <input asp-for="RolesInput.RepoAdmin" class="form-check-input" />
+                            <label asp-for="RolesInput.RepoAdmin" class="form-check-label"></label>
+                        </div>
+                    }
+                    @if (Model.CanAssignRepoCreate)
+                    {
+                        <div class="form-check">
+                            <input asp-for="RolesInput.RepoCreate" class="form-check-input" />
+                            <label asp-for="RolesInput.RepoCreate" class="form-check-label"></label>
+                        </div>
+                    }
                 </div>
-                <div class="form-text">repo.hooks allows hook editing only together with repository Admin access. Only Owners can assign it.</div>
+                <div class="form-text">User administrators can delegate only repository grants that they hold themselves.</div>
+                @if (Model.CanAssignAdministrativeRoles)
+                {
+                    <label class="form-label mt-3">Administrative roles</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input asp-for="RolesInput.Owner" class="form-check-input" />
+                            <label asp-for="RolesInput.Owner" class="form-check-label"></label>
+                        </div>
+                        <div class="form-check">
+                            <input asp-for="RolesInput.AdminUsers" class="form-check-input" />
+                            <label asp-for="RolesInput.AdminUsers" class="form-check-label"></label>
+                        </div>
+                        <div class="form-check">
+                            <input asp-for="RolesInput.AdminSystem" class="form-check-input" />
+                            <label asp-for="RolesInput.AdminSystem" class="form-check-label"></label>
+                        </div>
+                        <div class="form-check">
+                            <input asp-for="RolesInput.RepoHooks" class="form-check-input" />
+                            <label asp-for="RolesInput.RepoHooks" class="form-check-label"></label>
+                        </div>
+                    </div>
+                    <div class="form-text">Only Owners can assign administrative roles and repo.hooks.</div>
+                }
             </div>
             <div class="col-md-2 mb-3 d-flex align-items-end justify-content-md-end ms-md-auto">
                 <button class="btn btn-primary w-100" type="submit">Update</button>

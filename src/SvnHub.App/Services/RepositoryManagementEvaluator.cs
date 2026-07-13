@@ -13,7 +13,7 @@ public static class RepositoryManagementEvaluator
         }
 
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || repo.IsArchived)
+        if (repo is null || !repo.IsAvailable)
         {
             return null;
         }
@@ -44,7 +44,7 @@ public static class RepositoryManagementEvaluator
         return best;
     }
 
-    public static bool CanDiscoverRepositories(PortalState state, Guid actorUserId) =>
+    public static bool CanSynchronizeRepositories(PortalState state, Guid actorUserId) =>
         state.Users.Any(u =>
             u.Id == actorUserId &&
             u.IsActive &&
@@ -62,7 +62,7 @@ public static class RepositoryManagementEvaluator
         }
 
         var repo = state.Repositories.FirstOrDefault(r => r.Id == repositoryId);
-        if (repo is null || repo.IsArchived)
+        if (repo is null || !repo.IsAvailable)
         {
             return false;
         }
