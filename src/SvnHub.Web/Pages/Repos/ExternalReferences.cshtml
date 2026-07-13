@@ -95,9 +95,15 @@
         Showing @Model.ShowingStart-@Model.ShowingEnd of @Model.TotalRows
         @(Model.TotalRows == 1 ? "reference" : "references")
     </div>
-    <div class="text-muted small">
-        @Model.TotalReferenceCount total from @Model.SourceRepositoryCount
-        @(Model.SourceRepositoryCount == 1 ? "repository" : "repositories")
+    <div class="text-muted small d-flex align-items-center gap-2 flex-wrap">
+        <span title="Total time to read indexed externals and index status, resolve targets, and apply repository permissions.">
+            Index query: @Model.IndexQueryDurationLabel
+        </span>
+        <span aria-hidden="true">&middot;</span>
+        <span>
+            @Model.TotalReferenceCount total from @Model.SourceRepositoryCount
+            @(Model.SourceRepositoryCount == 1 ? "repository" : "repositories")
+        </span>
     </div>
 </div>
 
@@ -138,9 +144,6 @@ else
                     </td>
                     <td>
                         <div class="font-monospace small">@row.MountedPath</div>
-                        <div class="text-muted small text-truncate" style="max-width: 24rem" title="@row.RawDefinition">
-                            @row.RawDefinition
-                        </div>
                     </td>
                     <td>
                         <a class="font-monospace small text-decoration-none"
@@ -148,25 +151,18 @@ else
                            asp-route-repoName="@Model.RepoName"
                            asp-route-path="@RepositoryPath.ToRouteValue(row.TargetPath)"
                            asp-route-rev="@row.NumericRevision">@row.TargetPath</a>
-                        <div class="text-muted small">@row.TargetBranch</div>
                     </td>
                     <td class="text-nowrap">
                         @if (row.IsPinned)
                         {
-                            <span class="badge text-bg-secondary">Pinned</span>
-                            @if (!string.IsNullOrWhiteSpace(row.Revision))
-                            {
-                                <div class="small mt-1"><code>-r @row.Revision</code></div>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(row.PegRevision))
-                            {
-                                <div class="small"><code>@($"@{row.PegRevision}")</code></div>
-                            }
+                            var pinnedRevision = !string.IsNullOrWhiteSpace(row.Revision)
+                                ? row.Revision
+                                : row.PegRevision;
+                            <span class="badge text-bg-secondary">@(long.TryParse(pinnedRevision, out _) ? $"r{pinnedRevision}" : pinnedRevision)</span>
                         }
                         else
                         {
-                            <span class="badge text-bg-warning">Unpinned</span>
-                            <div class="text-muted small mt-1">HEAD</div>
+                            <span class="badge text-bg-warning">HEAD</span>
                         }
                     </td>
                 </tr>

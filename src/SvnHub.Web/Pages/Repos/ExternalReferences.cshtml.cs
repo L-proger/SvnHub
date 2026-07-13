@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -39,6 +41,11 @@ public sealed class ExternalReferencesModel : PageModel
     public int SourceRepositoryCount { get; private set; }
     public int IncompleteRepositoryCount { get; private set; }
     public DateTimeOffset? LastIndexSuccessAt { get; private set; }
+    public TimeSpan IndexQueryDuration { get; private set; }
+    public string IndexQueryDurationLabel =>
+        IndexQueryDuration.TotalMilliseconds < 0.1
+            ? "<0.1 ms"
+            : $"{IndexQueryDuration.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture)} ms";
     public IReadOnlyList<int> PageSizeOptions => PaginationOptions.PageSizes;
     public IReadOnlyList<string> TargetBranchOptions { get; private set; } = [];
     public IReadOnlyList<string> SourceBranchOptions { get; private set; } = [];
@@ -83,7 +90,9 @@ public sealed class ExternalReferencesModel : PageModel
         Pinning = NormalizePinning(pinning);
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
 
+        var queryStartedAt = Stopwatch.GetTimestamp();
         var snapshot = await _references.ListIncomingAsync(userId.Value, repository.Id, cancellationToken);
+        IndexQueryDuration = Stopwatch.GetElapsedTime(queryStartedAt);
         var allRows = snapshot.References;
         TotalReferenceCount = allRows.Count;
         SourceRepositoryCount = allRows
