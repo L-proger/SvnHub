@@ -134,18 +134,30 @@
 }
 
 .repository-graph-line {
-  background: #6ea8fe;
+  background: #9eb9d8;
   display: inline-block;
   height: 2px;
   width: 1.25rem;
 }
 
 .repository-graph-line.is-unpinned {
-  background: #ffb02e;
+  background: #d8b579;
 }
 
 .repository-graph-line.is-mixed {
-  background: #a98eda;
+  background: #b9abd2;
+}
+
+[data-bs-theme="dark"] .repository-graph-line {
+  background: #4f6680;
+}
+
+[data-bs-theme="dark"] .repository-graph-line.is-unpinned {
+  background: #806737;
+}
+
+[data-bs-theme="dark"] .repository-graph-line.is-mixed {
+  background: #665978;
 }
 
 @media (max-width: 767.98px) {

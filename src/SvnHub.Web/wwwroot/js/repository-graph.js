@@ -67,7 +67,7 @@
     graph.addNode(node.id, {
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius,
-      size: degree === 0 ? 5.5 : Math.min(13, 3.5 + Math.log2(degree + 1) * 1.35),
+      size: degree === 0 ? 3.5 : Math.min(9, 3.2 + Math.log2(degree + 1) * 0.75),
       label: node.name,
       data: node,
     });
@@ -81,7 +81,7 @@
     const key = `${edge.source}:${edge.target}`;
     graph.addDirectedEdgeWithKey(key, edge.source, edge.target, {
       type: "arrow",
-      size: Math.min(7, 0.7 + Math.log2(edge.referenceCount + 1) * 0.75),
+      size: edgeSize(edge.referenceCount),
       weight: Math.max(1, Math.log2(edge.referenceCount + 1)),
       data: edge,
     });
@@ -100,9 +100,9 @@
       edgeProgramClasses: { arrow: EdgeArrowProgram },
       nodeReducer,
       edgeReducer,
-      labelDensity: 0.08,
-      labelGridCellSize: 110,
-      labelRenderedSizeThreshold: 8,
+      labelDensity: 0.045,
+      labelGridCellSize: 140,
+      labelRenderedSizeThreshold: 7.5,
       minCameraRatio: 0.025,
       maxCameraRatio: 12,
       zIndex: true,
@@ -273,12 +273,15 @@
     const outgoing = graph.hasDirectedEdge(state.selectedNode, node);
     if (incoming && outgoing) {
       result.color = palette.both;
+      result.forceLabel = true;
       result.zIndex = 2;
     } else if (incoming) {
       result.color = palette.incoming;
+      result.forceLabel = true;
       result.zIndex = 2;
     } else if (outgoing) {
       result.color = palette.outgoing;
+      result.forceLabel = true;
       result.zIndex = 2;
     } else {
       result.color = palette.mutedNode;
@@ -292,7 +295,7 @@
       ...attributes,
       hidden: !state.visibleEdges.has(edgeKey),
       color: edgeColor(edge),
-      size: Math.min(7, 0.7 + Math.log2(edgeReferenceCount(edge) + 1) * 0.75),
+      size: edgeSize(edgeReferenceCount(edge)),
       zIndex: 1,
     };
 
@@ -303,24 +306,28 @@
         result.color = palette.mutedEdge;
         result.zIndex = 0;
       } else {
-        result.size *= 1.4;
+        result.color = edgeColor(edge, true);
+        result.size = Math.min(3, result.size * 2.4);
         result.zIndex = 2;
       }
     }
     return result;
   }
 
-  function edgeColor(edge) {
+  function edgeColor(edge, emphasized = false) {
+    const suffix = emphasized ? "Strong" : "";
     if (state.pinning === "pinned") {
-      return palette.pinned;
+      return palette[`pinned${suffix}`];
     }
     if (state.pinning === "unpinned") {
-      return palette.unpinned;
+      return palette[`unpinned${suffix}`];
     }
     if (edge.pinnedReferenceCount > 0 && edge.unpinnedReferenceCount > 0) {
-      return palette.mixed;
+      return palette[`mixed${suffix}`];
     }
-    return edge.pinnedReferenceCount > 0 ? palette.pinned : palette.unpinned;
+    return edge.pinnedReferenceCount > 0
+      ? palette[`pinned${suffix}`]
+      : palette[`unpinned${suffix}`];
   }
 
   function selectNode(nodeId, focus) {
@@ -428,10 +435,12 @@
       settings: {
         ...inferred,
         barnesHutOptimize: true,
+        linLogMode: true,
+        outboundAttractionDistribution: true,
         edgeWeightInfluence: 0.7,
-        gravity: 1.2,
-        scalingRatio: Math.max(2, inferred.scalingRatio),
-        strongGravityMode: true,
+        gravity: 0.08,
+        scalingRatio: Math.max(12, inferred.scalingRatio * 1.8),
+        strongGravityMode: false,
         slowDown: Math.max(2, inferred.slowDown),
       },
     });
@@ -464,7 +473,7 @@
       loading.hidden = true;
       renderer.refresh();
       fitCamera(500);
-    }, 3500);
+    }, 4500);
   }
 
   function placeIsolatedNodes(connectedNodes) {
@@ -473,18 +482,39 @@
       return;
     }
 
-    let maxRadius = 1;
-    connectedNodes.forEach((node) => {
-      const x = graph.getNodeAttribute(node, "x");
-      const y = graph.getNodeAttribute(node, "y");
-      maxRadius = Math.max(maxRadius, Math.hypot(x, y));
-    });
-    const radius = maxRadius * 1.25;
+    const columns = Math.ceil(Math.sqrt(isolated.length));
+    const rows = Math.ceil(isolated.length / columns);
+    let startX;
+    let startY;
+    let spacing;
+
+    if (connectedNodes.size === 0) {
+      spacing = 1;
+      startX = -((columns - 1) * spacing) / 2;
+      startY = -((rows - 1) * spacing) / 2;
+    } else {
+      const bounds = Array.from(connectedNodes).reduce((result, node) => {
+        const x = graph.getNodeAttribute(node, "x");
+        const y = graph.getNodeAttribute(node, "y");
+        result.minX = Math.min(result.minX, x);
+        result.maxX = Math.max(result.maxX, x);
+        result.minY = Math.min(result.minY, y);
+        result.maxY = Math.max(result.maxY, y);
+        return result;
+      }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+      const connectedWidth = Math.max(1, bounds.maxX - bounds.minX);
+      const connectedHeight = Math.max(1, bounds.maxY - bounds.minY);
+      spacing = Math.max(0.75, connectedHeight / Math.max(1, rows - 1));
+      startX = bounds.maxX + Math.max(spacing * 3, connectedWidth * 0.08);
+      startY = (bounds.minY + bounds.maxY - ((rows - 1) * spacing)) / 2;
+    }
+
     isolated.forEach((node, index) => {
-      const angle = (index / isolated.length) * Math.PI * 2;
+      const column = index % columns;
+      const row = Math.floor(index / columns);
       graph.mergeNodeAttributes(node, {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
+        x: startX + (column * spacing),
+        y: startY + (row * spacing),
       });
     });
   }
@@ -494,34 +524,44 @@
     return dark
       ? {
           node: "#93a9b5",
-          isolatedNode: "#718995",
+          isolatedNode: "#687e89",
           mutedNode: "#49575e",
           selected: "#6ea8fe",
           incoming: "#75b798",
           outgoing: "#ffb86b",
           both: "#b49ada",
-          pinned: "#6ea8fe",
-          unpinned: "#ffb02e",
-          mixed: "#a98eda",
+          pinned: "#4f6680",
+          unpinned: "#806737",
+          mixed: "#665978",
+          pinnedStrong: "#6ea8fe",
+          unpinnedStrong: "#ffb02e",
+          mixedStrong: "#b49ada",
           mutedEdge: "#354149",
         }
       : {
           node: "#617d8a",
-          isolatedNode: "#78919c",
+          isolatedNode: "#81959e",
           mutedNode: "#c2cbd0",
           selected: "#0d6efd",
           incoming: "#198754",
           outgoing: "#d66b00",
           both: "#7656a8",
-          pinned: "#397dcc",
-          unpinned: "#d88400",
-          mixed: "#7656a8",
+          pinned: "#9eb9d8",
+          unpinned: "#d8b579",
+          mixed: "#b9abd2",
+          pinnedStrong: "#397dcc",
+          unpinnedStrong: "#d88400",
+          mixedStrong: "#7656a8",
           mutedEdge: "#d4dadd",
         };
   }
 
   function pluralize(count, singular, plural) {
     return count === 1 ? singular : plural;
+  }
+
+  function edgeSize(referenceCount) {
+    return Math.min(1.5, 0.22 + Math.log2(referenceCount + 1) * 0.2);
   }
 
   function fitCamera(duration) {
