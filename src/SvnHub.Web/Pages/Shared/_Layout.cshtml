@@ -8,6 +8,7 @@
     var currentTheme = UserTheme.GetTheme(User);
     var currentThemeName = UserThemeAccessor.ToBootstrapTheme(currentTheme);
     var currentUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    var fullWidth = ViewData["FullWidth"] is true;
 }
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="@currentThemeName">
@@ -175,7 +176,7 @@
         </div>
     </nav>
 </header>
-<div class="container">
+<div class="@(fullWidth ? "container-fluid px-3 px-xl-4" : "container")">
     <main role="main" class="pb-3">
         @RenderBody()
     </main>

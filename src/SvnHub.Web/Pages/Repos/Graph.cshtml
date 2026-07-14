@@ -1,0 +1,126 @@
+@page "/repos/graph"
+@model SvnHub.Web.Pages.Repos.GraphModel
+@{
+    ViewData["Title"] = "Repository graph";
+    ViewData["FullWidth"] = true;
+}
+
+@section Head
+{
+    <link rel="stylesheet" href="~/css/repository-graph.css" asp-append-version="true" />
+}
+
+<div class="repository-graph-page" data-repository-graph>
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+        <div>
+            <h1 class="mb-1">Repository graph</h1>
+            <div class="text-body-secondary">
+                @Model.ConnectedRepositoryCount connected of @Model.RepositoryCount visible repositories
+                <span aria-hidden="true">&middot;</span>
+                @Model.ReferenceCount external references
+            </div>
+        </div>
+        <a class="btn btn-sm btn-outline-secondary" asp-page="/Repos/Index">Back to repositories</a>
+    </div>
+
+    <div class="repository-graph-toolbar">
+        <div class="repository-graph-search">
+            <label class="visually-hidden" for="repositoryGraphSearch">Find repository</label>
+            <input id="repositoryGraphSearch"
+                   class="form-control form-control-sm"
+                   type="search"
+                   list="repositoryGraphNames"
+                   placeholder="Find repository"
+                   autocomplete="off"
+                   data-graph-search />
+            <datalist id="repositoryGraphNames"></datalist>
+        </div>
+
+        <div class="btn-group btn-group-sm" role="group" aria-label="External pinning">
+            <input class="btn-check" type="radio" name="graphPinning" id="graphPinningAll" value="all" checked data-graph-pinning />
+            <label class="btn btn-outline-secondary" for="graphPinningAll">All</label>
+            <input class="btn-check" type="radio" name="graphPinning" id="graphPinningPinned" value="pinned" data-graph-pinning />
+            <label class="btn btn-outline-secondary" for="graphPinningPinned">Pinned</label>
+            <input class="btn-check" type="radio" name="graphPinning" id="graphPinningUnpinned" value="unpinned" data-graph-pinning />
+            <label class="btn btn-outline-secondary" for="graphPinningUnpinned">Unpinned</label>
+        </div>
+
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="graphHideIsolated" data-graph-hide-isolated />
+            <label class="form-check-label small" for="graphHideIsolated">Hide unconnected</label>
+        </div>
+
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-graph-fit>Fit</button>
+
+        <div class="repository-graph-active-stats text-body-secondary small" data-graph-stats>
+            @Model.ConnectedRepositoryCount repositories &middot; @Model.ConnectionCount connections
+        </div>
+        <div class="text-body-secondary small ms-auto" title="Time to read the external index and apply repository permissions.">
+            Index query: @Model.QueryDurationLabel
+        </div>
+    </div>
+
+    <div class="repository-graph-viewport">
+        <div class="repository-graph-canvas" data-graph-canvas role="img" aria-label="Repository external dependency graph"></div>
+
+        <div class="repository-graph-loading" data-graph-loading>
+            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            <span>Arranging graph</span>
+        </div>
+
+        <div class="repository-graph-empty text-body-secondary" data-graph-empty hidden>
+            No repository connections match the current filters.
+        </div>
+
+        <aside class="repository-graph-details" data-graph-details hidden aria-live="polite">
+            <div class="d-flex align-items-start justify-content-between gap-2">
+                <div class="min-w-0">
+                    <h2 class="h5 mb-1 text-break" data-graph-detail-name></h2>
+                    <div class="repository-graph-detail-labels" data-graph-detail-labels></div>
+                </div>
+                <button class="btn-close" type="button" aria-label="Close repository details" data-graph-detail-close></button>
+            </div>
+            <dl class="repository-graph-metrics mt-3 mb-3">
+                <div>
+                    <dt>Used by</dt>
+                    <dd data-graph-detail-incoming></dd>
+                </div>
+                <div>
+                    <dt>Uses</dt>
+                    <dd data-graph-detail-outgoing></dd>
+                </div>
+                <div>
+                    <dt>Incoming references</dt>
+                    <dd data-graph-detail-incoming-references></dd>
+                </div>
+                <div>
+                    <dt>Outgoing references</dt>
+                    <dd data-graph-detail-outgoing-references></dd>
+                </div>
+                <div data-graph-detail-self-container hidden>
+                    <dt>Internal references</dt>
+                    <dd data-graph-detail-self></dd>
+                </div>
+            </dl>
+            <div class="d-grid gap-2">
+                <a class="btn btn-sm btn-primary" data-graph-detail-open>Open repository</a>
+                <a class="btn btn-sm btn-outline-secondary" data-graph-detail-references>External references</a>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-graph-detail-focus>Focus neighborhood</button>
+            </div>
+        </aside>
+
+        <div class="repository-graph-legend" aria-hidden="true">
+            <span><i class="repository-graph-line is-pinned"></i>Pinned</span>
+            <span><i class="repository-graph-line is-unpinned"></i>Unpinned</span>
+            <span><i class="repository-graph-line is-mixed"></i>Mixed</span>
+        </div>
+    </div>
+
+    <script id="repositoryGraphData" type="application/json">@Html.Raw(Model.GraphJson)</script>
+</div>
+
+@section Scripts
+{
+    <script src="~/lib/repository-graph/repository-graph-vendor.min.js" asp-append-version="true"></script>
+    <script src="~/js/repository-graph.js" asp-append-version="true"></script>
+}

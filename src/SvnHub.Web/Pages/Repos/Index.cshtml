@@ -9,9 +9,10 @@
 
 <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
     <h1 class="mb-0">Repositories</h1>
-    @if ((User?.IsInRole("admin.system") ?? false) || (User?.IsInRole("repo.create") ?? false))
-    {
-        <div class="d-flex gap-2 ms-auto">
+    <div class="d-flex gap-2 ms-auto">
+        <a class="btn btn-outline-secondary" asp-page="/Repos/Graph">Graph</a>
+        @if ((User?.IsInRole("admin.system") ?? false) || (User?.IsInRole("repo.create") ?? false))
+        {
             @if (User?.IsInRole("admin.system") ?? false)
             {
                 <form method="post" asp-page-handler="Synchronize" class="d-inline">
@@ -26,8 +27,8 @@
             {
                 <a class="btn btn-primary" asp-page="/Repos/Create">Create</a>
             }
-        </div>
-    }
+        }
+    </div>
 </div>
 
 <div class="mt-3">
