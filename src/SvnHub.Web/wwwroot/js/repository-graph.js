@@ -67,7 +67,7 @@
     graph.addNode(node.id, {
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius,
-      size: degree === 0 ? 3.5 : Math.min(9, 3.2 + Math.log2(degree + 1) * 0.75),
+      size: degree === 0 ? 2.4 : Math.min(9, 3.2 + Math.log2(degree + 1) * 0.75),
       label: node.name,
       data: node,
     });
@@ -256,6 +256,9 @@
     };
     if (state.visibleNodes.size <= 25) {
       result.forceLabel = true;
+      if (graph.degree(node) === 0) {
+        result.size = 5.5;
+      }
     }
     if (!state.selectedNode) {
       return result;
@@ -482,39 +485,18 @@
       return;
     }
 
-    const columns = Math.ceil(Math.sqrt(isolated.length));
-    const rows = Math.ceil(isolated.length / columns);
-    let startX;
-    let startY;
-    let spacing;
-
-    if (connectedNodes.size === 0) {
-      spacing = 1;
-      startX = -((columns - 1) * spacing) / 2;
-      startY = -((rows - 1) * spacing) / 2;
-    } else {
-      const bounds = Array.from(connectedNodes).reduce((result, node) => {
-        const x = graph.getNodeAttribute(node, "x");
-        const y = graph.getNodeAttribute(node, "y");
-        result.minX = Math.min(result.minX, x);
-        result.maxX = Math.max(result.maxX, x);
-        result.minY = Math.min(result.minY, y);
-        result.maxY = Math.max(result.maxY, y);
-        return result;
-      }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
-      const connectedWidth = Math.max(1, bounds.maxX - bounds.minX);
-      const connectedHeight = Math.max(1, bounds.maxY - bounds.minY);
-      spacing = Math.max(0.75, connectedHeight / Math.max(1, rows - 1));
-      startX = bounds.maxX + Math.max(spacing * 3, connectedWidth * 0.08);
-      startY = (bounds.minY + bounds.maxY - ((rows - 1) * spacing)) / 2;
-    }
-
+    let maxRadius = 1;
+    connectedNodes.forEach((node) => {
+      const x = graph.getNodeAttribute(node, "x");
+      const y = graph.getNodeAttribute(node, "y");
+      maxRadius = Math.max(maxRadius, Math.hypot(x, y));
+    });
+    const radius = maxRadius * 1.25;
     isolated.forEach((node, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
+      const angle = (index / isolated.length) * Math.PI * 2;
       graph.mergeNodeAttributes(node, {
-        x: startX + (column * spacing),
-        y: startY + (row * spacing),
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
       });
     });
   }
