@@ -59,7 +59,7 @@ public sealed class ExternalReferencesModel : PageModel
         string? targetBranch = null,
         string? sourceBranch = null,
         string? pinning = null,
-        bool groupByRepository = false,
+        bool groupByRepository = true,
         int p = 1,
         int? pageSize = null,
         CancellationToken cancellationToken = default)
