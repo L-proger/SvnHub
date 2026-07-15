@@ -32,7 +32,7 @@
 }
 
 <form method="get" class="row g-2 align-items-end mt-2">
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl-2 col-md-6">
         <label class="form-label" for="external-reference-search">Search</label>
         <input id="external-reference-search"
                class="form-control"
@@ -61,7 +61,7 @@
             }
         </select>
     </div>
-    <div class="col-xl-2 col-md-3">
+    <div class="col-xl-1 col-md-3">
         <label class="form-label" for="pinning">Pinning</label>
         <select id="pinning" name="pinning" class="form-select">
             <option value="">All</option>
@@ -78,6 +78,18 @@
             }
         </select>
     </div>
+    <div class="col-xl-2 col-md-4 d-flex align-items-end">
+        <div class="form-check form-switch external-reference-group-toggle">
+            <input id="group-by-repository"
+                   class="form-check-input"
+                   type="checkbox"
+                   role="switch"
+                   name="groupByRepository"
+                   value="true"
+                   checked="@Model.GroupByRepository" />
+            <label class="form-check-label" for="group-by-repository">Group repositories</label>
+        </div>
+    </div>
     <div class="col-xl-2 col-md-6 d-flex gap-2">
         <button class="btn btn-primary" type="submit">Filter</button>
         <a class="btn btn-outline-secondary"
@@ -90,7 +102,14 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 mb-2">
     <div class="text-muted">
         Showing @Model.ShowingStart-@Model.ShowingEnd of @Model.TotalRows
-        @(Model.TotalRows == 1 ? "reference" : "references")
+        @if (Model.GroupByRepository)
+        {
+            <text>@(Model.TotalRows == 1 ? "repository" : "repositories")</text>
+        }
+        else
+        {
+            <text>@(Model.TotalRows == 1 ? "reference" : "references")</text>
+        }
     </div>
     <div class="text-muted small d-flex align-items-center gap-2 flex-wrap">
         <span title="Total time to read indexed externals and index status, resolve targets, and apply repository permissions.">
@@ -104,10 +123,108 @@
     </div>
 </div>
 
-@if (Model.Rows.Count == 0)
+@if (Model.TotalRows == 0)
 {
     <div class="border rounded p-4 text-center text-muted">
         No incoming external references match the current filters.
+    </div>
+}
+else if (Model.GroupByRepository)
+{
+    <div class="border rounded repo-external-reference-groups">
+        @foreach (var group in Model.Groups)
+        {
+            <details class="repo-external-reference-group">
+                <summary class="repo-external-reference-group-summary">
+                    <div class="min-w-0">
+                        <div class="fw-semibold text-truncate">@group.SourceRepositoryName</div>
+                        <div class="small text-muted">
+                            @group.References.Count @(group.References.Count == 1 ? "reference" : "references")
+                            <span aria-hidden="true">&middot;</span>
+                            @group.BranchCount @(group.BranchCount == 1 ? "branch" : "branches")
+                            <span aria-hidden="true">&middot;</span>
+                            @group.TargetCount @(group.TargetCount == 1 ? "target" : "targets")
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        @if (group.HasPinnedReferences && group.HasUnpinnedReferences)
+                        {
+                            <span class="badge text-bg-info">Mixed</span>
+                        }
+                        else if (group.HasPinnedReferences)
+                        {
+                            <span class="badge text-bg-secondary">Pinned</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-warning">HEAD</span>
+                        }
+                        <svg class="repo-external-group-chevron"
+                             xmlns="http://www.w3.org/2000/svg"
+                             viewBox="0 0 16 16"
+                             fill="currentColor"
+                             aria-hidden="true">
+                            <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z" />
+                        </svg>
+                    </div>
+                </summary>
+                <div class="table-responsive repo-external-reference-group-details">
+                    <table class="table table-hover align-middle mb-0 repo-external-references-table">
+                        <colgroup>
+                            <col class="repo-external-used-by-column" />
+                            <col class="repo-external-mounted-column" />
+                            <col class="repo-external-target-column" />
+                            <col class="repo-external-pinning-column" />
+                        </colgroup>
+                        <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Mounted at</th>
+                            <th>Target</th>
+                            <th class="text-end text-nowrap">Pinning</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in group.References)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="fw-semibold text-decoration-none"
+                                       title="Declared at @row.SourceParentPath"
+                                       asp-page="/Repos/Tree"
+                                       asp-route-repoName="@row.SourceRepositoryName"
+                                       asp-route-path="@RepositoryPath.ToRouteValue(row.SourceParentPath)">@(string.IsNullOrWhiteSpace(row.SourceBranch) ? "/" : row.SourceBranch)</a>
+                                </td>
+                                <td>
+                                    <div class="font-monospace small repo-external-path">@row.MountedPath</div>
+                                </td>
+                                <td>
+                                    <a class="font-monospace small text-decoration-none repo-external-path"
+                                       asp-page="/Repos/Tree"
+                                       asp-route-repoName="@Model.RepoName"
+                                       asp-route-path="@RepositoryPath.ToRouteValue(row.TargetPath)"
+                                       asp-route-rev="@row.NumericRevision">@row.TargetPath</a>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    @if (row.IsPinned)
+                                    {
+                                        var pinnedRevision = !string.IsNullOrWhiteSpace(row.Revision)
+                                            ? row.Revision
+                                            : row.PegRevision;
+                                        <span class="badge text-bg-secondary">@(long.TryParse(pinnedRevision, out _) ? $"r{pinnedRevision}" : pinnedRevision)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-warning">HEAD</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
     </div>
 }
 else
@@ -180,6 +297,7 @@ else
                    asp-route-targetBranch="@Model.TargetBranch"
                    asp-route-sourceBranch="@Model.SourceBranch"
                    asp-route-pinning="@Model.Pinning"
+                   asp-route-groupByRepository="@Model.GroupByRepository"
                    asp-route-pageSize="@Model.PageSize"
                    asp-route-p="@(Model.PageNumber - 1)">Previous</a>
             </li>
@@ -194,6 +312,7 @@ else
                    asp-route-targetBranch="@Model.TargetBranch"
                    asp-route-sourceBranch="@Model.SourceBranch"
                    asp-route-pinning="@Model.Pinning"
+                   asp-route-groupByRepository="@Model.GroupByRepository"
                    asp-route-pageSize="@Model.PageSize"
                    asp-route-p="@(Model.PageNumber + 1)">Next</a>
             </li>

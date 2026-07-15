@@ -31,6 +31,7 @@ public sealed class ExternalReferencesModel : PageModel
     public string TargetBranch { get; private set; } = "";
     public string SourceBranch { get; private set; } = "";
     public string Pinning { get; private set; } = "";
+    public bool GroupByRepository { get; private set; }
     public int PageNumber { get; private set; } = 1;
     public int PageSize { get; private set; } = PaginationOptions.PageSizes[0];
     public int TotalRows { get; private set; }
@@ -50,6 +51,7 @@ public sealed class ExternalReferencesModel : PageModel
     public IReadOnlyList<string> TargetBranchOptions { get; private set; } = [];
     public IReadOnlyList<string> SourceBranchOptions { get; private set; } = [];
     public IReadOnlyList<RepositoryExternalReference> Rows { get; private set; } = [];
+    public IReadOnlyList<RepositoryExternalReferenceGroup> Groups { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
         string repoName,
@@ -57,6 +59,7 @@ public sealed class ExternalReferencesModel : PageModel
         string? targetBranch = null,
         string? sourceBranch = null,
         string? pinning = null,
+        bool groupByRepository = false,
         int p = 1,
         int? pageSize = null,
         CancellationToken cancellationToken = default)
@@ -83,6 +86,7 @@ public sealed class ExternalReferencesModel : PageModel
         TargetBranch = (targetBranch ?? "").Trim();
         SourceBranch = (sourceBranch ?? "").Trim();
         Pinning = NormalizePinning(pinning);
+        GroupByRepository = groupByRepository;
         PageSize = PaginationOptions.ResolvePageSize(Request, Response, pageSize);
 
         var queryStartedAt = Stopwatch.GetTimestamp();
@@ -127,12 +131,39 @@ public sealed class ExternalReferencesModel : PageModel
         }
 
         var filteredRows = filtered.ToArray();
-        TotalRows = filteredRows.Length;
-        PageNumber = Math.Clamp(p, 1, TotalPages);
-        Rows = filteredRows
-            .Skip((PageNumber - 1) * PageSize)
-            .Take(PageSize)
-            .ToArray();
+        if (GroupByRepository)
+        {
+            var groups = filteredRows
+                .GroupBy(row => row.SourceRepositoryId)
+                .Select(group => new RepositoryExternalReferenceGroup(
+                    group.Key,
+                    group.First().SourceRepositoryName,
+                    group
+                        .OrderBy(row => BranchSortOrder(row.SourceBranch))
+                        .ThenBy(row => row.SourceBranch, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(row => row.SourceParentPath, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(row => row.MountedPath, StringComparer.OrdinalIgnoreCase)
+                        .ToArray()))
+                .OrderBy(group => group.SourceRepositoryName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            TotalRows = groups.Length;
+            PageNumber = Math.Clamp(p, 1, TotalPages);
+            Groups = groups
+                .Skip((PageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToArray();
+        }
+        else
+        {
+            TotalRows = filteredRows.Length;
+            PageNumber = Math.Clamp(p, 1, TotalPages);
+            Rows = filteredRows
+                .Skip((PageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToArray();
+        }
+
         return Page();
     }
 
@@ -169,4 +200,25 @@ public sealed class ExternalReferencesModel : PageModel
         pinning?.Trim().ToLowerInvariant() is "pinned" or "unpinned"
             ? pinning.Trim().ToLowerInvariant()
             : "";
+}
+
+public sealed record RepositoryExternalReferenceGroup(
+    Guid SourceRepositoryId,
+    string SourceRepositoryName,
+    IReadOnlyList<RepositoryExternalReference> References)
+{
+    public int BranchCount => References
+        .Select(reference => string.IsNullOrWhiteSpace(reference.SourceBranch)
+            ? "/"
+            : reference.SourceBranch)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count();
+
+    public int TargetCount => References
+        .Select(reference => reference.TargetPath)
+        .Distinct(StringComparer.Ordinal)
+        .Count();
+
+    public bool HasPinnedReferences => References.Any(reference => reference.IsPinned);
+    public bool HasUnpinnedReferences => References.Any(reference => !reference.IsPinned);
 }
