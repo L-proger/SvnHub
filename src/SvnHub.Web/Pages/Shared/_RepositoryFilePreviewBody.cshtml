@@ -22,6 +22,7 @@
     var altiumTopUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "top" }, null);
     var altiumBottomUrl = Url.Page("/Repos/File", null, new { handler = "AltiumPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision, side = "bottom" }, null);
     var dxfPreviewUrl = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
+    var spreadsheetPreviewUrl = Url.Page("/Repos/Raw", null, new { repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
     var interactiveBomPreviewUrl = Url.Page("/Repos/File", null, new { handler = "InteractiveBomPreview", repoName = Model.RepoName, path = RepositoryPath.ToRouteValue(Model.Path), rev = Model.ViewRevision }, null);
 }
 
@@ -171,6 +172,32 @@ else if (Model.IsDxfPreview)
             <div class="dxf-layer-panel" data-dxf-layer-panel aria-label="DXF layers"></div>
             <div class="dxf-preview-stage" data-dxf-stage></div>
         </div>
+    </div>
+}
+else if (Model.IsSpreadsheetPreview)
+{
+    <div class="spreadsheet-preview"
+         data-spreadsheet-preview
+         data-spreadsheet-url="@spreadsheetPreviewUrl">
+        <div class="spreadsheet-preview-toolbar">
+            <div class="sp-min-w-0">
+                <div class="fw-semibold">Spreadsheet preview</div>
+                <div class="text-muted small text-truncate">@System.IO.Path.GetFileName(Model.Path)</div>
+            </div>
+            <div class="spreadsheet-preview-pager" data-spreadsheet-pager hidden>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-spreadsheet-previous>Previous</button>
+                <span class="small text-muted text-nowrap" data-spreadsheet-page></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-spreadsheet-next>Next</button>
+            </div>
+        </div>
+        <div class="spreadsheet-preview-status alert alert-secondary mb-3" data-spreadsheet-status>
+            Loading workbook...
+        </div>
+        <div class="spreadsheet-sheet-tabs" data-spreadsheet-tabs hidden></div>
+        <div class="spreadsheet-grid-viewport" data-spreadsheet-viewport hidden>
+            <table class="spreadsheet-grid" data-spreadsheet-grid></table>
+        </div>
+        <div class="spreadsheet-preview-summary small text-muted" data-spreadsheet-summary hidden></div>
     </div>
 }
 else if (Model.IsInteractiveBomPreview)

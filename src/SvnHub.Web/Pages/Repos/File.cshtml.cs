@@ -76,6 +76,7 @@ public sealed class FileModel : PageModel
     public bool IsModelPreview { get; private set; }
     public bool IsAltiumPreview { get; private set; }
     public bool IsDxfPreview { get; private set; }
+    public bool IsSpreadsheetPreview { get; private set; }
     public bool IsInteractiveBomPreview { get; private set; }
     public bool IsAltiumPcbDocument { get; private set; }
     public bool IsAltiumProjectDocument { get; private set; }
@@ -106,6 +107,7 @@ public sealed class FileModel : PageModel
         !IsModelPreview &&
         !IsAltiumPreview &&
         !IsDxfPreview &&
+        !IsSpreadsheetPreview &&
         !IsInteractiveBomPreview &&
         (IsMarkdown || LineCount is not null);
 
@@ -184,6 +186,13 @@ public sealed class FileModel : PageModel
             {
                 ClearTextPreviewState();
                 IsDxfPreview = true;
+                return Page();
+            }
+
+            if (RepositoryFileClassifier.IsSpreadsheetPath(Path))
+            {
+                ClearTextPreviewState();
+                IsSpreadsheetPreview = true;
                 return Page();
             }
 
@@ -365,6 +374,7 @@ public sealed class FileModel : PageModel
         IsModelPreview = false;
         IsAltiumPreview = false;
         IsDxfPreview = false;
+        IsSpreadsheetPreview = false;
         IsInteractiveBomPreview = false;
         IsAltiumPcbDocument = false;
         IsAltiumProjectDocument = false;

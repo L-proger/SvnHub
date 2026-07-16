@@ -8,6 +8,7 @@
         !Model.IsModelPreview &&
         !Model.IsAltiumPreview &&
         !Model.IsDxfPreview &&
+        !Model.IsSpreadsheetPreview &&
         !Model.IsInteractiveBomPreview &&
         !Model.IsMarkdown
             ? Model.LineCount
@@ -159,5 +160,10 @@ else
     {
         <script src="~/lib/dxf-viewer/dxf-viewer.bundle.js" asp-append-version="true"></script>
         <script src="~/js/dxf-preview.js" asp-append-version="true"></script>
+    }
+    @if (Model.IsSpreadsheetPreview)
+    {
+        <script src="~/lib/sheetjs/xlsx.full.min.js" asp-append-version="true"></script>
+        <script src="~/js/spreadsheet-preview.js" asp-append-version="true"></script>
     }
 }

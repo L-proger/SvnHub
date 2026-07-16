@@ -125,6 +125,12 @@ public static class RepositoryFileClassifier
     public static bool IsDxfPath(string path) =>
         string.Equals(Path.GetExtension(path), ".dxf", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsSpreadsheetPath(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        return extension is ".xls" or ".xlsx" or ".xlsm" or ".xlsb";
+    }
+
     public static bool IsInteractiveBomInputPath(string path) =>
         string.Equals(Path.GetFileName(path), "ibom-input.json", StringComparison.OrdinalIgnoreCase) ||
         Path.GetFileName(path).EndsWith(".ibom-input.json", StringComparison.OrdinalIgnoreCase);
