@@ -26,6 +26,11 @@ public sealed class AltiumSvgFontEmbedder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(svg);
 
+        if (svg[0] == '\uFEFF')
+        {
+            svg = svg[1..];
+        }
+
         var document = XDocument.Parse(svg, LoadOptions.PreserveWhitespace);
         var root = document.Root
             ?? throw new InvalidOperationException("The generated SVG has no root element.");
