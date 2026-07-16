@@ -13,8 +13,100 @@ internal static class FuzzySearchScorer
             return 0;
         }
 
+        if (tokens.Length > 1 && HasStructuralSeparator(query))
+        {
+            return ScoreStructured(candidate, tokens);
+        }
+
         var allowShortAcronym = tokens.Length > 1;
         return ScoreTokens(candidate, tokens, allowShortAcronym);
+    }
+
+    private static int ScoreStructured(string candidate, string[] tokens)
+    {
+        var candidateNormalized = Normalize(candidate);
+        var queryNormalized = string.Join(' ', tokens);
+        if (string.Equals(candidateNormalized, queryNormalized, StringComparison.Ordinal))
+        {
+            return 10000;
+        }
+
+        var candidateWords = SplitWords(candidate);
+        if (candidateWords.Length < tokens.Length)
+        {
+            return 0;
+        }
+
+        var bestScore = 0;
+        for (var start = 0; start <= candidateWords.Length - tokens.Length; start++)
+        {
+            var score = 0;
+            for (var tokenIndex = 0; tokenIndex < tokens.Length; tokenIndex++)
+            {
+                var segmentScore = ScoreStructuredSegment(candidateWords[start + tokenIndex], tokens[tokenIndex]);
+                if (segmentScore <= 0)
+                {
+                    score = 0;
+                    break;
+                }
+
+                score += segmentScore;
+            }
+
+            if (score > 0 && start == 0)
+            {
+                score += 100;
+            }
+
+            bestScore = Math.Max(bestScore, score);
+        }
+
+        return bestScore;
+    }
+
+    private static int ScoreStructuredSegment(string candidateWord, string token)
+    {
+        var candidateCompact = Compact(candidateWord);
+        var tokenCompact = Compact(token);
+        if (candidateCompact.Length == 0 || tokenCompact.Length == 0)
+        {
+            return 0;
+        }
+
+        if (string.Equals(candidateCompact, tokenCompact, StringComparison.Ordinal))
+        {
+            return 1000;
+        }
+
+        if (candidateCompact.StartsWith(tokenCompact, StringComparison.Ordinal))
+        {
+            return 850 - Math.Min(120, candidateCompact.Length - tokenCompact.Length);
+        }
+
+        if (tokenCompact.Length >= 3)
+        {
+            var containsIndex = candidateCompact.IndexOf(tokenCompact, StringComparison.Ordinal);
+            if (containsIndex >= 0)
+            {
+                return 740 - Math.Min(120, containsIndex * 12);
+            }
+        }
+
+        if (IsAdjacentTransposition(tokenCompact, candidateCompact))
+        {
+            return 700;
+        }
+
+        var maxDistance = GetMaxEditDistance(tokenCompact.Length);
+        if (maxDistance <= 0)
+        {
+            return 0;
+        }
+
+        var distance = BoundedEditDistance(tokenCompact, candidateCompact, maxDistance);
+        return distance <= maxDistance
+            ? 640 - distance * 100 - Math.Abs(candidateCompact.Length - tokenCompact.Length) * 8
+            : 0;
     }
 
     private static int ScoreTokens(string candidate, string[] tokens, bool allowShortAcronym)
@@ -265,6 +357,9 @@ internal static class FuzzySearchScorer
 
         return length < 8 ? 1 : 2;
     }
+
+    private static bool HasStructuralSeparator(string value) =>
+        value.IndexOfAny(['.', '_', '-']) >= 0;
 
     private static string[] SplitWords(string value)
     {
