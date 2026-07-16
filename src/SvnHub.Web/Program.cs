@@ -139,6 +139,7 @@ builder.Services.AddSingleton<UserThemeAccessor>();
 builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ApiTokenService>();
 builder.Services.AddSingleton<MaterialFileIconService>();
+builder.Services.AddSingleton<AltiumSvgFontEmbedder>();
 builder.Services.AddSingleton<AltiumPreviewRenderer>();
 builder.Services.AddSingleton<AltiumInteractiveBomGenerator>();
 builder.Services.AddSingleton<AltiumProjectBomLoader>();

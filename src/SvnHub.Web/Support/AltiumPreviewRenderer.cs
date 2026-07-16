@@ -11,6 +11,12 @@ public sealed class AltiumPreviewRenderer
 {
     private const int DefaultWidth = 1600;
     private const int DefaultHeight = 1200;
+    private readonly AltiumSvgFontEmbedder _fontEmbedder;
+
+    public AltiumPreviewRenderer(AltiumSvgFontEmbedder fontEmbedder)
+    {
+        _fontEmbedder = fontEmbedder;
+    }
 
     public async Task<string> RenderSvgAsync(
         byte[] bytes,
@@ -48,7 +54,8 @@ public sealed class AltiumPreviewRenderer
                 throw new InvalidOperationException("This file type is not supported by the Altium preview renderer.");
         }
 
-        return Encoding.UTF8.GetString(output.ToArray());
+        var svg = Encoding.UTF8.GetString(output.ToArray());
+        return _fontEmbedder.EmbedUsedFonts(svg);
     }
 
     private static PcbViewSide ToPcbViewSide(AltiumPreviewSide side) =>
