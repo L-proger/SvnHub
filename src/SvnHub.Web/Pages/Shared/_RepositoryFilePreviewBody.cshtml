@@ -184,19 +184,11 @@ else if (Model.IsSpreadsheetPreview)
                 <div class="fw-semibold">Spreadsheet preview</div>
                 <div class="text-muted small text-truncate">@System.IO.Path.GetFileName(Model.Path)</div>
             </div>
-            <div class="spreadsheet-preview-pager" data-spreadsheet-pager hidden>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-spreadsheet-previous>Previous</button>
-                <span class="small text-muted text-nowrap" data-spreadsheet-page></span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-spreadsheet-next>Next</button>
-            </div>
         </div>
         <div class="spreadsheet-preview-status alert alert-secondary mb-3" data-spreadsheet-status>
             Loading workbook...
         </div>
-        <div class="spreadsheet-sheet-tabs" data-spreadsheet-tabs hidden></div>
-        <div class="spreadsheet-grid-viewport" data-spreadsheet-viewport hidden>
-            <table class="spreadsheet-grid" data-spreadsheet-grid></table>
-        </div>
+        <div class="spreadsheet-viewer" data-spreadsheet-viewer hidden></div>
         <div class="spreadsheet-preview-summary small text-muted" data-spreadsheet-summary hidden></div>
     </div>
 }

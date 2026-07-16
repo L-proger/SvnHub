@@ -133,6 +133,10 @@ else
     {
         <link rel="stylesheet" href="~/css/markdown.css" asp-append-version="true" />
     }
+    @if (Model.IsSpreadsheetPreview)
+    {
+        <link rel="stylesheet" href="~/lib/x-data-spreadsheet/xspreadsheet.css" asp-append-version="true" />
+    }
 }
 
 @section Scripts
@@ -164,6 +168,8 @@ else
     @if (Model.IsSpreadsheetPreview)
     {
         <script src="~/lib/sheetjs/xlsx.full.min.js" asp-append-version="true"></script>
+        <script src="~/lib/sheetjs/xlsxspread.js" asp-append-version="true"></script>
+        <script src="~/lib/x-data-spreadsheet/xspreadsheet.js" asp-append-version="true"></script>
         <script src="~/js/spreadsheet-preview.js" asp-append-version="true"></script>
     }
 }

@@ -9,17 +9,15 @@ public sealed class AltiumSvgFontEmbedder
     private const string TypeAuFontFamily = "GOST type AU";
     private const string TypeBFontFamily = "GOST type B";
     private const string TypeBuFontFamily = "GOST type BU";
-    private readonly string _typeADataUrl;
-    private readonly string _typeBDataUrl;
+    private readonly Lazy<string> _typeADataUrl;
+    private readonly Lazy<string> _typeBDataUrl;
 
     public AltiumSvgFontEmbedder(IWebHostEnvironment environment)
     {
-        var webRootPath = environment.WebRootPath
-            ?? Path.Combine(environment.ContentRootPath, "wwwroot");
-        var fontDirectory = Path.Combine(webRootPath, "fonts", "opengost");
-
-        _typeADataUrl = ReadFontDataUrl(Path.Combine(fontDirectory, "OpenGostTypeA-Regular.ttf"));
-        _typeBDataUrl = ReadFontDataUrl(Path.Combine(fontDirectory, "OpenGostTypeB-Regular.ttf"));
+        _typeADataUrl = new Lazy<string>(
+            () => ReadFontDataUrl(environment, "OpenGostTypeA-Regular.ttf"));
+        _typeBDataUrl = new Lazy<string>(
+            () => ReadFontDataUrl(environment, "OpenGostTypeB-Regular.ttf"));
     }
 
     public string EmbedUsedFonts(string svg)
@@ -43,22 +41,22 @@ public sealed class AltiumSvgFontEmbedder
         var css = new StringBuilder();
         if (fontFamilies.Contains(TypeAFontFamily))
         {
-            AppendFontFace(css, TypeAFontFamily, _typeADataUrl);
+            AppendFontFace(css, TypeAFontFamily, _typeADataUrl.Value);
         }
 
         if (fontFamilies.Contains(TypeAuFontFamily))
         {
-            AppendFontFace(css, TypeAuFontFamily, _typeADataUrl);
+            AppendFontFace(css, TypeAuFontFamily, _typeADataUrl.Value);
         }
 
         if (fontFamilies.Contains(TypeBFontFamily))
         {
-            AppendFontFace(css, TypeBFontFamily, _typeBDataUrl);
+            AppendFontFace(css, TypeBFontFamily, _typeBDataUrl.Value);
         }
 
         if (fontFamilies.Contains(TypeBuFontFamily))
         {
-            AppendFontFace(css, TypeBuFontFamily, _typeBDataUrl);
+            AppendFontFace(css, TypeBuFontFamily, _typeBDataUrl.Value);
         }
 
         if (css.Length == 0)
@@ -84,9 +82,43 @@ public sealed class AltiumSvgFontEmbedder
         return document.ToString(SaveOptions.DisableFormatting);
     }
 
-    private static string ReadFontDataUrl(string path)
+    private static string ReadFontDataUrl(IWebHostEnvironment environment, string fileName)
     {
-        var bytes = File.ReadAllBytes(path);
+        var relativePath = Path.Combine("fonts", "opengost", fileName).Replace('\\', '/');
+        var fileInfo = environment.WebRootFileProvider.GetFileInfo(relativePath);
+        if (fileInfo.Exists)
+        {
+            using var stream = fileInfo.CreateReadStream();
+            return ToFontDataUrl(stream);
+        }
+
+        var candidateRoots = new[]
+        {
+            environment.WebRootPath,
+            Path.Combine(environment.ContentRootPath, "wwwroot"),
+            Path.Combine(Directory.GetCurrentDirectory(), "src", "SvnHub.Web", "wwwroot"),
+            Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+        };
+
+        foreach (var root in candidateRoots.Where(root => !string.IsNullOrWhiteSpace(root)))
+        {
+            var path = Path.Combine(root!, "fonts", "opengost", fileName);
+            if (File.Exists(path))
+            {
+                using var stream = File.OpenRead(path);
+                return ToFontDataUrl(stream);
+            }
+        }
+
+        throw new FileNotFoundException(
+            $"Altium preview font '{fileName}' was not found under wwwroot/fonts/opengost.");
+    }
+
+    private static string ToFontDataUrl(Stream stream)
+    {
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var bytes = buffer.ToArray();
         return $"data:font/ttf;base64,{Convert.ToBase64String(bytes)}";
     }
 
