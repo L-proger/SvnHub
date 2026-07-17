@@ -2,64 +2,6 @@
 @inject SvnHub.Web.Support.MaterialFileIconService FileIcons
 
 <div class="list-group list-group-flush sp-list sp-tree-list">
-    @if (Model.Path == "/")
-    {
-        var rootIconHref = FileIcons.GetIconHref(Model.RepoName, isDirectory: true, isOpen: true);
-        <div class="list-group-item">
-            <div class="d-flex align-items-center justify-content-between gap-3">
-                <div class="d-flex align-items-center gap-2">
-                    @if (!string.IsNullOrWhiteSpace(rootIconHref))
-                    {
-                        <img class="sp-icon sp-file-icon" src="@Url.Content(rootIconHref)" alt="" aria-hidden="true" />
-                    }
-                    else
-                    {
-                        <svg class="sp-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M9.828 3H2.5A1.5 1.5 0 0 0 1 4.5v7A1.5 1.5 0 0 0 2.5 13h11A1.5 1.5 0 0 0 15 11.5v-5A1.5 1.5 0 0 0 13.5 5H10a1 1 0 0 1-.707-.293L8.586 4A1 1 0 0 0 7.879 3H9.828z"/>
-                        </svg>
-                    }
-                    <div class="flex-grow-1">
-                        <div class="sp-entry-name">@Model.RepoName</div>
-                        <div class="text-muted small">Repository root</div>
-                    </div>
-                </div>
-
-                <div class="sp-row-actions dropdown">
-                    <button class="btn btn-sm btn-outline-secondary sp-icon-btn"
-                            type="button"
-                            data-bs-toggle="dropdown"
-                            aria-label="Actions">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                            <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
-                        </svg>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <a class="dropdown-item"
-                               asp-page="/Repos/Tree"
-                               asp-page-handler="Zip"
-                               asp-route-repoName="@Model.RepoName"
-                               asp-route-rev="@Model.ViewRevision">
-                                Download ZIP
-                            </a>
-                        </li>
-                        @if (!string.IsNullOrWhiteSpace(Model.SvnBaseUrl))
-                        {
-                            <li><hr class="dropdown-divider" /></li>
-                            <li>
-                                <button type="button"
-                                        class="dropdown-item"
-                                        data-copy-text="@Model.GetCheckoutUrl("/")">
-                                    Copy SVN URL
-                                </button>
-                            </li>
-                        }
-                    </ul>
-                </div>
-            </div>
-        </div>
-    }
-
     @foreach (var row in Model.Rows)
     {
         var e = row.Entry;
