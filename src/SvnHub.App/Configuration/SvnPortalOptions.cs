@@ -15,6 +15,8 @@ public sealed class SvnHubOptions
 
     public List<string> SvnBaseUrlAliases { get; set; } = [];
 
+    public List<string> McpAllowedOrigins { get; set; } = [];
+
     public string HtpasswdCommand { get; set; } = "htpasswd";
 
     public string SvnadminCommand { get; set; } = "svnadmin";

@@ -10,6 +10,7 @@ services:
       SVNHUB_GID: ${SVNHUB_GID:-10001}
       SVNHUB_FIX_OWNERSHIP: ${SVNHUB_FIX_OWNERSHIP:-0}
       SvnHub__MaxPreviewBytes: ${SVNHUB_MAX_PREVIEW_BYTES:-52428800}
+      SvnHub__McpAllowedOrigins__0: ${SVNHUB_MCP_ALLOWED_ORIGIN:-}
       SvnHub__ApacheReloadProgram: ""
       SvnHub__ApacheReloadArguments: ""
       LANG: C.UTF-8

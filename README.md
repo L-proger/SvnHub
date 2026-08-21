@@ -74,6 +74,13 @@ Personal token metadata is stored in `api-tokens.json`; only token hashes are
 stored, and the plain token is shown once after creation. Repository permissions
 are evaluated for the token owner.
 
+Browser-based MCP clients running on loopback origins such as
+`http://127.0.0.1:1235` or `http://localhost:1235` are allowed automatically.
+For a UI hosted on another machine or hostname, add its exact origin (scheme,
+host, and port, without a path) to `SvnHub:McpAllowedOrigins`. Docker deployments
+can set one origin through `SVNHUB_MCP_ALLOWED_ORIGIN`; additional origins can be
+configured as `SvnHub__McpAllowedOrigins__1`, `__2`, and so on.
+
 ## Runtime Data
 
 Keep SvnHub runtime data outside the Git checkout. The data directory contains:

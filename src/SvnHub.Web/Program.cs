@@ -20,6 +20,7 @@ using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+const string McpCorsPolicy = "McpCors";
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -99,6 +100,18 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddCors(cors =>
+{
+    cors.AddPolicy(McpCorsPolicy, policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin => IsAllowedMcpOrigin(origin, options.McpAllowedOrigins))
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .WithExposedHeaders("Mcp-Session-Id", "Mcp-Protocol-Version")
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+    });
+});
 
 builder.Services
     .AddMcpServer(o =>
@@ -171,6 +184,10 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 app.UseHttpsRedirection();
 
 app.UseRouting();
+
+app.UseWhen(
+    context => context.Request.Path.StartsWithSegments("/mcp"),
+    branch => branch.UseCors(McpCorsPolicy));
 
 app.Use(async (context, next) =>
 {
@@ -370,6 +387,42 @@ static bool IsApiRequest(PathString path)
 {
     return path.StartsWithSegments("/mcp")
         || path.StartsWithSegments("/api");
+}
+
+static bool IsAllowedMcpOrigin(string origin, IReadOnlyCollection<string> configuredOrigins)
+{
+    if (!TryParseOrigin(origin, out var requestOrigin))
+    {
+        return false;
+    }
+
+    if (requestOrigin.IsLoopback)
+    {
+        return true;
+    }
+
+    return configuredOrigins.Any(configured =>
+        TryParseOrigin(configured, out var allowedOrigin)
+        && string.Equals(requestOrigin.Scheme, allowedOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(requestOrigin.IdnHost, allowedOrigin.IdnHost, StringComparison.OrdinalIgnoreCase)
+        && requestOrigin.Port == allowedOrigin.Port);
+}
+
+static bool TryParseOrigin(string value, out Uri origin)
+{
+    origin = null!;
+    if (!Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var parsed)
+        || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
+        || parsed.AbsolutePath != "/"
+        || !string.IsNullOrEmpty(parsed.Query)
+        || !string.IsNullOrEmpty(parsed.Fragment)
+        || !string.IsNullOrEmpty(parsed.UserInfo))
+    {
+        return false;
+    }
+
+    origin = parsed;
+    return true;
 }
 
 static bool TryAuthenticateApiToken(HttpContext context, out ClaimsPrincipal principal)
