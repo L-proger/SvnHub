@@ -115,6 +115,11 @@ export APACHE_RUN_USER="$APP_USER"
 export APACHE_RUN_GROUP="$APP_GROUP"
 umask 0007
 
+# Docker restart preserves the container writable layer, including Apache's PID
+# file, while all processes receive new PIDs. A stale PID can then point at the
+# newly started dotnet process and make apache2ctl report "already running".
+rm -f /var/run/apache2/apache2.pid
+
 gosu "$APP_USER" dotnet /app/SvnHub.Web.dll &
 dotnet_pid=$!
 

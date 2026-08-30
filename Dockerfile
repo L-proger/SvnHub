@@ -38,7 +38,9 @@ RUN groupadd --gid 10001 --system svnhub \
 
 # Enable required apache modules.
 RUN a2enmod dav dav_svn authz_svn proxy proxy_http headers \
-    && a2dissite 000-default
+    && a2dissite 000-default \
+    && printf 'ServerName localhost\n' > /etc/apache2/conf-available/servername.conf \
+    && a2enconf servername
 
 # Apache starts as root, then serves requests as the same service user used by SvnHub.
 RUN sed -i \
